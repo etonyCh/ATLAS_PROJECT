@@ -1,0 +1,131 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e6] [cursor=pointer]:
+    - button "Open Next.js Dev Tools" [ref=e7]:
+      - img [ref=e8]
+    - generic [ref=e11]:
+      - button "Open issues overlay" [ref=e12]:
+        - generic [ref=e13]:
+          - generic [ref=e14]: "0"
+          - generic [ref=e15]: "1"
+        - generic [ref=e16]: Issue
+      - button "Collapse issues badge" [ref=e17]:
+        - img [ref=e18]
+  - alert [ref=e20]: Admin Dashboard | ATLAS
+  - generic [ref=e21]:
+    - banner [ref=e22]:
+      - generic [ref=e23]:
+        - link "ATLAS" [ref=e24] [cursor=pointer]:
+          - /url: /admin/dashboard
+          - img [ref=e25]
+          - generic [ref=e28]: ATLAS
+        - generic [ref=e30]:
+          - img [ref=e31]
+          - searchbox "Search courses, ask anything..." [ref=e35]
+          - generic [ref=e37]:
+            - generic [ref=e38]: Cmd
+            - text: K
+        - generic [ref=e39]:
+          - link "Review Queue" [ref=e40] [cursor=pointer]:
+            - /url: /admin/contributions
+          - button "Toggle theme" [ref=e41]:
+            - img [ref=e42]
+          - button "Change language" [ref=e45]:
+            - img [ref=e46]
+          - button "Notifications" [ref=e50]:
+            - img [ref=e51]
+          - button "A" [ref=e55]:
+            - generic [ref=e56]: A
+            - img [ref=e57]
+    - generic [ref=e59]:
+      - complementary [ref=e60]:
+        - generic [ref=e61]:
+          - link "ATLAS" [ref=e63] [cursor=pointer]:
+            - /url: /admin/dashboard
+            - img [ref=e64]
+            - generic [ref=e67]: ATLAS
+          - navigation [ref=e68]:
+            - link "Dashboard" [ref=e69] [cursor=pointer]:
+              - /url: /admin/dashboard
+              - img [ref=e70]
+              - text: Dashboard
+            - link "Users" [ref=e75] [cursor=pointer]:
+              - /url: /admin/users
+              - img [ref=e76]
+              - text: Users
+            - link "Courses" [ref=e81] [cursor=pointer]:
+              - /url: /admin/courses
+              - img [ref=e82]
+              - text: Courses
+            - link "Reports" [ref=e84] [cursor=pointer]:
+              - /url: /admin/reports
+              - img [ref=e85]
+              - text: Reports
+          - generic [ref=e89]:
+            - link "Notifications" [ref=e90] [cursor=pointer]:
+              - /url: /notifications
+              - img [ref=e91]
+              - text: Notifications
+            - link "Settings" [ref=e94] [cursor=pointer]:
+              - /url: /admin/settings
+              - img [ref=e95]
+              - text: Settings
+            - button "Sign out" [ref=e98]:
+              - img [ref=e99]
+              - text: Sign out
+      - main [ref=e102]:
+        - generic [ref=e104]:
+          - generic [ref=e105]:
+            - heading "Admin Dashboard" [level=1] [ref=e106]
+            - paragraph [ref=e107]: Welcome back, Atlas. Platform totals and moderation queues are shown below.
+          - generic [ref=e108]:
+            - generic [ref=e110]:
+              - generic [ref=e111]:
+                - paragraph [ref=e112]: Total Users
+                - img [ref=e113]
+              - paragraph [ref=e118]: "120"
+            - generic [ref=e120]:
+              - generic [ref=e121]:
+                - paragraph [ref=e122]: Total Courses
+                - img [ref=e123]
+              - paragraph [ref=e125]: "45"
+            - generic [ref=e127]:
+              - generic [ref=e128]:
+                - paragraph [ref=e129]: Pending Contributions
+                - img [ref=e130]
+              - paragraph [ref=e133]: "3"
+            - generic [ref=e135]:
+              - generic [ref=e136]:
+                - paragraph [ref=e137]: Total Reports
+                - img [ref=e138]
+              - paragraph [ref=e141]: "0"
+            - generic [ref=e143]:
+              - generic [ref=e144]:
+                - paragraph [ref=e145]: Pending Reports
+                - img [ref=e146]
+              - paragraph [ref=e148]: "0"
+          - generic [ref=e149]:
+            - generic [ref=e150]:
+              - generic [ref=e151]:
+                - heading "Recent Reports" [level=3] [ref=e152]
+                - link "View all" [ref=e153] [cursor=pointer]:
+                  - /url: /admin/reports
+              - generic [ref=e155]:
+                - img [ref=e157]
+                - heading "No reports available" [level=3] [ref=e160]
+                - paragraph [ref=e161]: User reports will appear here when they are submitted.
+            - generic [ref=e162]:
+              - generic [ref=e163]:
+                - img [ref=e164]
+                - heading "Pending Contributions" [level=3] [ref=e166]
+              - generic [ref=e170]:
+                - generic [ref=e171]:
+                  - paragraph [ref=e172]: New Upload
+                  - paragraph [ref=e173]: A new course material
+                - generic [ref=e174]: Info
+          - generic [ref=e176]:
+            - heading "Users By Role" [level=3] [ref=e179]
+            - heading "Contribution Status Mix" [level=3] [ref=e183]
+```

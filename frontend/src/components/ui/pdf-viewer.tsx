@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import { Document, Page, pdfjs } from "react-pdf";
-import "react-pdf/dist/esm/Page/AnnotationLayer.css";
-import "react-pdf/dist/esm/Page/TextLayer.css";
 import { Loader2 } from "lucide-react";
 
 // Use CDN for worker

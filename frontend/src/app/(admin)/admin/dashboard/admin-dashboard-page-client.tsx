@@ -1,47 +1,56 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  AlertTriangle,
-  BookOpen,
-  CheckCircle,
-  Clock,
-  GraduationCap,
-  TrendingUp,
-  Users,
-} from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { AlertTriangle, BookOpen, Clock, FileText, ShieldAlert, Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { StatusChip } from "@/components/ui/status-chip";
+import { adminApi, contributionsApi } from "@/lib/api";
+import { useAdminDashboardQuery } from "@/queries/dashboard";
 import { useAuthStore } from "@/store/auth.store";
 
 export function AdminDashboardPageClient() {
   const { user } = useAuthStore();
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setIsLoading(false), 1000);
-    return () => window.clearTimeout(timer);
-  }, []);
+  const dashboardQuery = useAdminDashboardQuery();
+  const reportsQuery = useQuery({
+    queryKey: ["dashboard", "admin", "reports"],
+    queryFn: () => adminApi.listReports({ limit: 5, offset: 0 }),
+  });
+  const contributionsQuery = useQuery({
+    queryKey: ["dashboard", "admin", "pending-contributions"],
+    queryFn: () =>
+      contributionsApi.admin.list({ status: "PENDING", limit: 5, offset: 0 }),
+  });
 
   const stats = [
-    { title: "Total Users", value: "12,458", icon: Users, color: "text-blue-500", change: "+156 this week" },
-    { title: "Active Courses", value: "342", icon: BookOpen, color: "text-green-500", change: "+12 this month" },
-    { title: "Pending Reviews", value: "28", icon: Clock, color: "text-amber-500", change: "8 urgent" },
-    { title: "System Health", value: "99.8%", icon: CheckCircle, color: "text-emerald-500", change: "All systems operational" },
-  ];
-
-  const recentActivity = [
-    { id: 1, action: "New user registered", user: "Ahmed Mansour", type: "student", time: "2 minutes ago" },
-    { id: 2, action: "Course approved", user: "Physics Fundamentals", type: "course", time: "15 minutes ago" },
-    { id: 3, action: "Teacher account created", user: "Prof. Fatma Trabelsi", type: "teacher", time: "1 hour ago" },
-  ];
-
-  const systemAlerts = [
-    { id: 1, severity: "warning", message: "High storage usage on server EU-WEST-2", time: "1 hour ago" },
-    { id: 2, severity: "info", message: "Scheduled maintenance on Sunday 2AM-4AM UTC", time: "5 hours ago" },
+    {
+      title: "Total Users",
+      value: dashboardQuery.data?.total_users ?? 0,
+      icon: Users,
+    },
+    {
+      title: "Total Courses",
+      value: dashboardQuery.data?.total_courses ?? 0,
+      icon: BookOpen,
+    },
+    {
+      title: "Pending Contributions",
+      value: dashboardQuery.data?.pending_contributions ?? 0,
+      icon: Clock,
+    },
+    {
+      title: "Total Reports",
+      value: dashboardQuery.data?.total_reports ?? 0,
+      icon: FileText,
+    },
+    {
+      title: "Pending Reports",
+      value: dashboardQuery.data?.pending_reports ?? 0,
+      icon: ShieldAlert,
+    },
   ];
 
   return (
@@ -49,27 +58,27 @@ export function AdminDashboardPageClient() {
       <div>
         <h1 className="text-2xl font-bold">Admin Dashboard</h1>
         <p className="text-muted-foreground">
-          Welcome back, {user?.full_name?.split(" ")[0] || "Admin"}. Here&apos;s your system overview.
+          Welcome back, {user?.full_name?.split(" ")[0] || "Admin"}.
+          Platform totals and moderation queues are shown below.
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {stats.map((stat) => (
           <Card key={stat.title}>
             <CardContent className="p-4">
-              {isLoading ? (
+              {dashboardQuery.isLoading ? (
                 <>
-                  <Skeleton className="mb-2 h-4 w-20" />
+                  <Skeleton className="mb-2 h-4 w-24" />
                   <Skeleton className="h-8 w-16" />
                 </>
               ) : (
                 <>
                   <div className="flex items-center justify-between">
                     <p className="text-sm text-muted-foreground">{stat.title}</p>
-                    <stat.icon className={`h-5 w-5 ${stat.color}`} />
+                    <stat.icon className="h-5 w-5 text-primary" />
                   </div>
                   <p className="mt-2 text-2xl font-bold">{stat.value}</p>
-                  <p className="text-xs text-muted-foreground">{stat.change}</p>
                 </>
               )}
             </CardContent>
@@ -77,16 +86,102 @@ export function AdminDashboardPageClient() {
         ))}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-lg">Recent Activity</CardTitle>
+            <CardTitle className="text-lg">Recent Reports</CardTitle>
             <Button variant="ghost" size="sm" asChild>
               <Link href="/admin/reports">View all</Link>
             </Button>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {reportsQuery.isLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((key) => (
+                  <Skeleton key={key} className="h-16 w-full" />
+                ))}
+              </div>
+            ) : reportsQuery.data?.items.length ? (
+              <div className="space-y-3">
+                {reportsQuery.data.items.map((report) => (
+                  <div
+                    key={report.id}
+                    className="rounded-lg border p-3"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium">{report.title}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {report.description}
+                        </p>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {new Date(report.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                      <StatusChip
+                        status={report.is_resolved ? "approved" : "pending"}
+                        label={report.is_resolved ? "Resolved" : "Pending"}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                type="no-data"
+                title="No reports available"
+                description="User reports will appear here when they are submitted."
+              />
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-amber-500" />
+            <CardTitle className="text-lg">Pending Contributions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {contributionsQuery.isLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((key) => (
+                  <Skeleton key={key} className="h-16 w-full" />
+                ))}
+              </div>
+            ) : contributionsQuery.data?.items.length ? (
+              <div className="space-y-3">
+                {contributionsQuery.data.items.map((item) => (
+                  <div key={item.id} className="rounded-lg border p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{item.title}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {item.description || "No description provided."}
+                        </p>
+                      </div>
+                      <StatusChip status={item.status} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                type="contributions"
+                title="No pending contributions"
+                description="All contribution reviews are currently up to date."
+              />
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Users By Role</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {dashboardQuery.isLoading ? (
               <div className="space-y-3">
                 {[1, 2, 3].map((key) => (
                   <Skeleton key={key} className="h-12 w-full" />
@@ -94,22 +189,17 @@ export function AdminDashboardPageClient() {
               </div>
             ) : (
               <div className="space-y-3">
-                {recentActivity.map((activity) => (
-                  <div key={activity.id} className="flex items-center gap-3 rounded-lg border p-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                      <GraduationCap className="h-5 w-5 text-primary" />
+                {Object.entries(dashboardQuery.data?.users_by_role ?? {}).map(
+                  ([role, count]) => (
+                    <div
+                      key={role}
+                      className="flex items-center justify-between rounded-lg border p-3"
+                    >
+                      <span className="font-medium">{role}</span>
+                      <span className="text-sm text-muted-foreground">{count}</span>
                     </div>
-                    <div className="flex-1">
-                      <p className="font-medium">{activity.action}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {activity.user} | {activity.time}
-                      </p>
-                    </div>
-                    <StatusChip
-                      status={activity.type === "course" ? "approved" : "pending"}
-                    />
-                  </div>
-                ))}
+                  ),
+                )}
               </div>
             )}
           </CardContent>
@@ -117,31 +207,26 @@ export function AdminDashboardPageClient() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <AlertTriangle className="h-5 w-5 text-amber-500" />
-              System Alerts
-            </CardTitle>
+            <CardTitle className="text-lg">Contribution Status Mix</CardTitle>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {dashboardQuery.isLoading ? (
               <div className="space-y-3">
-                {[1, 2].map((key) => (
-                  <Skeleton key={key} className="h-16 w-full" />
+                {[1, 2, 3].map((key) => (
+                  <Skeleton key={key} className="h-12 w-full" />
                 ))}
               </div>
             ) : (
               <div className="space-y-3">
-                {systemAlerts.map((alert) => (
+                {Object.entries(
+                  dashboardQuery.data?.contributions_by_status ?? {},
+                ).map(([status, count]) => (
                   <div
-                    key={alert.id}
-                    className={`rounded-lg border p-3 ${
-                      alert.severity === "warning"
-                        ? "border-amber-500/50 bg-amber-500/10"
-                        : "border-blue-500/50 bg-blue-500/10"
-                    }`}
+                    key={status}
+                    className="flex items-center justify-between rounded-lg border p-3"
                   >
-                    <p className="text-sm font-medium">{alert.message}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{alert.time}</p>
+                    <StatusChip status={status} />
+                    <span className="text-sm text-muted-foreground">{count}</span>
                   </div>
                 ))}
               </div>
@@ -149,40 +234,6 @@ export function AdminDashboardPageClient() {
           </CardContent>
         </Card>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Quick Actions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Button variant="outline" className="h-auto flex-col gap-2 py-4" asChild>
-              <Link href="/admin/users">
-                <Users className="h-5 w-5" />
-                <span>Manage Users</span>
-              </Link>
-            </Button>
-            <Button variant="outline" className="h-auto flex-col gap-2 py-4" asChild>
-              <Link href="/admin/courses">
-                <BookOpen className="h-5 w-5" />
-                <span>Manage Courses</span>
-              </Link>
-            </Button>
-            <Button variant="outline" className="h-auto flex-col gap-2 py-4" asChild>
-              <Link href="/admin/reports">
-                <TrendingUp className="h-5 w-5" />
-                <span>View Reports</span>
-              </Link>
-            </Button>
-            <Button variant="outline" className="h-auto flex-col gap-2 py-4" asChild>
-              <Link href="/admin/settings">
-                <CheckCircle className="h-5 w-5" />
-                <span>System Settings</span>
-              </Link>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

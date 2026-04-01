@@ -16,7 +16,7 @@ export function useLoginMutation() {
 
   return useMutation({
     mutationFn: ({ email, password }: { email: string; password: string }) =>
-      authApi.login({ username: email, password }),
+      authApi.login({ email, password }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["user"] });
     },

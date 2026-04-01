@@ -1,8 +1,8 @@
 """
-Spec-compliant router package for the rebuilt ATLAS `/v1` API surface.
+Spec-compliant router package for the ATLAS `/v1` API surface.
 
-These routers will replace the legacy `app.api.v1.endpoints` tree as the
-contract migration proceeds.
+The legacy `app.api.v1.endpoints` tree has been fully retired and removed.
+All production routing now lives in this package.
 """
 
 from app.routers.registry import register_v1_routers

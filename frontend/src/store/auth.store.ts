@@ -45,7 +45,7 @@ export const useAuthStore = create<AuthState>()((set) => ({
   login: async (email, password) => {
     set({ status: "loading", error: null });
     try {
-      const response = await authApi.login({ username: email, password });
+      const response = await authApi.login({ email, password });
       setAccessToken(response.accessToken);
       set({
         user: response.user,

@@ -185,13 +185,7 @@ export function EmptyState({
       )}
     >
       <div className="rounded-full bg-muted p-4 mb-6">
-        {typeof IconComponent === "function" ? (
-          <IconComponent className="h-12 w-12 text-muted-foreground" />
-        ) : (
-          <span className="h-12 w-12 text-muted-foreground">
-            {IconComponent}
-          </span>
-        )}
+        <IconComponent className="h-12 w-12 text-muted-foreground" />
       </div>
       <h3 className="text-lg font-semibold mb-2">{title || config.title}</h3>
       <p className="text-muted-foreground max-w-md mb-6">

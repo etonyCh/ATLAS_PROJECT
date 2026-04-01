@@ -148,11 +148,39 @@ async def get_flashcard_deck(
 
     cards_result = await db.execute(select(Flashcard).where(Flashcard.deck_id == deck_id))
     cards = cards_result.scalars().all()
+
+    # Calculate study progress
+    total_cards = len(cards)
+    due_cards = sum(1 for c in cards if c.next_review_at and c.next_review_at <= datetime.utcnow())
+    studied_cards = sum(1 for c in cards if c.repetitions and c.repetitions > 0)
+
+    # Get course info if available
+    course_info = None
+    if deck.document_version_id:
+        from sqlalchemy import select as sa_select
+        version_result = await db.execute(
+            sa_select(DocumentVersion, Contribution, Course)
+            .join(Contribution, Contribution.id == DocumentVersion.contribution_id)
+            .join(Course, Course.id == Contribution.course_id)
+            .where(DocumentVersion.id == deck.document_version_id)
+        )
+        row = version_result.first()
+        if row:
+            _, _, course = row
+            course_info = {"id": str(course.id), "title": course.title, "code": course.code}
+
     return {
         "id": str(deck.id),
         "title": deck.title,
         "card_count": deck.card_count,
         "share_token": deck.share_token,
+        "course": course_info,
+        "progress": {
+            "total_cards": total_cards,
+            "studied_cards": studied_cards,
+            "due_cards": due_cards,
+            "mastery_percentage": round((studied_cards / total_cards * 100), 1) if total_cards > 0 else 0,
+        },
         "cards": [_serialize_flashcard(card) for card in cards],
     }
 

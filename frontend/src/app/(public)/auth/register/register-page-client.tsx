@@ -91,7 +91,9 @@ export function RegisterPageClient() {
         filiere: role === "STUDENT" ? filiere : undefined,
         level: role === "STUDENT" ? (level as StudentLevel) : undefined,
       });
-      setStep("success");
+      // SOTA: Auto-redirect to OTP activation page with email pre-filled
+      const activatePath = role === "TEACHER" ? "/auth/activate/teacher" : "/auth/activate/student";
+      router.push(`${activatePath}?email=${encodeURIComponent(email)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {

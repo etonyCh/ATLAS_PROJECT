@@ -3,15 +3,16 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import atlas_error
 from app.db.session import get_session
 from app.dependencies import require_role
 from app.models.user import User
+from app.schemas.pagination import build_paginated_response
 
 
 router = APIRouter(tags=["Admin"])
@@ -36,12 +37,32 @@ async def import_teachers(
 
 @router.get("/admin/users")
 async def list_users(
+    role: str | None = Query(default=None),
+    filiere: str | None = Query(default=None),
+    is_active: bool | None = Query(default=None),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     _current_user: User = Depends(require_role("ADMIN")),
     db: AsyncSession = Depends(get_session),
-) -> list[dict[str, Any]]:
-    result = await db.execute(select(User).order_by(desc(User.created_at)))
+) -> dict[str, Any]:
+    filters = []
+    if role:
+        filters.append(User.role == role.upper())
+    if filiere:
+        filters.append(User.filiere == filiere)
+    if is_active is not None:
+        filters.append(User.is_active.is_(is_active))
+
+    total = await db.execute(select(func.count()).select_from(User).where(*filters))
+    result = await db.execute(
+        select(User)
+        .where(*filters)
+        .order_by(desc(User.created_at))
+        .offset(offset)
+        .limit(limit)
+    )
     users = result.scalars().all()
-    return [
+    items = [
         {
             "id": str(user.id),
             "email": user.email,
@@ -53,6 +74,12 @@ async def list_users(
         }
         for user in users
     ]
+    return build_paginated_response(
+        items,
+        total=total.scalar_one(),
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.patch("/admin/users/{user_id}")

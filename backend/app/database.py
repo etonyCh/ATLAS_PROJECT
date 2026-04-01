@@ -1,34 +1,17 @@
-from __future__ import annotations
+"""
+Compatibility wrapper for legacy database imports.
 
-from collections.abc import AsyncIterator
+The active session/engine implementation lives in `app.db.session`. This
+module preserves the old import surface while delegating to the active source
+of truth.
+"""
 
-from sqlalchemy.ext.asyncio import (
-    AsyncEngine,
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
-from sqlalchemy.orm import declarative_base
-
-from app.config import settings
+from app.db.session import engine, get_session
 
 
-Base = declarative_base()
-
-engine: AsyncEngine = create_async_engine(
-    settings.database_url,
-    echo=settings.environment == "development",
-    future=True,
-    pool_pre_ping=True,
-)
-
-AsyncSessionLocal = async_sessionmaker(
-    bind=engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-)
-
-
-async def get_db() -> AsyncIterator[AsyncSession]:
-    async with AsyncSessionLocal() as session:
+async def get_db():
+    async for session in get_session():
         yield session
+
+
+__all__ = ["engine", "get_db", "get_session"]

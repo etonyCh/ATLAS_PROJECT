@@ -2,8 +2,7 @@ import logging
 from typing import Callable, Any
 from fastapi import Depends, HTTPException, status, Request
 
-# Maintaining the architectural import path defined in the domain split
-from app.api.v1.endpoints.auth import get_current_user
+from app.dependencies import get_current_user
 from app.models.all_models import User, UserRole
 
 # DEFENSIVE ARCHITECTURE: Initialize dedicated security logger for RBAC events

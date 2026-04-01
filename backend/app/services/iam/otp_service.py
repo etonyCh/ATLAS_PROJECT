@@ -72,8 +72,13 @@ async def create_email_otp(
         # prevents the `user` object from expiring.
         await session.flush()
         
-        # Dispatch email.
-        email_sent = send_otp_email(user.email, code)
+        # SOTA FIX: Bypass real SMTP in local development to prevent 500 errors
+        if getattr(settings, "ENVIRONMENT", "development") == "development":
+            logger.info(f"DEV MODE OTP BYPASS: Code for {user.email} is -> {code} <-")
+            email_sent = True
+        else:
+            # Dispatch real email in production.
+            email_sent = send_otp_email(user.email, code)
         
         if not email_sent:
             logger.error(f"Failed to send OTP email to {user.email}")

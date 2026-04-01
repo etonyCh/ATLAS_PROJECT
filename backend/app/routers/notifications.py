@@ -5,6 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import security
@@ -13,7 +14,9 @@ from app.core.redis import get_redis_client
 from app.core.realtime import realtime_manager
 from app.db.session import get_session
 from app.dependencies import get_current_user
+from app.models.all_models import Notification as NotificationModel
 from app.models.user import User
+from app.schemas.pagination import PageMeta
 from app.services.communications.notification_service import (
     fetch_user_notifications,
     mark_notification_read,
@@ -35,7 +38,7 @@ class NotificationItem(BaseModel):
 
 class NotificationListResponse(BaseModel):
     items: list[NotificationItem]
-    total: int
+    meta: PageMeta
 
 
 @router.get("/notifications", response_model=NotificationListResponse)
@@ -61,7 +64,22 @@ async def list_notifications(
         )
         for row in rows
     ]
-    return NotificationListResponse(items=items, total=len(items))
+    total = (
+        await db.execute(
+            select(func.count())
+            .select_from(NotificationModel)
+            .where(NotificationModel.user_id == current_user.id)
+        )
+    ).scalar_one()
+    return NotificationListResponse(
+        items=items,
+        meta=PageMeta(
+            total=total,
+            limit=limit,
+            offset=offset,
+            has_more=offset + len(items) < total,
+        ),
+    )
 
 
 @router.patch("/notifications/{notification_id}")
@@ -90,13 +108,16 @@ async def notifications_ws(
     websocket: WebSocket,
     user_id: UUID,
     accessToken: str | None = Query(default=None),
+    token: str | None = Query(default=None),
     redis_client=Depends(get_redis_client),
 ) -> None:
-    if not accessToken:
+    raw_token = accessToken or token
+
+    if not raw_token:
         await websocket.close(code=4401)
         return
 
-    payload = security.decode_token(accessToken)
+    payload = security.decode_token(raw_token)
     if not payload or payload.get("sub") != str(user_id):
         await websocket.close(code=4403)
         return

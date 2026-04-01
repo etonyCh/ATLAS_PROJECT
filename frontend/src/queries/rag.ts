@@ -9,7 +9,7 @@ export function useCreateRagSessionMutation(courseId: string) {
 
 export function useRagMessagesQuery(
   sessionId: string,
-  params?: { limit?: number; before?: string },
+  params?: { limit?: number; offset?: number },
 ) {
   return useQuery({
     queryKey: ["rag", sessionId, "messages", params],

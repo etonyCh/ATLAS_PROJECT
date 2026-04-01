@@ -1,9 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Trophy, Medal, Crown, TrendingUp, Filter, Flame } from "lucide-react";
+import { Trophy, Medal, Crown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,7 +21,6 @@ const FILIERES = [
 ];
 
 export default function LeaderboardPage() {
-  const router = useRouter();
   const { user } = useAuthStore();
   const [filiere, setFiliere] = useState<string>("All");
   const [limit, setLimit] = useState(20);
@@ -55,11 +52,11 @@ export default function LeaderboardPage() {
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <Select
           value={filiere}
           onChange={(e) => setFiliere(e.target.value)}
-          className="w-48"
+          className="min-h-11 w-full sm:w-48"
         >
           {FILIERES.map((f) => (
             <option key={f} value={f}>
@@ -70,7 +67,7 @@ export default function LeaderboardPage() {
         <Select
           value={String(limit)}
           onChange={(e) => setLimit(Number(e.target.value))}
-          className="w-32"
+          className="min-h-11 w-full sm:w-32"
         >
           <option value="10">Top 10</option>
           <option value="20">Top 20</option>
@@ -106,12 +103,12 @@ export default function LeaderboardPage() {
                     : "hover:bg-muted/50"
                 }`}
               >
-                <CardContent className="flex items-center gap-4 py-3">
-                  <div className="flex h-10 w-10 items-center justify-center">
+                <CardContent className="flex items-center gap-3 py-3 sm:gap-4">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center">
                     {getRankIcon(rank)}
                   </div>
 
-                  <div className="flex-1 min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p
                       className={`font-medium truncate ${isCurrentUser ? "text-primary" : ""}`}
                     >
@@ -129,7 +126,7 @@ export default function LeaderboardPage() {
                     )}
                   </div>
 
-                  <div className="text-right">
+                  <div className="shrink-0 text-right">
                     <p className="font-bold text-lg">
                       {entry.xp.toLocaleString()}
                     </p>

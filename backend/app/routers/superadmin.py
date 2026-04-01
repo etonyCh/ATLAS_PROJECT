@@ -1,10 +1,10 @@
 from typing import Any
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 
 from app.db.session import get_session
-from app.dependencies import get_current_user, require_role
+from app.dependencies import require_role
 from app.models.user import Establishment, User
 
 router = APIRouter(tags=["Superadmin"])
@@ -16,23 +16,27 @@ async def list_establishments(
 ) -> list[dict[str, Any]]:
     result = await db.execute(select(Establishment).order_by(Establishment.created_at.desc()))
     establishments = result.scalars().all()
-    
+
     payload = []
     for est in establishments:
+        counts = (
+            await db.execute(
+                select(
+                    func.count(User.id),
+                    func.sum(case((User.role == "STUDENT", 1), else_=0)),
+                    func.sum(case((User.role == "TEACHER", 1), else_=0)),
+                    func.sum(case((User.role == "ADMIN", 1), else_=0)),
+                ).where(User.establishment_id == est.id)
+            )
+        ).one()
         payload.append({
             "id": str(est.id),
             "name": est.name,
             "domain": est.domain,
             "created_at": est.created_at,
-            # we provide some mock fallback for the frontend UI which expects these, or just 0
-            "users": 0,
-            "students": 0,
-            "teachers": 0,
-            "admins": 0,
-            "status": "active",
-            "health": 100,
-            "code": est.domain.split(".")[0].upper() if est.domain else "EST",
-            "region": "Tunisia", # Fallback
-            "city": "Tunis", # Fallback
+            "users": int(counts[0] or 0),
+            "students": int(counts[1] or 0),
+            "teachers": int(counts[2] or 0),
+            "admins": int(counts[3] or 0),
         })
     return payload

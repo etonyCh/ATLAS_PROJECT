@@ -33,7 +33,13 @@ export function LoginPageClient() {
       await login(email, password);
       router.push("/dashboard");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      // SOTA: Detect unverified account and redirect to OTP activation
+      const errorMessage = err instanceof Error ? err.message : "Login failed";
+      if (errorMessage.includes("not activated") || errorMessage.includes("VERIFY_OTP")) {
+        router.push(`/auth/activate/student?email=${encodeURIComponent(email)}`);
+        return;
+      }
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }

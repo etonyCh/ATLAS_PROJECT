@@ -1,153 +1,61 @@
 "use client";
 
-import { useState } from "react";
-import {
-  Users,
-  Search,
-  MoreVertical,
-  UserPlus,
-  Ban,
-  CheckCircle,
-  XCircle,
-  Mail,
-  Download,
-  ChevronLeft,
-  ChevronRight,
-} from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, Download, Loader2, Search, Users } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { StatusChip } from "@/components/ui/status-chip";
-
-const mockUsers = [
-  {
-    id: 1,
-    name: "Ahmed Ben Ali",
-    email: "ahmed.benali@atlas.tn",
-    role: "student",
-    filiere: "Computer Science",
-    level: "L2",
-    status: "active",
-    joined: "2024-01-15",
-    xp: 1250,
-  },
-  {
-    id: 2,
-    name: "Fatma Trabelsi",
-    email: "fatma.trabelsi@atlas.tn",
-    role: "teacher",
-    filiere: "Physics",
-    status: "active",
-    joined: "2023-09-01",
-    xp: 4500,
-  },
-  {
-    id: 3,
-    name: "Mohamed Hedi",
-    email: "mohamed.hedi@atlas.tn",
-    role: "student",
-    filiere: "Mathematics",
-    level: "L1",
-    status: "active",
-    joined: "2024-02-20",
-    xp: 890,
-  },
-  {
-    id: 4,
-    name: "Sarra Mansour",
-    email: "sarra.mansour@atlas.tn",
-    role: "student",
-    filiere: "Biology",
-    level: "L3",
-    status: "inactive",
-    joined: "2023-06-10",
-    xp: 2100,
-  },
-  {
-    id: 5,
-    name: "Youssef Salah",
-    email: "youssef.salah@atlas.tn",
-    role: "teacher",
-    filiere: "Computer Science",
-    status: "active",
-    joined: "2023-03-15",
-    xp: 3800,
-  },
-  {
-    id: 6,
-    name: "Nadia Khelifi",
-    email: "nadia.khelifi@atlas.tn",
-    role: "student",
-    filiere: "Chemistry",
-    level: "L2",
-    status: "pending",
-    joined: "2024-03-01",
-    xp: 150,
-  },
-  {
-    id: 7,
-    name: "Prof. Ali Jaziri",
-    email: "ali.jaziri@atlas.tn",
-    role: "teacher",
-    filiere: "History",
-    status: "active",
-    joined: "2022-01-10",
-    xp: 6200,
-  },
-  {
-    id: 8,
-    name: "Mariem Saidi",
-    email: "mariem.saidi@atlas.tn",
-    role: "student",
-    filiere: "Arts",
-    level: "L1",
-    status: "active",
-    joined: "2024-01-05",
-    xp: 560,
-  },
-];
+import { EmptyState } from "@/components/ui/empty-state";
+import { useAdminUsersQuery } from "@/queries/admin.queries";
 
 const roleColors: Record<string, string> = {
-  student: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  teacher:
+  STUDENT: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  TEACHER:
     "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-  admin: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+  ADMIN: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
 };
 
-export default function AdminUsers() {
+export default function AdminUsersPage() {
+  const { data, isLoading, isError } = useAdminUsersQuery();
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
+  const itemsPerPage = 10;
 
-  const filteredUsers = mockUsers.filter((user) => {
-    const matchesSearch =
-      user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRole = roleFilter === "all" || user.role === roleFilter;
-    const matchesStatus =
-      statusFilter === "all" || user.status === statusFilter;
-    return matchesSearch && matchesRole && matchesStatus;
-  });
+  const users = data?.items ?? [];
+  const filteredUsers = useMemo(
+    () =>
+      users.filter((user) => {
+        const normalizedRole = user.role.toUpperCase();
+        const normalizedStatus = user.is_active ? "active" : "inactive";
+        const fullName = user.full_name || "";
 
-  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
+        const matchesSearch =
+          fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          user.email.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesRole =
+          roleFilter === "all" || normalizedRole.toLowerCase() === roleFilter;
+        const matchesStatus =
+          statusFilter === "all" || normalizedStatus === statusFilter;
+
+        return matchesSearch && matchesRole && matchesStatus;
+      }),
+    [users, searchQuery, roleFilter, statusFilter],
+  );
+
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / itemsPerPage));
   const paginatedUsers = filteredUsers.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage,
   );
 
   const stats = {
-    total: mappedUsers.length,
-    students: mappedUsers.filter((u) => u.role === "student").length,
-    teachers: mappedUsers.filter((u) => u.role === "teacher").length,
-    active: mappedUsers.filter((u) => u.status === "active").length,
+    total: users.length,
+    students: users.filter((user) => user.role === "STUDENT").length,
+    teachers: users.filter((user) => user.role === "TEACHER").length,
+    active: users.filter((user) => user.is_active).length,
   };
 
   if (isLoading) {
@@ -158,22 +66,32 @@ export default function AdminUsers() {
     );
   }
 
+  if (isError) {
+    return (
+      <EmptyState
+        type="error"
+        title="Users unavailable"
+        description="We couldn't load the user management data."
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">User Management</h1>
           <p className="text-muted-foreground">
-            Manage all users across the platform
+            Review and filter real user accounts across the platform.
           </p>
         </div>
-        <Button>
-          <UserPlus className="mr-2 h-4 w-4" />
-          Add User
+        <Button variant="outline">
+          <Download className="mr-2 h-4 w-4" />
+          Export
         </Button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-2xl font-bold">{stats.total}</p>
@@ -188,9 +106,7 @@ export default function AdminUsers() {
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-purple-500">
-              {stats.teachers}
-            </p>
+            <p className="text-2xl font-bold text-purple-500">{stats.teachers}</p>
             <p className="text-sm text-muted-foreground">Teachers</p>
           </CardContent>
         </Card>
@@ -208,134 +124,151 @@ export default function AdminUsers() {
           <Input
             placeholder="Search users..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(event) => {
+              setSearchQuery(event.target.value);
+              setCurrentPage(1);
+            }}
             className="pl-10"
           />
         </div>
         <select
           value={roleFilter}
-          onChange={(e) => setRoleFilter(e.target.value)}
-          className="rounded-lg border bg-background px-4 py-2 text-sm"
+          onChange={(event) => {
+            setRoleFilter(event.target.value);
+            setCurrentPage(1);
+          }}
+          className="min-h-11 rounded-lg border bg-background px-4 py-2 text-sm"
         >
           <option value="all">All Roles</option>
           <option value="student">Students</option>
           <option value="teacher">Teachers</option>
+          <option value="admin">Admins</option>
         </select>
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-lg border bg-background px-4 py-2 text-sm"
+          onChange={(event) => {
+            setStatusFilter(event.target.value);
+            setCurrentPage(1);
+          }}
+          className="min-h-11 rounded-lg border bg-background px-4 py-2 text-sm"
         >
           <option value="all">All Status</option>
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
-          <option value="pending">Pending</option>
         </select>
-        <Button variant="outline">
-          <Download className="mr-2 h-4 w-4" />
-          Export
-        </Button>
       </div>
 
       <Card>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b bg-muted/50">
-                  <th className="px-4 py-3 text-left text-sm font-medium">
-                    User
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">
-                    Role
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">
-                    Details
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-left text-sm font-medium">
-                    XP
-                  </th>
-                  <th className="px-4 py-3 text-right text-sm font-medium">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
+          {paginatedUsers.length ? (
+            <>
+              <div className="space-y-3 p-4 md:hidden">
                 {paginatedUsers.map((user) => (
-                  <tr key={user.id} className="border-b">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground font-medium">
-                          {user.name
-                            .split(" ")
-                            .map((n) => n[0])
-                            .join("")}
-                        </div>
-                        <div>
-                          <p className="font-medium">{user.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {user.email}
-                          </p>
+                  <div key={user.id} className="rounded-lg border p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary font-medium text-primary-foreground">
+                        {(user.full_name || user.email)
+                          .split(" ")
+                          .map((part) => part[0])
+                          .join("")
+                          .slice(0, 2)
+                          .toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium">{user.full_name || "Unnamed user"}</p>
+                        <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">Role</p>
+                        <span
+                          className={`mt-1 inline-flex rounded-full px-2 py-1 text-xs font-medium ${roleColors[user.role] || roleColors.STUDENT}`}
+                        >
+                          {user.role}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Status</p>
+                        <div className="mt-1">
+                          <StatusChip status={user.is_active ? "active" : "inactive"} />
                         </div>
                       </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`rounded-full px-2 py-1 text-xs font-medium ${roleColors[user.role]}`}
-                      >
-                        {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-muted-foreground">
-                      {user.role === "student"
-                        ? `${user.filiere} • ${user.level}`
-                        : user.filiere}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusChip status={user.status} />
-                    </td>
-                    <td className="px-4 py-3 font-medium">
-                      {user.xp.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
-                            <Mail className="mr-2 h-4 w-4" />
-                            Send Email
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <CheckCircle className="mr-2 h-4 w-4" />
-                            Activate
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <Ban className="mr-2 h-4 w-4" />
-                            Suspend
-                          </DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive">
-                            <XCircle className="mr-2 h-4 w-4" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </td>
-                  </tr>
+                      <div>
+                        <p className="text-muted-foreground">Filiere</p>
+                        <p className="mt-1">{user.filiere || "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Joined</p>
+                        <p className="mt-1">{new Date(user.created_at).toLocaleDateString()}</p>
+                      </div>
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </div>
+              <div className="hidden overflow-x-auto md:block">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b bg-muted/50">
+                    <th className="px-4 py-3 text-left text-sm font-medium">User</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium">Role</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium">Filiere</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium">Status</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium">Joined</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedUsers.map((user) => (
+                    <tr key={user.id} className="border-b">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary font-medium text-primary-foreground">
+                            {(user.full_name || user.email)
+                              .split(" ")
+                              .map((part) => part[0])
+                              .join("")
+                              .slice(0, 2)
+                              .toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="font-medium">{user.full_name || "Unnamed user"}</p>
+                            <p className="text-xs text-muted-foreground">{user.email}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`rounded-full px-2 py-1 text-xs font-medium ${roleColors[user.role] || roleColors.STUDENT}`}
+                        >
+                          {user.role}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-muted-foreground">
+                        {user.filiere || "-"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusChip status={user.is_active ? "active" : "inactive"} />
+                      </td>
+                      <td className="px-4 py-3 text-sm text-muted-foreground">
+                        {new Date(user.created_at).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              </div>
+            </>
+          ) : (
+            <EmptyState
+              type="no-results"
+              title="No users found"
+              description="Try adjusting the search or filters."
+            />
+          )}
         </CardContent>
       </Card>
 
-      {totalPages > 1 && (
+      {filteredUsers.length > itemsPerPage ? (
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
             Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
@@ -346,32 +279,27 @@ export default function AdminUsers() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              className="min-h-11"
+              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
               disabled={currentPage === 1}
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-              <Button
-                key={page}
-                variant={currentPage === page ? "default" : "outline"}
-                size="sm"
-                onClick={() => setCurrentPage(page)}
-              >
-                {page}
-              </Button>
-            ))}
+            <Button variant="outline" size="sm" className="min-h-11" disabled>
+              {currentPage}
+            </Button>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              className="min-h-11"
+              onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
               disabled={currentPage === totalPages}
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

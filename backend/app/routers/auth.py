@@ -16,7 +16,7 @@ from app.core.limits import limiter
 from app.core.redis import get_redis_client
 from app.db.session import get_session
 from app.dependencies import get_current_user
-from app.models.user import OTPPurpose, StudentLevel, User, UserCreate, UserRole
+from app.models.user import Department, OTPPurpose, StudentLevel, TeacherProfile, User, UserCreate, UserRole
 
 
 router = APIRouter(tags=["Auth"])
@@ -76,6 +76,7 @@ class ResetPasswordRequest(BaseModel):
 
 class ResendOtpRequest(BaseModel):
     email: EmailStr
+    purpose: OTPPurpose = OTPPurpose.ACCOUNT_ACTIVATION
 
 
 def _user_payload(user: User) -> AuthUserResponse:
@@ -99,7 +100,7 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
         httponly=True,
         secure=settings.ENVIRONMENT == "production",
         samesite="strict",
-        path="/v1/auth/refresh",
+        path=f"{settings.API_V1_STR}/auth/refresh",
         max_age=7 * 24 * 60 * 60,
     )
 
@@ -250,7 +251,7 @@ async def refresh(
 
     new_tokens = await auth_service.process_refresh_token(redis_client, token)
     if not new_tokens:
-        response.delete_cookie("refresh_token", path="/v1/auth/refresh")
+        response.delete_cookie("refresh_token", path=f"{settings.API_V1_STR}/auth/refresh")
         raise atlas_error("AUTH_007", "Refresh token is invalid or expired.", status_code=401)
 
     access_token, refresh_token = new_tokens
@@ -275,7 +276,7 @@ async def logout(
     token = request.cookies.get("refresh_token")
     if token:
         await auth_service.revoke_token(redis_client, token)
-    response.delete_cookie("refresh_token", path="/v1/auth/refresh")
+    response.delete_cookie("refresh_token", path=f"{settings.API_V1_STR}/auth/refresh")
     return {"success": True}
 
 
@@ -387,12 +388,27 @@ async def resend_otp(
     result = await db.execute(select(User).where(User.email == payload.email))
     user = result.scalar_one_or_none()
     if user is not None:
-        created = await otp_service.create_email_otp(
-            session=db,
-            user=user,
-            ttl_minutes=24 * 60,
-            purpose=OTPPurpose.ACCOUNT_ACTIVATION,
-        )
+        if payload.purpose == OTPPurpose.TEACHER_ONBOARDING:
+            profile_result = await db.execute(
+                select(TeacherProfile, Department)
+                .outerjoin(Department, Department.id == TeacherProfile.department_id)
+                .where(TeacherProfile.user_id == user.id)
+            )
+            row = profile_result.first()
+            department = row[1] if row else None
+            created = await otp_service.create_teacher_onboarding_otp(
+                session=db,
+                user=user,
+                teacher_name=user.full_name or user.email,
+                department_name=department.name if department else "Assigned Department",
+            )
+        else:
+            created = await otp_service.create_email_otp(
+                session=db,
+                user=user,
+                ttl_minutes=24 * 60,
+                purpose=payload.purpose,
+            )
         if not created:
             await db.rollback()
             raise atlas_error(

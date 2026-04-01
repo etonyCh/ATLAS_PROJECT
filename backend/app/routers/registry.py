@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
+from app.core.config import settings
+
 from app.routers.admin import router as admin_router
 from app.routers.annotations import router as annotations_router
 from app.routers.auth import router as auth_router
@@ -24,22 +26,24 @@ from app.routers.superadmin import router as superadmin_router
 
 
 def register_v1_routers(app: FastAPI) -> None:
-    app.include_router(auth_router, prefix="/v1/auth")
-    app.include_router(courses_router, prefix="/v1")
-    app.include_router(study_router, prefix="/v1")
-    app.include_router(contributions_router, prefix="/v1")
-    app.include_router(forums_router, prefix="/v1")
-    app.include_router(collaboration_router, prefix="/v1")
-    app.include_router(gamification_router, prefix="/v1")
-    app.include_router(dashboard_router, prefix="/v1")
-    app.include_router(admin_router, prefix="/v1")
-    app.include_router(annotations_router, prefix="/v1")
-    app.include_router(users_router, prefix="/v1")
-    app.include_router(notifications_router, prefix="/v1")
-    app.include_router(rag_router, prefix="/v1")
-    app.include_router(search_router, prefix="/v1")
-    app.include_router(health_router, prefix="/v1")
-    app.include_router(superadmin_router, prefix="/v1")
+    api_prefix = settings.API_V1_STR.rstrip("/")
+
+    app.include_router(auth_router, prefix=f"{api_prefix}/auth")
+    app.include_router(courses_router, prefix=api_prefix)
+    app.include_router(study_router, prefix=api_prefix)
+    app.include_router(contributions_router, prefix=api_prefix)
+    app.include_router(forums_router, prefix=api_prefix)
+    app.include_router(collaboration_router, prefix=api_prefix)
+    app.include_router(gamification_router, prefix=api_prefix)
+    app.include_router(dashboard_router, prefix=api_prefix)
+    app.include_router(admin_router, prefix=api_prefix)
+    app.include_router(annotations_router, prefix=api_prefix)
+    app.include_router(users_router, prefix=api_prefix)
+    app.include_router(notifications_router, prefix=api_prefix)
+    app.include_router(rag_router, prefix=api_prefix)
+    app.include_router(search_router, prefix=api_prefix)
+    app.include_router(health_router, prefix=api_prefix)
+    app.include_router(superadmin_router, prefix=api_prefix)
 
     app.include_router(notifications_ws_router)
     app.include_router(forums_ws_router)

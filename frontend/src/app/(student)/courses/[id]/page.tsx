@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import {
   GraduationCap,
   BookOpen,
@@ -24,7 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useCourseQuery } from "@/queries";
-import { useAuthStore } from "@/store/auth.store";
+import { useCourseStatsQuery } from "@/queries/courses";
 
 const STUDY_TOOLS = [
   {
@@ -67,11 +66,9 @@ const STUDY_TOOLS = [
 
 export default function CourseDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const courseId = params.id as string;
-  const { user } = useAuthStore();
-
   const { data: course, isLoading } = useCourseQuery(courseId);
+  const { data: stats, isLoading: statsLoading } = useCourseStatsQuery(courseId);
 
   if (isLoading) {
     return (
@@ -91,16 +88,20 @@ export default function CourseDetailPage() {
       <EmptyState
         type="not-found"
         title="Course not found"
-        description="This course may have been removed or doesn't exist"
+        description="This course may have been removed or doesn't exist."
       />
     );
   }
+
+  const courseMeta =
+    [course.filiere, course.level].filter(Boolean).join(" • ") ||
+    "Course details";
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+          <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
             <Link href="/courses" className="hover:text-foreground">
               Courses
             </Link>
@@ -108,35 +109,39 @@ export default function CourseDetailPage() {
             <span>{course.filiere || "Course"}</span>
           </div>
           <h1 className="text-2xl font-bold">{course.title}</h1>
-          {course.description && (
+          {course.description ? (
             <p className="mt-1 text-muted-foreground">{course.description}</p>
-          )}
+          ) : null}
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm">
-            <Share2 className="h-4 w-4 mr-2" />
+        <div className="flex flex-wrap gap-2 sm:justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-11 flex-1 sm:flex-none"
+          >
+            <Share2 className="mr-2 h-4 w-4" />
             Share
           </Button>
-          <Button size="sm">
-            <Download className="h-4 w-4 mr-2" />
+          <Button size="sm" className="min-h-11 flex-1 sm:flex-none">
+            <Download className="mr-2 h-4 w-4" />
             Download
           </Button>
         </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-6">
+        <div className="space-y-6 lg:col-span-2">
           <Card>
             <CardHeader>
               <CardTitle>Study Tools</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
                 {STUDY_TOOLS.map((tool) => (
                   <Link
                     key={tool.id}
                     href={`/courses/${courseId}/${tool.id}`}
-                    className="flex flex-col items-center gap-2 rounded-lg border p-4 transition-colors hover:bg-muted/50"
+                    className="flex min-h-28 flex-col items-center justify-center gap-2 rounded-lg border p-4 text-center transition-colors hover:bg-muted/50"
                   >
                     <div className={`rounded-lg p-3 ${tool.color}`}>
                       <tool.icon className="h-6 w-6" />
@@ -153,40 +158,32 @@ export default function CourseDetailPage() {
               <CardTitle>Course Information</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Filiere</p>
-                    <p className="font-medium">
-                      {course.filiere || "Not specified"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Level</p>
-                    <p className="font-medium">
-                      {course.level || "All levels"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Type</p>
-                    <p className="font-medium">
-                      {course.course_type || "Course"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Language</p>
-                    <p className="font-medium">
-                      {course.language || "Not specified"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      Academic Year
-                    </p>
-                    <p className="font-medium">
-                      {course.academic_year || "Current"}
-                    </p>
-                  </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <p className="text-sm text-muted-foreground">Filiere</p>
+                  <p className="font-medium">{course.filiere || "Not specified"}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Level</p>
+                  <p className="font-medium">{course.level || "All levels"}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Type</p>
+                  <p className="font-medium">
+                    {course.course_type || "Course"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Language</p>
+                  <p className="font-medium">
+                    {course.language || "Not specified"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Academic Year</p>
+                  <p className="font-medium">
+                    {course.academic_year || "Current"}
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -202,10 +199,10 @@ export default function CourseDetailPage() {
                 </div>
                 <h3 className="mt-4 font-semibold">{course.title}</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {course.filiere} • {course.level}
+                  {courseMeta}
                 </p>
-                <Button className="mt-4 w-full">
-                  <Play className="h-4 w-4 mr-2" />
+                <Button className="mt-4 min-h-11 w-full">
+                  <Play className="mr-2 h-4 w-4" />
                   Start Learning
                 </Button>
               </div>
@@ -217,26 +214,46 @@ export default function CourseDetailPage() {
               <CardTitle className="text-base">Course Stats</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground flex items-center gap-2">
-                    <Star className="h-4 w-4" /> Rating
-                  </span>
-                  <span className="font-medium">4.8/5</span>
+              {statsLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3, 4].map((key) => (
+                    <Skeleton key={key} className="h-5 w-full" />
+                  ))}
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground flex items-center gap-2">
-                    <Users className="h-4 w-4" /> Students
-                  </span>
-                  <span className="font-medium">1,234</span>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Users className="h-4 w-4" /> Learners
+                    </span>
+                    <span className="font-medium">{stats?.learner_count ?? 0}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Star className="h-4 w-4" /> AI Study Assets
+                    </span>
+                    <span className="font-medium">
+                      {stats?.generated_assets_count ?? 0}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Clock className="h-4 w-4" /> Estimated Read Time
+                    </span>
+                    <span className="font-medium">
+                      {stats?.estimated_read_minutes
+                        ? `~${stats.estimated_read_minutes} min`
+                        : "Not available"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Download className="h-4 w-4" /> Versions
+                    </span>
+                    <span className="font-medium">{stats?.version_count ?? 0}</span>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground flex items-center gap-2">
-                    <Clock className="h-4 w-4" /> Duration
-                  </span>
-                  <span className="font-medium">~12 hours</span>
-                </div>
-              </div>
+              )}
             </CardContent>
           </Card>
 
@@ -247,7 +264,7 @@ export default function CourseDetailPage() {
             <CardContent>
               <div className="space-y-3">
                 <div>
-                  <div className="flex justify-between text-sm mb-1">
+                  <div className="mb-1 flex justify-between text-sm">
                     <span className="text-muted-foreground">Overall</span>
                     <span className="font-medium">0%</span>
                   </div>
@@ -255,7 +272,7 @@ export default function CourseDetailPage() {
                     <div className="h-2 w-0 rounded-full bg-primary transition-all" />
                   </div>
                 </div>
-                <Button variant="outline" className="w-full" asChild>
+                <Button variant="outline" className="min-h-11 w-full" asChild>
                   <Link href={`/courses/${courseId}/flashcards`}>
                     View Flashcards
                   </Link>

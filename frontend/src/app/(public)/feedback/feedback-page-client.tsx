@@ -11,6 +11,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import { AtlasApiError, feedbackApi } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/input";
@@ -38,19 +39,35 @@ export function FeedbackPageClient() {
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    setErrorMessage(null);
     setIsSubmitting(true);
 
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    try {
+      await feedbackApi.submit({
+        type,
+        title,
+        description,
+        severity: type === "bug" ? severity : undefined,
+      });
 
-    setIsSubmitting(false);
-    setIsSubmitted(true);
+      setIsSubmitted(true);
 
-    window.setTimeout(() => {
-      router.back();
-    }, 3000);
+      window.setTimeout(() => {
+        router.back();
+      }, 3000);
+    } catch (error) {
+      if (error instanceof AtlasApiError) {
+        setErrorMessage(error.message);
+      } else {
+        setErrorMessage("We could not submit your feedback. Please try again.");
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -229,6 +246,9 @@ export function FeedbackPageClient() {
             </>
           )}
         </Button>
+        {errorMessage && (
+          <p className="mt-3 text-sm text-destructive">{errorMessage}</p>
+        )}
       </form>
     </div>
   );

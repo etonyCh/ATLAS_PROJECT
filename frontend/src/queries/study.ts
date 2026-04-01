@@ -87,12 +87,10 @@ export function useGenerateQuizMutation() {
     mutationFn: ({
       courseId,
       numQuestions = 10,
-      timeMinutes = 15,
     }: {
       courseId: string;
       numQuestions?: number;
-      timeMinutes?: number;
-    }) => quizApi.generate(courseId, numQuestions, timeMinutes),
+    }) => quizApi.generate(courseId, numQuestions),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["quiz"] });
     },
@@ -136,7 +134,7 @@ export function useGenerateSummaryMutation() {
   return useMutation({
     mutationFn: ({
       courseId,
-      formatType = "markdown",
+      formatType = "EXECUTIVE",
       targetLang = "fr",
     }: {
       courseId: string;

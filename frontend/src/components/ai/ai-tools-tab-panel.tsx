@@ -1,39 +1,48 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import {
-  MessageSquare,
-  FileText,
-  Layers,
-  FileQuestion,
-  GitBranch,
-  Send,
-  Loader2,
-  Sparkles,
   Copy,
-  Check,
-  RefreshCw,
   Download,
-  Plus,
-  ChevronRight,
+  FileQuestion,
+  FileText,
+  GitBranch,
+  Layers,
+  Loader2,
+  MessageSquare,
+  RefreshCw,
+  Send,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useCreateRagSessionMutation } from "@/queries";
 import {
   useGenerateFlashcardsMutation,
+  useGenerateMindmapMutation,
   useGenerateQuizMutation,
   useGenerateSummaryMutation,
-  useGenerateMindmapMutation
 } from "@/queries/study";
-import { ragApi } from "@/lib/api";
-import type { RAGMessage, RAGStreamEvent, Course } from "@/types/api.types";
+import {
+  flashcardsApi,
+  mindmapsApi,
+  quizApi,
+  ragApi,
+  summariesApi,
+} from "@/lib/api";
+import type {
+  Course,
+  FlashcardDeckDetail,
+  Mindmap,
+  QuizDetail,
+  RAGMessage,
+  RAGStreamEvent,
+  Summary,
+} from "@/types/api.types";
 
 export type AIToolType = "chat" | "summary" | "flashcards" | "quiz" | "mindmap";
 
@@ -47,7 +56,6 @@ const toolConfig = {
   chat: {
     label: "Chat",
     icon: MessageSquare,
-    placeholder: "Ask a question about the course...",
     emptyTitle: "Start a conversation",
     emptyDescription:
       "Ask questions about the course content and get AI-powered answers.",
@@ -55,36 +63,212 @@ const toolConfig = {
   summary: {
     label: "Summary",
     icon: FileText,
-    placeholder: "Generate a summary of the course...",
     emptyTitle: "Generate a Summary",
     emptyDescription: "Get an AI-powered summary of the course content.",
   },
   flashcards: {
     label: "Flashcards",
     icon: Layers,
-    placeholder: "Generate flashcards from the course...",
     emptyTitle: "Generate Flashcards",
     emptyDescription: "Create interactive flashcards from the course material.",
   },
   quiz: {
     label: "Quiz",
     icon: FileQuestion,
-    placeholder: "Generate a quiz from the course...",
     emptyTitle: "Take a Quiz",
     emptyDescription: "Test your knowledge with AI-generated quizzes.",
   },
   mindmap: {
     label: "Mind Map",
     icon: GitBranch,
-    placeholder: "Generate a mind map...",
     emptyTitle: "Generate Mind Map",
     emptyDescription:
       "Visualize the course structure as an interactive mind map.",
   },
-};
+} as const;
 
 interface ChatPanelProps {
   course: Course | null;
+}
+
+type ToolResult =
+  | { kind: "summary"; data: Summary }
+  | { kind: "flashcards"; data: FlashcardDeckDetail }
+  | { kind: "quiz"; data: QuizDetail }
+  | { kind: "mindmap"; data: Mindmap };
+
+function getMindmapNodeLabel(node: Record<string, unknown>): string {
+  const keys = ["label", "title", "text", "name", "id"];
+  for (const key of keys) {
+    const value = node[key];
+    if (typeof value === "string" && value.trim()) {
+      return value;
+    }
+  }
+  return "Untitled node";
+}
+
+function buildCopyContent(result: ToolResult): string {
+  switch (result.kind) {
+    case "summary":
+      return result.data.content;
+    case "flashcards":
+      return result.data.cards
+        .map(
+          (card, index) =>
+            `${index + 1}. ${card.question}\nAnswer: ${card.answer}`,
+        )
+        .join("\n\n");
+    case "quiz":
+      return result.data.questions
+        .map((question, index) => {
+          const options = question.options
+            .map((option, optionIndex) => `${optionIndex + 1}. ${option}`)
+            .join("\n");
+          return `${index + 1}. ${question.question}\n${options}`;
+        })
+        .join("\n\n");
+    case "mindmap":
+      return [
+        result.data.title,
+        `Nodes: ${result.data.nodes.length}`,
+        `Edges: ${result.data.edges.length}`,
+        "",
+        ...result.data.nodes
+          .slice(0, 10)
+          .map((node) => `- ${getMindmapNodeLabel(node)}`),
+      ].join("\n");
+  }
+}
+
+function buildDownloadPayload(result: ToolResult): {
+  content: string;
+  fileName: string;
+  mimeType: string;
+} {
+  switch (result.kind) {
+    case "summary":
+      return {
+        content: result.data.content,
+        fileName: `summary-${result.data.id}.txt`,
+        mimeType: "text/plain;charset=utf-8",
+      };
+    case "flashcards":
+      return {
+        content: JSON.stringify(result.data, null, 2),
+        fileName: `flashcards-${result.data.id}.json`,
+        mimeType: "application/json;charset=utf-8",
+      };
+    case "quiz":
+      return {
+        content: JSON.stringify(result.data, null, 2),
+        fileName: `quiz-${result.data.id}.json`,
+        mimeType: "application/json;charset=utf-8",
+      };
+    case "mindmap":
+      return {
+        content: JSON.stringify(result.data, null, 2),
+        fileName: `mindmap-${result.data.id}.json`,
+        mimeType: "application/json;charset=utf-8",
+      };
+  }
+}
+
+function ResultContent({ result }: { result: ToolResult }) {
+  if (result.kind === "summary") {
+    return (
+      <div className="prose prose-sm max-w-none whitespace-pre-wrap">
+        {result.data.content}
+      </div>
+    );
+  }
+
+  if (result.kind === "flashcards") {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-lg border bg-muted/30 p-4">
+          <p className="text-sm text-muted-foreground">Deck</p>
+          <h3 className="text-lg font-semibold">{result.data.title}</h3>
+          <p className="text-sm text-muted-foreground">
+            {result.data.card_count} cards ready for review
+          </p>
+        </div>
+        <div className="space-y-3">
+          {result.data.cards.slice(0, 5).map((card, index) => (
+            <div key={card.id} className="rounded-lg border p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Card {index + 1}
+              </p>
+              <p className="mt-2 font-medium">{card.question}</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {card.answer}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (result.kind === "quiz") {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-lg border bg-muted/30 p-4">
+          <p className="text-sm text-muted-foreground">Quiz Ready</p>
+          <h3 className="text-lg font-semibold">
+            {result.data.total_questions} questions
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            Time limit: {result.data.time_limit_minutes} minutes
+          </p>
+        </div>
+        <div className="space-y-3">
+          {result.data.questions.slice(0, 5).map((question, index) => (
+            <div key={question.id} className="rounded-lg border p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Question {index + 1}
+              </p>
+              <p className="mt-2 font-medium">{question.question}</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {question.options.map((option, optionIndex) => (
+                  <div
+                    key={`${question.id}-${optionIndex}`}
+                    className="rounded-md border bg-muted/30 px-3 py-2 text-sm"
+                  >
+                    {option}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border bg-muted/30 p-4">
+        <p className="text-sm text-muted-foreground">Mind Map</p>
+        <h3 className="text-lg font-semibold">{result.data.title}</h3>
+        <p className="text-sm text-muted-foreground">
+          {result.data.nodes.length} nodes and {result.data.edges.length} edges
+        </p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {result.data.nodes.slice(0, 8).map((node, index) => (
+          <div key={index} className="rounded-lg border p-4">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Node {index + 1}
+            </p>
+            <p className="mt-2 font-medium">
+              {getMindmapNodeLabel(node as Record<string, unknown>)}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function ChatPanel({ course }: ChatPanelProps) {
@@ -102,9 +286,11 @@ function ChatPanel({ course }: ChatPanelProps) {
     if (!inputMessage.trim() || !course || isStreaming) return;
 
     const userMessage: RAGMessage = {
+      id: `user-${Date.now()}`,
       role: "user",
       content: inputMessage,
-      timestamp: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      sources: [],
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -116,56 +302,71 @@ function ChatPanel({ course }: ChatPanelProps) {
     try {
       let sessionId = "";
 
-      if (!createSession.data?.session_id) {
+      if (!createSession.data?.id) {
         const session = await createSession.mutateAsync();
-        sessionId = session.session_id;
+        sessionId = session.id;
       } else {
-        sessionId = createSession.data.session_id;
+        sessionId = createSession.data.id;
       }
 
       let fullContent = "";
       const sources: RAGMessage["sources"] = [];
 
-      const streamHandler = (event: RAGStreamEvent) => {
-        if (event.type === "token" && event.content) {
-          fullContent += event.content;
-          setCurrentStreamContent(fullContent);
-        }
-        if (event.type === "sources" && event.sources) {
-          sources.push(...event.sources);
-          setCurrentSources([...sources]);
-        }
-      };
+      await new Promise<void>((resolve, reject) => {
+        const streamHandler = (event: RAGStreamEvent) => {
+          if (event.type === "token" && event.content) {
+            fullContent += event.content;
+            setCurrentStreamContent(fullContent);
+          }
 
-      ragApi.streamMessage(sessionId, inputMessage, streamHandler);
+          if (event.type === "sources" && event.sources) {
+            sources.splice(0, sources.length, ...event.sources);
+            setCurrentSources([...sources]);
+          }
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: fullContent,
-          sources,
-          timestamp: new Date().toISOString(),
-        },
-      ]);
+          if (event.type === "done") {
+            resolve();
+          }
+
+          if (event.type === "error") {
+            reject(new Error(event.error || "Streaming failed"));
+          }
+        };
+
+        ragApi.streamMessage(sessionId, inputMessage, streamHandler);
+      });
+
+      if (fullContent.trim()) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `assistant-${Date.now()}`,
+            role: "assistant",
+            content: fullContent,
+            sources,
+            created_at: new Date().toISOString(),
+          },
+        ]);
+      }
     } catch (error) {
       console.error("Failed to send message:", error);
     } finally {
       setIsStreaming(false);
       setCurrentStreamContent("");
+      setCurrentSources([]);
     }
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full flex-col">
       <ScrollArea className="flex-1 p-4">
         {messages.length === 0 && !isStreaming ? (
           <EmptyState type="chat" className="h-full" />
         ) : (
           <div className="space-y-4">
-            {messages.map((msg, i) => (
+            {messages.map((msg) => (
               <div
-                key={i}
+                key={msg.id}
                 className={cn(
                   "flex gap-3",
                   msg.role === "user" && "flex-row-reverse",
@@ -173,25 +374,23 @@ function ChatPanel({ course }: ChatPanelProps) {
               >
                 <div
                   className={cn(
-                    "rounded-lg px-4 py-2 max-w-[80%]",
+                    "max-w-[80%] rounded-lg px-4 py-2",
                     msg.role === "user"
                       ? "bg-primary text-primary-foreground"
                       : "bg-muted",
                   )}
                 >
                   <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                  {msg.sources && msg.sources.length > 0 && (
-                    <div className="mt-2 pt-2 border-t border-primary/20">
-                      <p className="text-xs opacity-70 mb-1">Sources:</p>
-                      {msg.sources.slice(0, 3).map((src, j) => (
+                  {msg.sources.length > 0 && (
+                    <div className="mt-2 border-t border-border pt-2">
+                      <p className="mb-1 text-xs opacity-70">Sources:</p>
+                      {msg.sources.slice(0, 3).map((src, index) => (
                         <div
-                          key={j}
-                          className="text-xs opacity-70 flex items-center gap-1"
+                          key={`${msg.id}-${src.course_id}-${src.page}-${index}`}
+                          className="flex items-center gap-1 text-xs opacity-70"
                         >
                           <span className="font-medium">{src.page}</span>
-                          <span className="truncate">
-                            {src.text?.slice(0, 50)}...
-                          </span>
+                          <span className="truncate">{src.title}</span>
                         </div>
                       ))}
                     </div>
@@ -201,10 +400,24 @@ function ChatPanel({ course }: ChatPanelProps) {
             ))}
             {isStreaming && currentStreamContent && (
               <div className="flex gap-3">
-                <div className="rounded-lg px-4 py-2 bg-muted max-w-[80%]">
+                <div className="max-w-[80%] rounded-lg bg-muted px-4 py-2">
                   <p className="text-sm whitespace-pre-wrap">
                     {currentStreamContent}
                   </p>
+                  {currentSources.length > 0 && (
+                    <div className="mt-2 border-t border-border pt-2">
+                      <p className="mb-1 text-xs opacity-70">Sources:</p>
+                      {currentSources.slice(0, 3).map((src, index) => (
+                        <div
+                          key={`${src.course_id}-${src.page}-${index}`}
+                          className="flex items-center gap-1 text-xs opacity-70"
+                        >
+                          <span className="font-medium">{src.page}</span>
+                          <span className="truncate">{src.title}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -213,7 +426,7 @@ function ChatPanel({ course }: ChatPanelProps) {
       </ScrollArea>
 
       {isStreaming && (
-        <div className="px-4 py-2 border-t">
+        <div className="border-t px-4 py-2">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
             <span>ATLAS is thinking...</span>
@@ -221,13 +434,13 @@ function ChatPanel({ course }: ChatPanelProps) {
         </div>
       )}
 
-      <div className="p-4 border-t">
+      <div className="border-t p-4">
         <div className="flex gap-2">
           <Input
             placeholder="Ask about the course..."
             value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+            onChange={(event) => setInputMessage(event.target.value)}
+            onKeyDown={(event) => event.key === "Enter" && handleSendMessage()}
             disabled={!course || isStreaming}
           />
           <Button
@@ -243,7 +456,7 @@ function ChatPanel({ course }: ChatPanelProps) {
 }
 
 interface ToolPanelProps {
-  tool: AIToolType;
+  tool: Exclude<AIToolType, "chat">;
   course: Course | null;
   className?: string;
 }
@@ -251,7 +464,8 @@ interface ToolPanelProps {
 function ToolPanel({ tool, course, className }: ToolPanelProps) {
   const config = toolConfig[tool];
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedContent, setGeneratedContent] = useState<string | null>(null);
+  const [result, setResult] = useState<ToolResult | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const generateFlashcards = useGenerateFlashcardsMutation();
   const generateQuiz = useGenerateQuizMutation();
   const generateSummary = useGenerateSummaryMutation();
@@ -259,86 +473,133 @@ function ToolPanel({ tool, course, className }: ToolPanelProps) {
 
   const handleGenerate = async () => {
     if (!course) return;
+
     setIsGenerating(true);
+    setErrorMessage(null);
+
     try {
       if (tool === "flashcards") {
-        await generateFlashcards.mutateAsync({ courseId: course.id });
+        const generation = await generateFlashcards.mutateAsync({
+          courseId: course.id,
+        });
+        const deck = await flashcardsApi.getDeck(generation.job_id);
+        setResult({ kind: "flashcards", data: deck });
       } else if (tool === "quiz") {
-        await generateQuiz.mutateAsync({ courseId: course.id });
+        const generation = await generateQuiz.mutateAsync({
+          courseId: course.id,
+        });
+        const quiz = await quizApi.getQuiz(generation.job_id);
+        setResult({ kind: "quiz", data: quiz });
       } else if (tool === "summary") {
-        await generateSummary.mutateAsync({ courseId: course.id });
-      } else if (tool === "mindmap") {
-        await generateMindmap.mutateAsync({ courseId: course.id });
+        const generation = await generateSummary.mutateAsync({
+          courseId: course.id,
+        });
+        const summary = await summariesApi.get(generation.job_id);
+        setResult({ kind: "summary", data: summary });
+      } else {
+        const generation = await generateMindmap.mutateAsync({
+          courseId: course.id,
+        });
+        const mindmap = await mindmapsApi.get(generation.job_id);
+        setResult({ kind: "mindmap", data: mindmap });
       }
-      setGeneratedContent(
-        `Generation started successfully. You can view your generated ${config.label.toLowerCase()} in the dashboard soon.`
-      );
     } catch (error) {
-       console.error(error);
-       setGeneratedContent(`Failed to generate ${config.label.toLowerCase()}.`);
+      console.error(error);
+      setErrorMessage(
+        `Failed to generate ${config.label.toLowerCase()}. Please try again.`,
+      );
     } finally {
-       setIsGenerating(false);
+      setIsGenerating(false);
     }
   };
 
+  const handleCopy = async () => {
+    if (!result || typeof navigator === "undefined") return;
+    try {
+      await navigator.clipboard.writeText(buildCopyContent(result));
+    } catch (error) {
+      console.error("Failed to copy generated content:", error);
+    }
+  };
+
+  const handleDownload = () => {
+    if (!result || typeof window === "undefined") return;
+    const payload = buildDownloadPayload(result);
+    const blob = new Blob([payload.content], { type: payload.mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = payload.fileName;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
-    <div className={cn("flex flex-col h-full", className)}>
+    <div className={cn("flex h-full flex-col", className)}>
       <ScrollArea className="flex-1 p-4">
-        {generatedContent ? (
+        {result ? (
           <div className="space-y-4">
             <Card>
               <CardContent className="pt-4">
-                <div className="flex items-center justify-between mb-4">
+                <div className="mb-4 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-2">
                     <config.icon className="h-5 w-5 text-primary" />
                     <span className="font-medium">{config.label}</span>
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="ghost" size="icon">
+                    <Button variant="ghost" size="icon" onClick={handleCopy}>
                       <Copy className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={handleDownload}
+                    >
                       <Download className="h-4 w-4" />
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={handleGenerate}
+                      disabled={isGenerating}
                     >
-                      <RefreshCw className="h-4 w-4" />
+                      <RefreshCw
+                        className={cn("h-4 w-4", isGenerating && "animate-spin")}
+                      />
                     </Button>
                   </div>
                 </div>
-                <div className="prose prose-sm max-w-none">
-                  <p>{generatedContent}</p>
-                </div>
+                <ResultContent result={result} />
               </CardContent>
             </Card>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="p-4 rounded-full bg-primary/10 mb-4">
+          <div className="flex h-full flex-col items-center justify-center text-center">
+            <div className="mb-4 rounded-full bg-primary/10 p-4">
               <config.icon className="h-8 w-8 text-primary" />
             </div>
-            <h3 className="text-lg font-semibold mb-2">{config.emptyTitle}</h3>
-            <p className="text-muted-foreground mb-6 max-w-sm">
+            <h3 className="mb-2 text-lg font-semibold">{config.emptyTitle}</h3>
+            <p className="mb-6 max-w-sm text-muted-foreground">
               {config.emptyDescription}
             </p>
             <Button onClick={handleGenerate} disabled={!course || isGenerating}>
               {isGenerating ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Generating...
                 </>
               ) : (
                 <>
-                  <Sparkles className="h-4 w-4 mr-2" />
+                  <Sparkles className="mr-2 h-4 w-4" />
                   Generate {config.label}
                 </>
               )}
             </Button>
+            {errorMessage && (
+              <p className="mt-3 text-sm text-destructive">{errorMessage}</p>
+            )}
             {!course && (
-              <p className="text-sm text-muted-foreground mt-2">
+              <p className="mt-2 text-sm text-muted-foreground">
                 Select a course to use this feature
               </p>
             )}
@@ -356,7 +617,7 @@ export function AIToolsTabPanel({
 }: AIToolsTabPanelProps) {
   if (tool === "chat") {
     return (
-      <div className={cn("flex flex-col h-full bg-background", className)}>
+      <div className={cn("flex h-full flex-col bg-background", className)}>
         <ChatPanel course={course} />
       </div>
     );

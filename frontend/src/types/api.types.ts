@@ -13,7 +13,7 @@ export type PipelineStatus = "QUEUED" | "PROCESSING" | "INDEXED" | "FAILED";
 
 export type CourseStatus = "PROCESSING" | "INDEXED" | "FAILED";
 
-export type ReviewRating = 0 | 1 | 2 | 3 | 4 | 5;
+export type ReviewRating = "AGAIN" | "HARD" | "GOOD" | "EASY";
 
 export interface User {
   id: string;
@@ -59,7 +59,7 @@ export interface Establishment {
 }
 
 export interface LoginRequest {
-  username: string;
+  email: string;
   password: string;
 }
 
@@ -140,6 +140,16 @@ export interface CourseVersion {
 
 export interface CourseWithVersion extends Course {
   current_version?: CourseVersion;
+}
+
+export interface CourseStats {
+  version_count: number;
+  contribution_count: number;
+  approved_contribution_count: number;
+  learner_count: number;
+  generated_assets_count: number;
+  estimated_read_minutes: number;
+  last_updated_at: string | null;
 }
 
 export interface DashboardProgress {
@@ -297,11 +307,9 @@ export interface DocumentVersion {
 
 export interface FlashcardDeck {
   id: string;
-  student_id: string;
-  course_id?: string;
-  document_version_id?: string;
+  document_version_id: string;
   title: string;
-  card_count?: number;
+  card_count: number;
   share_token: string | null;
   created_at: string;
   mastery_percentage?: number;
@@ -310,112 +318,102 @@ export interface FlashcardDeck {
 
 export interface Flashcard {
   id: string;
-  deck_id: string;
-  front: string;
-  back: string;
-  card_type?: "DEFINITION" | "CONCEPT" | "FORMULA" | "MCQ";
-  source_chunk_id?: string;
+  question: string;
+  answer: string;
+  difficulty?: "EASY" | "MEDIUM" | "HARD";
   repetitions: number;
   ease_factor: number;
   interval: number;
   next_review_at: string;
-  last_reviewed_at: string | null;
-  created_at: string;
 }
 
-export interface GenerateDeckResponse {
-  message: string;
-  task_id: string;
+export interface StudyGenerationResponse {
+  job_id: string;
   status: string;
 }
 
 export interface ReviewCardResponse {
-  message: string;
+  id: string;
   next_review_at: string;
   interval_days: number;
+  ease_factor: number;
+  repetitions: number;
 }
 
-export interface FlashcardDeckWithCards {
-  deck: FlashcardDeck;
+export interface FlashcardDeckDetail {
+  id: string;
+  title: string;
+  card_count: number;
+  share_token: string | null;
   cards: Flashcard[];
 }
 
 export interface QuizSession {
   id: string;
-  user_id: string;
-  course_id: string;
-  title: string;
-  question_count: number;
-  time_limit_seconds: number;
+  score: number | null;
+  total_questions: number;
+  is_completed: boolean;
   created_at: string;
+  submitted_at: string | null;
 }
 
 export interface QuizQuestion {
   id: string;
-  question_text: string;
+  question: string;
+  question_type: string;
   options: string[];
-  explanation?: string | null;
+  source_page?: number | null;
+}
+
+export interface QuizDetail {
+  id: string;
+  total_questions: number;
+  time_limit_minutes: number;
+  questions: QuizQuestion[];
 }
 
 export interface QuizSubmitRequest {
-  answers: Array<{ question_id: string; student_answer: string }>;
-  time_spent_seconds: number;
+  answers: Record<string, string>;
 }
 
 export interface QuizSubmitResponse {
-  session_id: string;
   score: number;
-  total_questions: number;
-  percentage: number;
-  correct_answers: number;
-  time_spent_seconds: number;
-  feedback: Array<{
+  results: Array<{
     question_id: string;
-    correct: boolean;
-    student_answer: string;
     correct_answer: string;
     explanation: string | null;
+    is_correct: boolean;
+    source_page?: number | null;
   }>;
 }
 
 export interface QuizHistoryItem {
-  session_id: string;
-  title: string;
+  id: string;
   score: number;
-  percentage: number;
-  completed_at: string;
+  submitted_at: string;
+  total_questions: number;
 }
 
 export interface Summary {
   id: string;
-  document_version_id: string;
-  content: string;
-  format_type: string;
+  format: string;
   target_lang: string;
+  content: string;
   created_at: string;
 }
 
 export interface Mindmap {
   id: string;
-  document_version_id: string;
-  content: string;
+  title: string;
   target_lang: string;
+  nodes: MindmapNode[];
+  edges: MindmapEdge[];
   created_at: string;
 }
 
-export interface MindmapGraph {
-  nodes: Array<{
-    id: string;
-    data: { label: string };
-    position: { x: number; y: number };
-  }>;
-  edges: Array<{
-    id: string;
-    source: string;
-    target: string;
-    label?: string;
-  }>;
-}
+export interface MindmapNode extends Record<string, unknown> {}
+
+export interface MindmapEdge extends Record<string, unknown> {}
 
 export interface GamificationProfile {
   user_id: string;
@@ -484,29 +482,21 @@ export interface Notification {
 }
 
 export interface RAGSession {
-  session_id: string;
-  user_id?: string;
-  course_id?: string;
-  document_version_id?: string;
-  title: string;
-  created_at?: string;
-  signed_pdf_url: string | null;
-  chat_history: RAGMessage[];
-  message_limit: number;
+  id: string;
+  course_id: string;
+  message_count: number;
+  created_at: string;
 }
 
 export interface RAGMessage {
-  id?: string;
+  id: string;
   role: "user" | "assistant";
   content: string;
-  source_page?: number;
-  cosine_similarity?: number;
-  timestamp?: string;
-  sources?: Array<{
+  created_at: string;
+  sources: Array<{
     course_id: string;
     title: string;
     page: number;
-    text?: string;
   }>;
 }
 
@@ -530,29 +520,22 @@ export interface XRayMetadata {
 export interface ForumPost {
   id: string;
   course_id: string;
-  user_id: string;
-  user_name?: string;
+  author_id: string;
   title: string;
-  body_json?: Record<string, unknown>;
-  body_html?: string;
-  vote_count: number;
-  wilson_score?: number;
-  reply_count?: number;
-  is_deleted?: boolean;
-  is_resolved?: boolean;
+  content: Record<string, unknown>;
+  status: string;
+  reply_count: number;
+  score: number;
   created_at: string;
-  updated_at?: string;
+  updated_at: string | null;
 }
 
 export interface ForumReply {
   id: string;
   post_id: string;
-  user_id: string;
-  user_name?: string;
-  body_json?: Record<string, unknown>;
-  body_html?: string;
+  author_id: string;
+  content: Record<string, unknown>;
   is_pinned: boolean;
-  vote_count: number;
   created_at: string;
 }
 
@@ -566,12 +549,13 @@ export interface Vote {
 
 export interface Report {
   id: string;
-  reporter_id: string;
-  target_type: "post" | "reply";
-  target_id: string;
-  reason: string;
-  status: "PENDING" | "RESOLVED" | "DISMISSED";
-  resolved_by?: string;
+  type?: string;
+  severity?: string | null;
+  status?: "PENDING" | "RESOLVED";
+  screenshot_url?: string | null;
+  title: string;
+  description: string;
+  is_resolved: boolean;
   created_at: string;
 }
 
@@ -592,15 +576,16 @@ export interface Annotation {
 export interface TeacherAnalytics {
   total_courses: number;
   total_uploads: number;
-  total_views: number;
-  total_downloads: number;
-  average_quiz_score: number;
+  approved_uploads: number;
+  pending_uploads: number;
+  rejected_uploads: number;
+  recent_uploads_7d: number;
   top_courses: Array<{
     course_id: string;
     title: string;
-    views: number;
-    downloads: number;
-    quiz_score_avg: number;
+    uploads: number;
+    approved_uploads: number;
+    last_submission_at: string | null;
   }>;
 }
 
@@ -614,7 +599,6 @@ export interface CourseAnalytics {
 
 export interface AdminDashboard {
   total_users: number;
-  active_users_today: number;
   total_courses: number;
   total_contributions: number;
   pending_contributions: number;
@@ -630,12 +614,26 @@ export interface UserProfile {
   full_name: string | null;
   role: UserRole;
   filiere: string | null;
-  nivel: StudentLevel | null;
-  is_verified: boolean;
-  total_xp: number;
+  level_label?: StudentLevel | null;
+  xp: number;
   level: number;
-  badges: Badge[];
+  establishment_name: string | null;
   created_at: string;
+  stats: {
+    badges_count: number;
+    contributions_count: number;
+    approved_contributions_count: number;
+    forum_posts_count: number;
+    study_assets_count: number;
+  };
+  badges: Badge[];
+  recent_activity: Array<{
+    id: string;
+    type: "CONTRIBUTION" | "FORUM_POST" | "XP";
+    title: string;
+    description: string;
+    created_at: string;
+  }>;
 }
 
 export interface ActivityLogItem {

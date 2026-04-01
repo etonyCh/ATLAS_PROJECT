@@ -31,6 +31,15 @@ export function useCourseVersionsQuery(courseId: string) {
   });
 }
 
+export function useCourseStatsQuery(courseId: string) {
+  return useQuery({
+    queryKey: ["course", courseId, "stats"],
+    queryFn: () => coursesApi.getStats(courseId),
+    enabled: Boolean(courseId),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export function useTeacherCourses() {
   return useQuery({
     queryKey: ["courses", "my-uploads"],

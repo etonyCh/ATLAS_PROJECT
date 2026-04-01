@@ -28,6 +28,9 @@ from app.db.session import get_session
 from app.models.user import User, UserRole
 from app.routers.auth import router as auth_router
 
+# Import services for monkeypatching
+from app.services.iam import auth_service, otp_service
+
 
 class FakeExecuteResult:
     def __init__(self, user: User | None):
@@ -117,16 +120,14 @@ def test_login_returns_contract_shape(monkeypatch) -> None:
     fake_session = FakeSession(user)
     client = _build_app(fake_session, FakeRedis())
 
-    from app.routers import auth as auth_module
-
     async def fake_authenticate_user(*_args, **_kwargs):
         return user
 
     def fake_create_user_tokens(*_args, **_kwargs):
         return "access-token", "refresh-token"
 
-    monkeypatch.setattr(auth_module.auth_service, "authenticate_user", fake_authenticate_user)
-    monkeypatch.setattr(auth_module.auth_service, "create_user_tokens", fake_create_user_tokens)
+    monkeypatch.setattr(auth_service, "authenticate_user", fake_authenticate_user)
+    monkeypatch.setattr(auth_service, "create_user_tokens", fake_create_user_tokens)
 
     response = client.post(
         "/v1/auth/login",
@@ -156,12 +157,12 @@ def test_verify_otp_returns_specific_error_code(monkeypatch) -> None:
     fake_session = FakeSession(user)
     client = _build_app(fake_session, FakeRedis())
 
-    from app.routers import auth as auth_module
+    from app.services.iam import auth_service, otp_service
 
     async def fake_verify_email_otp_result(*_args, **_kwargs):
         return {"ok": False, "reason": "OTP_EXPIRED"}
 
-    monkeypatch.setattr(auth_module.otp_service, "verify_email_otp_result", fake_verify_email_otp_result)
+    monkeypatch.setattr(otp_service, "verify_email_otp_result", fake_verify_email_otp_result)
 
     response = client.post(
         "/v1/auth/verify-otp",

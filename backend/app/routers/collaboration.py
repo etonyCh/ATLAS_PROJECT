@@ -50,7 +50,7 @@ class LiveSessionCreateRequest(BaseModel):
 
 
 async def _authenticate_socket(websocket: WebSocket, db: AsyncSession) -> User:
-    token = websocket.query_params.get("accessToken")
+    token = websocket.query_params.get("accessToken") or websocket.query_params.get("token")
     if not token:
         await websocket.close(code=4401)
         raise atlas_error("AUTH_007", "Authentication credentials are required.", status_code=401)

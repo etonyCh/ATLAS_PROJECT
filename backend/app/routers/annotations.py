@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import atlas_error
@@ -13,6 +13,7 @@ from app.db.session import get_session
 from app.dependencies import get_current_user
 from app.models.annotation import DocumentAnnotation
 from app.models.user import User
+from app.schemas.pagination import build_paginated_response
 
 
 router = APIRouter(tags=["Annotations"])
@@ -60,19 +61,31 @@ async def create_annotation(
 @router.get("/annotations")
 async def list_annotations(
     doc_version_id: UUID,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
+    visibility_filter = (DocumentAnnotation.user_id == current_user.id) | (
+        DocumentAnnotation.is_public.is_(True)
+    )
+    filters = [
+        DocumentAnnotation.document_version_id == doc_version_id,
+        visibility_filter,
+    ]
+
+    total = (
+        await db.execute(select(func.count()).select_from(DocumentAnnotation).where(*filters))
+    ).scalar_one()
     result = await db.execute(
         select(DocumentAnnotation)
-        .where(
-            DocumentAnnotation.document_version_id == doc_version_id,
-            (DocumentAnnotation.user_id == current_user.id) | (DocumentAnnotation.is_public.is_(True)),
-        )
+        .where(*filters)
         .order_by(desc(DocumentAnnotation.created_at))
+        .offset(offset)
+        .limit(limit)
     )
     rows = result.scalars().all()
-    return [
+    items = [
         {
             "id": str(item.id),
             "document_version_id": str(item.document_version_id),
@@ -85,6 +98,7 @@ async def list_annotations(
         }
         for item in rows
     ]
+    return build_paginated_response(items, total=total, limit=limit, offset=offset)
 
 
 @router.delete("/annotations/{annotation_id}")

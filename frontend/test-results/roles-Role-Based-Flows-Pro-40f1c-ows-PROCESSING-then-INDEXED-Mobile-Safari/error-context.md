@@ -1,0 +1,98 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - img [ref=e7]
+        - generic [ref=e10]:
+          - heading "Welcome back" [level=3] [ref=e11]
+          - paragraph [ref=e12]: Sign in to access your learning dashboard
+      - generic [ref=e13]:
+        - generic [ref=e14]:
+          - generic [ref=e15]:
+            - generic [ref=e16]: Email*
+            - textbox "Email*" [ref=e17]:
+              - /placeholder: you@university.tn
+          - generic [ref=e18]:
+            - generic [ref=e19]:
+              - generic [ref=e20]: Password*
+              - textbox "Password*" [ref=e21]:
+                - /placeholder: Enter your password
+            - button [ref=e22]:
+              - img [ref=e23]
+          - link "Forgot password?" [ref=e27]:
+            - /url: /auth/forgot-password
+          - button "Sign in" [ref=e28]
+        - generic [ref=e29]:
+          - text: Don't have an account?
+          - link "Register" [ref=e30]:
+            - /url: /auth/register
+    - contentinfo [ref=e31]:
+      - generic [ref=e32]:
+        - generic [ref=e33]:
+          - generic [ref=e34]:
+            - link "ATLAS" [ref=e35]:
+              - /url: /
+              - img [ref=e36]
+              - generic [ref=e39]: ATLAS
+            - paragraph [ref=e40]: Aggregated Tunisian Learning and Academic System. From chaos to clarity.
+            - generic [ref=e44]: Some services are degraded
+          - generic [ref=e45]:
+            - heading "Product" [level=4] [ref=e46]
+            - list [ref=e47]:
+              - listitem [ref=e48]:
+                - link "Features" [ref=e49]:
+                  - /url: /#features
+              - listitem [ref=e50]:
+                - link "Learning Paths" [ref=e51]:
+                  - /url: /learning-path
+              - listitem [ref=e52]:
+                - link "AI Workspace" [ref=e53]:
+                  - /url: /ai/workspace
+          - generic [ref=e54]:
+            - heading "Academic" [level=4] [ref=e55]
+            - list [ref=e56]:
+              - listitem [ref=e57]:
+                - link "Explore" [ref=e58]:
+                  - /url: /explore
+              - listitem [ref=e59]:
+                - link "Course Library" [ref=e60]:
+                  - /url: /courses
+              - listitem [ref=e61]:
+                - link "Contribute" [ref=e62]:
+                  - /url: /contribute
+          - generic [ref=e63]:
+            - heading "Trust" [level=4] [ref=e64]
+            - list [ref=e65]:
+              - listitem [ref=e66]:
+                - link "System Status" [ref=e67]:
+                  - /url: /status
+              - listitem [ref=e68]:
+                - link "Feedback" [ref=e69]:
+                  - /url: /feedback
+              - listitem [ref=e70]:
+                - link "Join ATLAS" [ref=e71]:
+                  - /url: /auth/register
+          - generic [ref=e72]:
+            - heading "Live" [level=4] [ref=e73]
+            - list [ref=e74]:
+              - listitem [ref=e75]:
+                - generic [ref=e76]: API
+              - listitem [ref=e79]:
+                - generic [ref=e80]: Database
+              - listitem [ref=e83]:
+                - generic [ref=e84]: Redis
+              - listitem [ref=e87]:
+                - generic [ref=e88]: Storage
+        - generic [ref=e91]:
+          - paragraph [ref=e92]: Copyright 2026 ATLAS | Aggregated Tunisian Learning and Academic System
+          - generic [ref=e93]:
+            - generic [ref=e94]: 12,430 students helped today
+            - generic [ref=e95]: "|"
+            - generic [ref=e96]: "Average quiz improvement: +18%"
+  - button "Open Next.js Dev Tools" [ref=e102] [cursor=pointer]:
+    - img [ref=e103]
+  - alert [ref=e108]
+```
