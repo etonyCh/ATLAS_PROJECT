@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request, Response, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +16,18 @@ from app.core.limits import limiter
 from app.core.redis import get_redis_client
 from app.db.session import get_session
 from app.dependencies import get_current_user
-from app.models.user import Department, OTPPurpose, StudentLevel, TeacherProfile, User, UserCreate, UserRole
+from app.models.user import (
+    AccountStatus,
+    Department,
+    Establishment,
+    OTPPurpose,
+    StudentLevel,
+    TeacherProfile,
+    TeacherVerificationRequest,
+    User,
+    UserCreate,
+    UserRole,
+)
 
 
 router = APIRouter(tags=["Auth"])
@@ -29,9 +40,17 @@ class AuthUserResponse(BaseModel):
     full_name: str | None = None
     filiere: str | None = None
     level: str | None = None
+    niveau: str | None = None
     onboarding_completed: bool = False
     is_active: bool
     is_verified: bool
+    status: AccountStatus
+    trust_score: int
+    profile_completeness: int
+    establishment_id: str | None = None
+    verified_at: datetime | None = None
+    created_at: datetime
+    username: str | None = None
 
 
 class LoginRequest(BaseModel):
@@ -56,6 +75,24 @@ class RegisterRequest(BaseModel):
     role: UserRole = UserRole.STUDENT
     filiere: str | None = None
     level: StudentLevel | None = None
+    niveau: StudentLevel | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def map_niveau_to_level(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            niveau_val = data.get("niveau")
+            level_val = data.get("level")
+            if niveau_val and not level_val:
+                data["level"] = niveau_val
+        return data
+
+
+class TeacherRequestCreate(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=8)
+    full_name: str | None = None
+    department: str = Field(..., min_length=2, max_length=120)
 
 
 class VerifyOtpRequest(BaseModel):
@@ -80,16 +117,25 @@ class ResendOtpRequest(BaseModel):
 
 
 def _user_payload(user: User) -> AuthUserResponse:
+    level_val = user.level.value if getattr(user, "level", None) else None
     return AuthUserResponse(
         id=str(user.id),
         email=user.email,
         role=user.role.value if hasattr(user.role, "value") else str(user.role),
         full_name=getattr(user, "full_name", None),
         filiere=getattr(user, "filiere", None),
-        level=user.level.value if getattr(user, "level", None) else None,
+        level=level_val,
+        niveau=level_val,
         onboarding_completed=getattr(user, "onboarding_completed", False),
         is_active=user.is_active,
         is_verified=user.is_verified,
+        status=user.status,
+        trust_score=user.trust_score,
+        profile_completeness=user.profile_completeness,
+        establishment_id=str(user.establishment_id) if getattr(user, "establishment_id", None) else None,
+        verified_at=getattr(user, "verified_at", None),
+        created_at=getattr(user, "created_at", datetime.utcnow()),
+        username=getattr(user, "full_name", None) or user.email.split("@")[0],
     )
 
 
@@ -99,7 +145,7 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
         value=token,
         httponly=True,
         secure=settings.ENVIRONMENT == "production",
-        samesite="strict",
+        samesite="lax",
         path=f"{settings.API_V1_STR}/auth/refresh",
         max_age=7 * 24 * 60 * 60,
     )
@@ -112,6 +158,14 @@ async def register(
 ) -> dict[str, Any]:
     from app.services.iam import otp_service
 
+    if payload.role != UserRole.STUDENT:
+        raise atlas_error(
+            "AUTH_009",
+            "Public registration is available for students only. Teachers must use the teacher verification request flow.",
+            field="role",
+            status_code=400,
+        )
+
     existing = await db.execute(select(User).where(User.email == payload.email))
     if existing.scalar_one_or_none() is not None:
         raise atlas_error(
@@ -121,12 +175,25 @@ async def register(
             status_code=400,
         )
 
+    # Auto-link Teacher to Establishment by domain and set status
+    status_val = AccountStatus.ACTIVE
+    est_id = None
+    if payload.role == UserRole.TEACHER:
+        status_val = AccountStatus.PENDING_VERIFICATION
+        domain = payload.email.split("@")[-1]
+        est_result = await db.execute(select(Establishment).where(Establishment.domain == domain))
+        est = est_result.scalar_one_or_none()
+        if est:
+            est_id = est.id
+
     user = User(
         email=payload.email,
         full_name=payload.full_name,
         role=payload.role,
+        status=status_val,
         filiere=payload.filiere,
         level=payload.level,
+        establishment_id=est_id,
         hashed_password=security.get_password_hash(payload.password),
         is_active=False,
         is_verified=False,
@@ -157,6 +224,75 @@ async def register(
     }
 
 
+@router.post("/teacher-request", status_code=status.HTTP_201_CREATED, dependencies=[Depends(limiter(3, 60))])
+async def create_teacher_request(
+    payload: TeacherRequestCreate,
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    from app.services.iam import otp_service
+
+    existing = await db.execute(select(User).where(User.email == payload.email))
+    if existing.scalar_one_or_none() is not None:
+        raise atlas_error(
+            "AUTH_001",
+            "An account with this email already exists.",
+            field="email",
+            status_code=400,
+        )
+
+    domain = payload.email.split("@")[-1].lower()
+    est_result = await db.execute(select(Establishment).where(Establishment.domain == domain))
+    est = est_result.scalar_one_or_none()
+
+    user = User(
+        email=payload.email,
+        full_name=payload.full_name,
+        role=UserRole.TEACHER,
+        status=AccountStatus.PENDING_VERIFICATION,
+        establishment_id=est.id if est else None,
+        hashed_password=security.get_password_hash(payload.password),
+        is_active=False,
+        is_verified=False,
+    )
+    db.add(user)
+    await db.flush()
+
+    request = TeacherVerificationRequest(
+        user_id=user.id,
+        requested_department=payload.department.strip(),
+        requested_domain=domain,
+        establishment_id=est.id if est else None,
+    )
+    db.add(request)
+
+    created = await otp_service.create_email_otp(
+        session=db,
+        user=user,
+        ttl_minutes=24 * 60,
+        purpose=OTPPurpose.ACCOUNT_ACTIVATION,
+    )
+    if not created:
+        await db.rollback()
+        raise atlas_error(
+            "GEN_002",
+            "Failed to send activation OTP.",
+            field="email",
+            status_code=500,
+        )
+
+    await db.commit()
+    await db.refresh(user)
+    return {
+        "user": _user_payload(user).model_dump(),
+        "request": {
+            "department": request.requested_department,
+            "domain": request.requested_domain,
+            "status": request.status,
+        },
+        "message": "Teacher verification request created. Please verify your OTP and wait for admin approval.",
+    }
+
+
 @router.post("/verify-otp")
 async def verify_otp(
     payload: VerifyOtpRequest,
@@ -164,11 +300,18 @@ async def verify_otp(
 ) -> dict[str, Any]:
     from app.services.iam import otp_service
 
+    # SOTA FIX: If the frontend requests TEACHER_ONBOARDING (usually on the educator activation page),
+    # we must fall back to checking ACCOUNT_ACTIVATION as well. This is because standard self-registration
+    # at /register issues an ACCOUNT_ACTIVATION token universally, while /resend-otp issues TEACHER_ONBOARDING.
+    purposes = (payload.purpose,)
+    if payload.purpose == OTPPurpose.TEACHER_ONBOARDING:
+        purposes = (payload.purpose, OTPPurpose.ACCOUNT_ACTIVATION)
+
     verification = await otp_service.verify_email_otp_result(
         session=db,
         email=payload.email,
         code=payload.otp_code,
-        allowed_purposes=(payload.purpose,),
+        allowed_purposes=purposes,
     )
     if not verification["ok"]:
         await db.rollback()
@@ -220,10 +363,10 @@ async def login(
             field="email",
             status_code=401,
         )
-    if not user.is_verified:
-        raise atlas_error("AUTH_002", "The account is not verified.", status_code=403)
     if not user.is_active:
-        raise atlas_error("AUTH_003", "The account is suspended or inactive.", status_code=403)
+        raise atlas_error("AUTH_003", "The account is inactive or email not verified.", status_code=403)
+    if user.status == AccountStatus.SUSPENDED:
+        raise atlas_error("AUTH_003", "The account is suspended.", status_code=403)
 
     access_token, refresh_token = auth_service.create_user_tokens(
         user.id,

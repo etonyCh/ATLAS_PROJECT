@@ -111,7 +111,13 @@ export function LoginPageClient() {
           <div className="mt-6 text-center text-sm">
             <span className="text-muted-foreground">Don&apos;t have an account? </span>
             <Link href="/auth/register" className="font-medium text-primary hover:underline">
-              Register
+              Student registration
+            </Link>
+          </div>
+          <div className="mt-2 text-center text-sm">
+            <span className="text-muted-foreground">Need educator access? </span>
+            <Link href="/auth/teacher-request" className="font-medium text-primary hover:underline">
+              Request teacher verification
             </Link>
           </div>
         </CardContent>

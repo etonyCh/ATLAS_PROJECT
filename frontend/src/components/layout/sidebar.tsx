@@ -17,9 +17,11 @@ import {
   GraduationCap,
   Users,
   BarChart3,
-  Building2,
   FileText,
   CheckCircle,
+  ShieldCheck,
+  Building2,
+  ShieldAlert,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth.store";
@@ -30,7 +32,7 @@ type Role = "STUDENT" | "TEACHER" | "ADMIN" | "SUPERADMIN";
 const studentNavigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Search", href: "/search", icon: Search },
-  { name: "Study", href: "/study", icon: BookOpen },
+  { name: "Courses", href: "/courses", icon: BookOpen },
   { name: "Upload", href: "/upload", icon: Upload },
   { name: "Leaderboard", href: "/leaderboard", icon: Trophy },
 ];
@@ -49,8 +51,8 @@ const teacherNavigation = [
 const adminNavigation = [
   { name: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
   { name: "Users", href: "/admin/users", icon: Users },
-  { name: "Courses", href: "/admin/courses", icon: BookOpen },
-  { name: "Reports", href: "/admin/reports", icon: FileText },
+  { name: "Teacher Requests", href: "/admin/teacher-requests", icon: ShieldCheck },
+  { name: "Moderation Hub", href: "/admin/moderation", icon: ShieldAlert },
 ];
 
 const superadminNavigation = [

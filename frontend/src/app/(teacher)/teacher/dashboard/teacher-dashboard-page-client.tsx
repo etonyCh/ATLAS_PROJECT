@@ -57,7 +57,7 @@ export function TeacherDashboardPageClient() {
           </p>
         </div>
         <Button asChild>
-          <Link href="/teacher/contributions">Review Contributions</Link>
+          <Link href="/teacher/manage-contributions">Review Contributions</Link>
         </Button>
       </div>
 
@@ -88,7 +88,7 @@ export function TeacherDashboardPageClient() {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-lg">Recent Contribution Queue</CardTitle>
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/teacher/contributions">View all</Link>
+            <Link href="/teacher/manage-contributions">View all</Link>
           </Button>
         </CardHeader>
         <CardContent>

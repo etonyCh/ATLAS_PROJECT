@@ -1,13 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Download, Loader2, Search, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Loader2, Search, Users, MoreVertical, ShieldAlert, ShieldCheck, UserX } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatusChip } from "@/components/ui/status-chip";
 import { EmptyState } from "@/components/ui/empty-state";
-import { useAdminUsersQuery } from "@/queries/admin.queries";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { useAdminUsersQuery, useApproveTeacherRequestMutation, useTeacherRequestsQuery, useUpdateUserMutation } from "@/queries/admin.queries";
 
 const roleColors: Record<string, string> = {
   STUDENT: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
@@ -18,6 +19,9 @@ const roleColors: Record<string, string> = {
 
 export default function AdminUsersPage() {
   const { data, isLoading, isError } = useAdminUsersQuery();
+  const teacherRequestsQuery = useTeacherRequestsQuery();
+  const updateMutation = useUpdateUserMutation();
+  const approveTeacherRequestMutation = useApproveTeacherRequestMutation();
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -57,6 +61,7 @@ export default function AdminUsersPage() {
     teachers: users.filter((user) => user.role === "TEACHER").length,
     active: users.filter((user) => user.is_active).length,
   };
+  const pendingTeacherRequests = teacherRequestsQuery.data?.items ?? [];
 
   if (isLoading) {
     return (
@@ -117,6 +122,55 @@ export default function AdminUsersPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardContent className="p-4">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Pending Teacher Requests</h2>
+              <p className="text-sm text-muted-foreground">
+                Review educator verification requests before granting teacher access.
+              </p>
+            </div>
+            <StatusChip status={pendingTeacherRequests.length ? "warning" : "active"} />
+          </div>
+
+          {teacherRequestsQuery.isLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading teacher requests...
+            </div>
+          ) : pendingTeacherRequests.length ? (
+            <div className="space-y-3">
+              {pendingTeacherRequests.slice(0, 5).map((request) => (
+                <div key={request.id} className="flex flex-col gap-3 rounded-lg border p-4 md:flex-row md:items-center md:justify-between">
+                  <div className="space-y-1">
+                    <p className="font-medium">{request.full_name || "Unnamed educator"}</p>
+                    <p className="text-sm text-muted-foreground">{request.email}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {request.requested_department} - {request.requested_domain}
+                    </p>
+                  </div>
+                  <Button
+                    className="min-h-11"
+                    disabled={approveTeacherRequestMutation.isPending}
+                    onClick={() => approveTeacherRequestMutation.mutate({ requestId: request.id })}
+                  >
+                    <ShieldCheck className="mr-2 h-4 w-4" />
+                    Approve Teacher
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              type="no-results"
+              title="No pending teacher requests"
+              description="New educator requests will appear here for approval."
+            />
+          )}
+        </CardContent>
+      </Card>
 
       <div className="flex flex-col gap-4 sm:flex-row">
         <div className="relative flex-1">
@@ -215,6 +269,7 @@ export default function AdminUsersPage() {
                     <th className="px-4 py-3 text-left text-sm font-medium">Filiere</th>
                     <th className="px-4 py-3 text-left text-sm font-medium">Status</th>
                     <th className="px-4 py-3 text-left text-sm font-medium">Joined</th>
+                    <th className="px-4 py-3 text-right text-sm font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -251,6 +306,30 @@ export default function AdminUsersPage() {
                       </td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">
                         {new Date(user.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-8 w-8 p-0" disabled={updateMutation.isPending}>
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => updateMutation.mutate({ userId: user.id, data: { is_active: !user.is_active }})}>
+                              {user.is_active ? <><UserX className="mr-2 h-4 w-4 text-destructive" /> Deactivate (Ban)</> : <><ShieldCheck className="mr-2 h-4 w-4 text-emerald-500" /> Reactivate</>}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem disabled={user.role === 'ADMIN'} onClick={() => updateMutation.mutate({ userId: user.id, data: { role: 'ADMIN' }})}>
+                              <ShieldAlert className="mr-2 h-4 w-4 text-amber-500" /> Make Admin
+                            </DropdownMenuItem>
+                            <DropdownMenuItem disabled={user.role === 'TEACHER'} onClick={() => updateMutation.mutate({ userId: user.id, data: { role: 'TEACHER' }})}>
+                              <Users className="mr-2 h-4 w-4 text-purple-500" /> Make Teacher
+                            </DropdownMenuItem>
+                            <DropdownMenuItem disabled={user.role === 'STUDENT'} onClick={() => updateMutation.mutate({ userId: user.id, data: { role: 'STUDENT' }})}>
+                              <Users className="mr-2 h-4 w-4 text-blue-500" /> Make Student
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </td>
                     </tr>
                   ))}

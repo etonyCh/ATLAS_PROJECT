@@ -11,6 +11,7 @@ from app.routers.collaboration import router as collaboration_router
 from app.routers.collaboration import ws_router as collaboration_ws_router
 from app.routers.contributions import router as contributions_router
 from app.routers.courses import router as courses_router
+from app.routers.files import router as files_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.forums import router as forums_router
 from app.routers.forums import ws_router as forums_ws_router
@@ -30,6 +31,7 @@ def register_v1_routers(app: FastAPI) -> None:
 
     app.include_router(auth_router, prefix=f"{api_prefix}/auth")
     app.include_router(courses_router, prefix=api_prefix)
+    app.include_router(files_router, prefix=api_prefix)
     app.include_router(study_router, prefix=api_prefix)
     app.include_router(contributions_router, prefix=api_prefix)
     app.include_router(forums_router, prefix=api_prefix)

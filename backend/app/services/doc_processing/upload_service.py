@@ -20,14 +20,20 @@ from app.services.doc_processing.storage import calculate_sha256, minio_client
 MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024
 ALLOWED_MIME_TYPES = {
     "application/pdf",
+    "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-powerpoint",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "image/png",
+    "image/jpeg",
 }
 
 
 async def read_and_validate_upload(upload_file) -> tuple[bytes, str]:
     if upload_file.content_type not in ALLOWED_MIME_TYPES:
-        raise ValueError("Invalid file format declared. Only PDF, DOCX, and PPTX are permitted.")
+        raise ValueError(
+            "Invalid file format declared. Only PDF, Word, PowerPoint, PNG, and JPEG files are permitted."
+        )
 
     header_bytes = await upload_file.read(2048)
     actual_mime = magic.from_buffer(header_bytes, mime=True)
@@ -197,4 +203,3 @@ async def upload_student_contribution(
 
     process_document_ocr.delay(str(doc_version.id))
     return contribution
-

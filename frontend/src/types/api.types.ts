@@ -1,5 +1,7 @@
 export type UserRole = "STUDENT" | "TEACHER" | "ADMIN" | "SUPERADMIN";
 
+export type AccountStatus = "ACTIVE" | "PENDING_VERIFICATION" | "SUSPENDED";
+
 export type StudentLevel = "L1" | "L2" | "L3" | "M1" | "M2" | "Doctorat";
 
 export type OTPPurpose =
@@ -21,6 +23,9 @@ export interface User {
   full_name: string | null;
   username?: string;
   role: UserRole;
+  status: AccountStatus;
+  trust_score: number;
+  profile_completeness: number;
   establishment_id: string | null;
   is_active: boolean;
   is_verified: boolean;
@@ -77,6 +82,24 @@ export interface RegisterRequest {
   filiere?: string;
   niveau?: StudentLevel;
   level?: StudentLevel; // Alias for niveau for backward compatibility
+}
+
+export interface TeacherRequestCreate {
+  email: string;
+  password: string;
+  full_name?: string;
+  department: string;
+}
+
+export interface TeacherVerificationRequest {
+  id: string;
+  user_id: string;
+  email: string;
+  full_name: string | null;
+  requested_department: string;
+  requested_domain: string;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  created_at: string;
 }
 
 export interface VerifyOTPRequest {
@@ -272,6 +295,9 @@ export interface Contribution {
   uploader_id: string;
   course_id?: string;
   s3_key?: string;
+  mime_type?: string | null;
+  preview_text?: string | null;
+  uploader_name?: string | null;
   filiere: string;
   status: ContributionStatus;
   created_at: string;

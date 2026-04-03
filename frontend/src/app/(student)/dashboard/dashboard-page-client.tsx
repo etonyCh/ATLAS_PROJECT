@@ -235,7 +235,7 @@ export function StudentDashboardPageClient() {
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Button variant="outline" className="h-auto py-4 flex-col gap-2" asChild>
-              <Link href="/contribute">
+              <Link href="/upload">
                 <GraduationCap className="h-5 w-5" />
                 <span>Contribute</span>
               </Link>

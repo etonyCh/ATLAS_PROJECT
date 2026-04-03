@@ -23,6 +23,8 @@ export function useAuth() {
   const isUnauthenticated = status === "unauthenticated";
   const isIdle = status === "idle";
 
+  const isPendingVerification = user?.status === "PENDING_VERIFICATION";
+
   const hasRole = useCallback((role: UserRole) => user?.role === role, [user]);
 
   const isStudent = user?.role === "STUDENT";
@@ -38,6 +40,25 @@ export function useAuth() {
       return true;
     },
     [isUnauthenticated, isIdle, router],
+  );
+
+  const requireActive = useCallback(
+    (redirectTo = "/auth/login") => {
+      if (isUnauthenticated || isIdle) {
+        router.push(redirectTo);
+        return false;
+      }
+      if (isPendingVerification) {
+        router.push("/auth/pending");
+        return false;
+      }
+      if (user?.status === "SUSPENDED") {
+        router.push("/auth/suspended"); // Just in case
+        return false;
+      }
+      return true;
+    },
+    [isUnauthenticated, isIdle, isPendingVerification, user, router],
   );
 
   const requireRole = useCallback(
@@ -65,11 +86,13 @@ export function useAuth() {
     isAuthenticated,
     isUnauthenticated,
     isIdle,
+    isPendingVerification,
     isStudent,
     isTeacher,
     isAdmin,
     hasRole,
     requireAuth,
+    requireActive,
     requireRole,
     login,
     logout,

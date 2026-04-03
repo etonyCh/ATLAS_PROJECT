@@ -91,7 +91,7 @@ export function AdminDashboardPageClient() {
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg">Recent Reports</CardTitle>
             <Button variant="ghost" size="sm" asChild>
-              <Link href="/admin/reports">View all</Link>
+              <Link href="/admin/moderation">View all</Link>
             </Button>
           </CardHeader>
           <CardContent>

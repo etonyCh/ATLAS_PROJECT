@@ -2,35 +2,50 @@
 
 ## Getting Started
 
-### 1. Create an Account
+### Student Account Creation
 
-- Go to the registration page.
-- Choose your role if available.
-- Enter your name, email, and password.
-- Submit the form.
-- Verify your account using the OTP sent to your email.
+1. Open the public registration page.
+2. Create a student account with name, email, password, and academic details.
+3. Verify the account using the OTP sent to email.
+4. Log in through the shared login page.
 
-### 2. Log In
+### Teacher Access Request
 
-- Go to the login page.
-- Enter your email and password.
-- Submit the form.
-- You will be redirected based on role and onboarding state.
+1. Open the teacher request page.
+2. Submit institutional email, password, name, and department.
+3. Verify the onboarding OTP.
+4. Wait for admin approval.
+5. Log in through the same shared login page after approval.
 
-### 3. Reset Password
+### Admin And Superadmin Access
 
-- Open the forgot-password page.
-- Enter your email.
-- Request the reset OTP.
-- Enter the OTP and your new password on the reset page.
+- create or seed an account first
+- promote it using the backend helper scripts when needed
+- log in through the normal login page
 
 ## Student Guide
 
-### Browse Courses
+### Browse And Read Courses
 
-- Open the courses area.
-- search or filter courses as needed
-- open a course detail page to access study tools
+- open the courses area
+- choose a course
+- open the reader
+
+Students can preview approved course files directly inside the platform when the
+file type is supported.
+
+### Preview Support For Students
+
+Inline preview currently supports:
+
+- `PDF`
+- `PNG`
+- `JPG`
+- `JPEG`
+- `DOCX`
+- `PPTX`
+
+Legacy `DOC` and `PPT` files still open through fallback actions.
 
 ### Use Study Tools
 
@@ -43,92 +58,108 @@ From a course page, students can open:
 - Summary
 - Mind Map
 
-### Generate Flashcards
+### Submit A Contribution
 
-- Open a course
-- choose `Flashcards`
-- select `Generate Flashcards`
-- once due cards exist, review them with:
-  - Again
-  - Hard
-  - Good
-  - Easy
+1. Open the upload/contribution flow.
+2. Provide the required course and document details.
+3. Upload a supported file.
+4. Submit the contribution for moderation.
 
-### Generate a Quiz
+### Review Your Own Contributions
 
-- Open a course
-- choose `Quiz`
-- generate the quiz for that course
-- submit answers and review results
+Students can open `My Contributions` to:
 
-### Generate a Summary or Mind Map
+- see pending, approved, and rejected items
+- preview their own uploaded files
+- review rejection feedback when available
 
-- Open a course
-- choose `Summary` or `Mind Map`
-- trigger generation
-- view the generated result once available
+Important rule:
 
-### Contribute Content
-
-- open the contribution/upload flow
-- provide title, description, course, and file
-- submit for review
-
-### View Notifications
-
-- open the notifications area
-- review unread notifications
-- mark items as read
+- students can preview their own pending uploads
+- other learners cannot access those uploads until moderation approves them
 
 ## Teacher Guide
 
+### Manage Courses
+
+Teachers can upload and manage course materials from teacher surfaces.
+
 ### Review Contributions
 
-- open the teacher contribution queue
-- inspect submitted items
-- approve or reject as appropriate
+Teachers can open the contribution review area to:
 
-### View Teacher Dashboard
+- preview uploaded files in-app
+- approve or reject content
+- leave moderation notes when rejecting
 
-The teacher dashboard currently provides:
+### Preview Support For Teachers
 
-- total uploads
-- approved uploads
-- contribution review queue overview
+Teachers use the same shared preview system as admins and students.
+
+Inline preview currently supports:
+
+- `PDF`
+- `PNG`
+- `JPG`
+- `JPEG`
+- `DOCX`
+- `PPTX`
 
 ## Admin Guide
 
 ### Manage Users
 
-- open the admin users page
-- search and filter users by role and active state
-- review user information from the live directory
+Admins can:
 
-### Review Reports
+- filter users by role
+- adjust user state
+- review institution-level operational data
 
-- open the reports page
-- inspect report title, description, and resolution state
+### Review Teacher Requests
 
-### Use Admin Dashboard
+Admins can open the teacher requests area to:
 
-The admin dashboard currently provides:
+- inspect pending educator requests
+- approve requests
+- activate teacher access
 
-- total users
-- total courses
-- pending contributions
-- recent reports
+### Moderate Contributions
+
+Admins can open the moderation hub to:
+
+- preview pending documents before approval
+- approve contributions
+- reject contributions with feedback
+
+### Admin Preview Rules
+
+Admins can preview pending uploads before students can see them. This is
+required for moderation quality control.
 
 ## Superadmin Guide
 
-### Review Establishments
+Superadmins can:
 
-- open the establishments page
-- search institutional records
-- review user, student, and teacher totals
+- inspect platform-wide institutional structures
+- access elevated operational views
 
-## Tips
+## File Preview Notes
 
-- If a study tool does not yet display a generated artifact directly, use the
-  corresponding dashboard or list view to find the generated resource.
-- If an admin or superadmin action is visible but not yet operational, treat the
-  page as read-only until the action workflow is completed.
+The preview system is shared across student, teacher, and admin surfaces.
+
+### Inline Preview
+
+- `PDF`
+- `PNG`
+- `JPG`
+- `JPEG`
+- `DOCX`
+- `PPTX`
+
+### Fallback Preview
+
+- `DOC`
+- `PPT`
+
+These can still be opened or downloaded, and extracted text preview may appear
+when available.

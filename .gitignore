@@ -56,3 +56,8 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# Local verification / command output
+backend/alembic_output*.txt
+frontend/tsc_output*.txt
+backend/dockcall

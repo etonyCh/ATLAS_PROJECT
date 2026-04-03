@@ -2,109 +2,92 @@
 
 ## Overview
 
-The backend exposes a REST API under:
+Backend REST endpoints are exposed under:
 
 - `/api/v1`
 
-The frontend uses typed API clients from:
+Frontend uses typed API clients from:
 
 - `frontend/src/lib/api.ts`
+
+For browser preview safety, the frontend also exposes a same-origin proxy route:
+
+- `/api/files/proxy/{path...}`
+
+That proxy forwards authenticated preview requests to the backend file endpoint.
 
 ## Authentication
 
 ### POST `/api/v1/auth/register`
 
-Registers a new user.
+Creates a public student account.
 
-Request:
+Notes:
 
-```json
-{
-  "email": "user@example.com",
-  "password": "Password123!",
-  "full_name": "Jane Doe",
-  "role": "STUDENT"
-}
-```
+- this is student-only registration
+- teacher creation does not use this route anymore
 
-### POST `/api/v1/auth/login`
+### POST `/api/v1/auth/teacher-request`
 
-Authenticates a user.
-
-Request:
-
-```json
-{
-  "email": "user@example.com",
-  "password": "Password123!"
-}
-```
-
-Response:
-
-```json
-{
-  "accessToken": "string",
-  "refreshToken": "string",
-  "user": {}
-}
-```
+Creates a teacher verification request and sends onboarding OTP.
 
 ### POST `/api/v1/auth/verify-otp`
 
-Verifies an OTP.
-
-Request:
-
-```json
-{
-  "email": "user@example.com",
-  "otp_code": "123456",
-  "purpose": "ACCOUNT_ACTIVATION"
-}
-```
+Verifies activation or reset OTP.
 
 ### POST `/api/v1/auth/resend-otp`
 
-Resends activation or onboarding OTP.
+Resends OTP for supported flows.
+
+### POST `/api/v1/auth/login`
+
+Authenticates any platform user through the shared login entry.
+
+### POST `/api/v1/auth/refresh`
+
+Refreshes access token state using refresh cookies.
+
+### GET `/api/v1/auth/me`
+
+Returns the current authenticated user contract.
+
+### POST `/api/v1/auth/logout`
+
+Clears session state.
 
 ### POST `/api/v1/auth/forgot-password`
 
-Requests a password reset OTP.
+Starts the password reset flow.
 
 ### POST `/api/v1/auth/reset-password`
 
 Completes password reset.
 
-### POST `/api/v1/auth/refresh`
-
-Refreshes the access token using refresh cookies.
-
-### POST `/api/v1/auth/logout`
-
-Clears auth state.
-
 ## Courses
 
 ### GET `/api/v1/courses`
 
-Returns a course list.
+Returns visible course entries for the current user.
 
 ### GET `/api/v1/courses/{course_id}`
 
-Returns course detail.
+Returns course detail plus current visible version metadata when allowed.
 
 ### GET `/api/v1/courses/{course_id}/versions`
 
-Returns course versions.
+Returns visible document versions for the course.
+
+### GET `/api/v1/courses/{course_id}/preview`
+
+Returns preview metadata for the course file.
 
 ### GET `/api/v1/courses/{course_id}/download-url`
 
-Returns a temporary download URL.
+Returns a temporary download URL when the user is allowed to access the file.
 
 ### POST `/api/v1/courses/upload`
 
-Uploads a course file or related content.
+Uploads a teacher/admin course document.
 
 ## Contributions
 
@@ -112,41 +95,92 @@ Uploads a course file or related content.
 
 Creates a student contribution.
 
+Supported file families:
+
+- `PDF`
+- `DOC`
+- `DOCX`
+- `PPT`
+- `PPTX`
+- `PNG`
+- `JPG`
+- `JPEG`
+
 ### GET `/api/v1/contributions/me`
 
-Returns paginated contributions for the current student.
+Returns paginated contributions for the current student, including preview
+metadata such as:
 
-Response shape:
-
-```json
-{
-  "items": [],
-  "meta": {
-    "total": 0,
-    "limit": 20,
-    "offset": 0,
-    "has_more": false
-  }
-}
-```
+- `s3_key`
+- `mime_type`
+- `preview_text`
 
 ### GET `/api/v1/admin/contributions`
 
-Returns paginated contribution review queue.
+Returns paginated moderation queue items with preview metadata.
 
 ### PATCH `/api/v1/admin/contributions/{contribution_id}`
 
 Reviews a contribution.
 
+Accepted review intent currently supports the normalized outcomes:
+
+- `APPROVED`
+- `REJECTED`
+- `REVISION_REQUESTED`
+
+Frontend currently sends approve/reject actions through this route.
+
+## Teacher Verification
+
+### GET `/api/v1/admin/teacher-requests`
+
+Returns paginated teacher verification requests.
+
+### POST `/api/v1/admin/teacher-requests/{request_id}/approve`
+
+Approves a pending teacher request and activates the teacher account.
+
+## User Management
+
+### GET `/api/v1/admin/users`
+
+Returns paginated user list for admin operations.
+
+### PATCH `/api/v1/admin/users/{user_id}`
+
+Updates selected user state such as role or activation flags.
+
+## Files
+
+### GET `/api/v1/files/proxy/{path:path}`
+
+Secure backend file proxy used for preview and protected file retrieval.
+
+Access rules:
+
+- admins and superadmins can preview moderated and pending files
+- uploaders can preview their own files
+- regular learners only receive approved files
+
+### GET `/api/files/proxy/{path...}`
+
+Frontend same-origin proxy route that forwards preview requests to the backend
+file proxy with auth headers.
+
 ## Reports
 
 ### POST `/api/v1/reports`
 
-Creates a report/feedback item.
+Creates a report or feedback item.
 
 ### GET `/api/v1/admin/reports`
 
 Returns paginated admin report list.
+
+### PATCH `/api/v1/admin/reports/{report_id}`
+
+Marks a report resolved with the chosen action payload.
 
 ## Study Tools
 
@@ -185,27 +219,7 @@ Returns paginated admin report list.
 - `POST /api/v1/rag/sessions/{session_id}/messages`
 - `DELETE /api/v1/rag/sessions/{session_id}`
 
-RAG messages list is paginated with the standard `items/meta` shape.
-
-## Forums
-
-- `GET /api/v1/forums/posts`
-- `POST /api/v1/forums/posts`
-- `GET /api/v1/forums/posts/{post_id}`
-- `PATCH /api/v1/forums/posts/{post_id}`
-- `DELETE /api/v1/forums/posts/{post_id}`
-- `POST /api/v1/forums/posts/{post_id}/replies`
-- `POST /api/v1/forums/posts/{post_id}/vote`
-- `PATCH /api/v1/forums/replies/{reply_id}/pin`
-
-## Notifications
-
-- `GET /api/v1/notifications`
-- `PATCH /api/v1/notifications/{notification_id}`
-
-Notifications use the standard paginated response shape.
-
-## Dashboard
+## Dashboards And Notifications
 
 - `GET /api/v1/students/me/dashboard`
 - `GET /api/v1/students/me/history`
@@ -213,17 +227,11 @@ Notifications use the standard paginated response shape.
 - `GET /api/v1/teacher/courses/{course_id}/analytics`
 - `GET /api/v1/admin/dashboard`
 - `GET /api/v1/admin/analytics/export`
+- `GET /api/v1/notifications`
+- `PATCH /api/v1/notifications/{notification_id}`
 
-## Gamification
+## Contract Notes
 
-- `GET /api/v1/users/{user_id}/xp`
-- `GET /api/v1/users/{user_id}/badges`
-- `GET /api/v1/leaderboard`
-- `GET /api/v1/profile/{username}`
-
-## Notes
-
-- The backend is the contract source of truth.
-- Frontend types should track backend responses directly, not invent fallback
-  fields.
-- Paginated list responses should use the standard `items/meta` envelope.
+- backend responses are the source of truth
+- frontend contract types should mirror backend behavior directly
+- paginated responses use the standard `items/meta` envelope where supported

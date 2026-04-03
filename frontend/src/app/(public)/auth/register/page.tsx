@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { RegisterPageClient } from "./register-page-client";
 
 export const metadata: Metadata = {
-  title: "Register",
-  description: "Create your ATLAS account as a student or teacher.",
+  title: "Student Registration",
+  description: "Create your ATLAS student account and start your learning journey.",
 };
 
 export default function RegisterPage() {

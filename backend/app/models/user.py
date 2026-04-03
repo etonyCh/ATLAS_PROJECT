@@ -18,12 +18,25 @@ class UserRole(str, Enum):
     SUPERADMIN = "SUPERADMIN"
 
 
+class AccountStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    PENDING_VERIFICATION = "PENDING_VERIFICATION"
+    SUSPENDED = "SUSPENDED"
+
+
+class TeacherRequestStatus(str, Enum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
 class StudentLevel(str, Enum):
     L1 = "L1"
     L2 = "L2"
     L3 = "L3"
     M1 = "M1"
     M2 = "M2"
+    DOCTORAT = "Doctorat"
 
 
 class OTPPurpose(str, Enum):
@@ -71,7 +84,12 @@ class UserBase(SQLModel):
     email: str = Field(unique=True, index=True)
     full_name: Optional[str] = None
     role: UserRole = UserRole.STUDENT
+    status: AccountStatus = Field(default=AccountStatus.ACTIVE)
     establishment_id: Optional[uuid.UUID] = Field(default=None, foreign_key="establishment.id", nullable=True)
+    
+    # Trust & Verification
+    trust_score: int = Field(default=0, description="Reputation score for verified badges")
+    profile_completeness: int = Field(default=0, description="0-100 score of profile completion")
     
     # Security: Accounts must be explicitly activated via OTP
     is_active: bool = False
@@ -105,6 +123,27 @@ class TeacherProfile(SQLModel, table=True):
     department: Optional[Department] = Relationship(back_populates="teacher_profiles")
 
 
+class TeacherVerificationRequest(SQLModel, table=True):
+    """
+    Tracks trust-first teacher onboarding requests submitted from the public educator flow.
+    """
+    id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: uuid.UUID = Field(foreign_key="user.id", unique=True, ondelete="CASCADE")
+    requested_department: str = Field(index=True)
+    requested_domain: str = Field(index=True)
+    establishment_id: Optional[uuid.UUID] = Field(default=None, foreign_key="establishment.id", nullable=True)
+    status: TeacherRequestStatus = Field(default=TeacherRequestStatus.PENDING, index=True)
+    reviewed_by: Optional[uuid.UUID] = Field(default=None, foreign_key="user.id", nullable=True)
+    review_note: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    reviewed_at: Optional[datetime] = None
+
+    user: Optional["User"] = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "[TeacherVerificationRequest.user_id]"}
+    )
+    establishment: Optional[Establishment] = Relationship()
+
+
 class User(UserBase, table=True):
     """
     Database table for Users.
@@ -119,6 +158,10 @@ class User(UserBase, table=True):
     otp_tokens: List["OTPToken"] = Relationship(back_populates="user", cascade_delete=True)
     teacher_profile: Optional[TeacherProfile] = Relationship(back_populates="user", cascade_delete=True)
     establishment: Optional[Establishment] = Relationship(back_populates="users")
+    teacher_request: Optional[TeacherVerificationRequest] = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "[TeacherVerificationRequest.user_id]"},
+        cascade_delete=True,
+    )
 
 
 class UserCreate(UserBase):

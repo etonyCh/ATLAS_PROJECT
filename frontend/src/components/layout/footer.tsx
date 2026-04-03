@@ -114,16 +114,6 @@ export function Footer() {
                   Features
                 </Link>
               </li>
-              <li>
-                <Link href="/learning-path" className="transition-colors hover:text-foreground">
-                  Learning Paths
-                </Link>
-              </li>
-              <li>
-                <Link href="/ai/workspace" className="transition-colors hover:text-foreground">
-                  AI Workspace
-                </Link>
-              </li>
             </ul>
           </div>
 
@@ -131,18 +121,13 @@ export function Footer() {
             <h4 className="mb-4 font-semibold">Academic</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>
-                <Link href="/explore" className="transition-colors hover:text-foreground">
-                  Explore
-                </Link>
-              </li>
-              <li>
                 <Link href="/courses" className="transition-colors hover:text-foreground">
                   Course Library
                 </Link>
               </li>
               <li>
-                <Link href="/contribute" className="transition-colors hover:text-foreground">
-                  Contribute
+                <Link href="/upload" className="transition-colors hover:text-foreground">
+                  Upload Materials
                 </Link>
               </li>
             </ul>
@@ -163,7 +148,12 @@ export function Footer() {
               </li>
               <li>
                 <Link href="/auth/register" className="transition-colors hover:text-foreground">
-                  Join ATLAS
+                  Student Sign Up
+                </Link>
+              </li>
+              <li>
+                <Link href="/auth/teacher-request" className="transition-colors hover:text-foreground">
+                  Teacher Verification
                 </Link>
               </li>
             </ul>

@@ -1,115 +1,43 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle,
   XCircle,
   Clock,
   Search,
-  Filter,
   Eye,
   FileText,
   BookOpen,
-  MessageSquare,
   Download,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/input";
 import { StatusChip } from "@/components/ui/status-chip";
+import { FilePreview } from "@/components/ui/file-preview";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
+  DialogDescription,
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-
-const mockContributions = [
-  {
-    id: 1,
-    title: "Chapter 5 Quiz - Mathematics",
-    type: "quiz",
-    author: "Ahmed Ben Ali",
-    authorEmail: "ahmed.benali@atlas.tn",
-    filiere: "Computer Science",
-    level: "L1",
-    status: "pending",
-    date: "2 hours ago",
-    description: "20-question quiz covering derivatives and integrals",
-  },
-  {
-    id: 2,
-    title: "Flashcard Deck: Physics Formulas",
-    type: "flashcard",
-    author: "Fatma Trabelsi",
-    authorEmail: "fatma.trabelsi@atlas.tn",
-    filiere: "Engineering",
-    level: "L2",
-    status: "pending",
-    date: "5 hours ago",
-    description: "50 flashcards covering Newton's laws and thermodynamics",
-  },
-  {
-    id: 3,
-    title: "Course Summary: History 101",
-    type: "summary",
-    author: "Mohamed Hedi",
-    authorEmail: "mohamed.hedi@atlas.tn",
-    filiere: "Arts",
-    level: "L1",
-    status: "rejected",
-    date: "1 day ago",
-    description: "Comprehensive summary of ancient civilizations",
-    rejectionReason:
-      "Contains factual errors in section 3. Please review and resubmit.",
-  },
-  {
-    id: 4,
-    title: "Mind Map: Biology Cell Division",
-    type: "mindmap",
-    author: "Sarra Mansour",
-    authorEmail: "sarra.mansour@atlas.tn",
-    filiere: "Biology",
-    level: "L1",
-    status: "pending",
-    date: "1 day ago",
-    description: "Visual mind map of mitosis and meiosis processes",
-  },
-  {
-    id: 5,
-    title: "Quiz: Introduction to Programming",
-    type: "quiz",
-    author: "Youssef Salah",
-    authorEmail: "youssef.salah@atlas.tn",
-    filiere: "Computer Science",
-    level: "L1",
-    status: "approved",
-    date: "2 days ago",
-    description: "15-question quiz covering basic programming concepts",
-  },
-  {
-    id: 6,
-    title: "Flashcard Deck: Chemistry Elements",
-    type: "flashcard",
-    author: "Nadia Khelifi",
-    authorEmail: "nadia.khelifi@atlas.tn",
-    filiere: "Chemistry",
-    level: "L1",
-    status: "pending",
-    date: "2 days ago",
-    description: "30 flashcards for periodic table elements",
-  },
-];
+import { contributionsApi } from "@/lib/api";
+import type { Contribution } from "@/types/api.types";
 
 const typeIcons: Record<string, typeof BookOpen> = {
   quiz: FileText,
   flashcard: BookOpen,
   summary: FileText,
   mindmap: FileText,
+  course_material: BookOpen,
 };
 
 const typeLabels: Record<string, string> = {
@@ -117,6 +45,7 @@ const typeLabels: Record<string, string> = {
   flashcard: "Flashcards",
   summary: "Summary",
   mindmap: "Mind Map",
+  course_material: "Material",
 };
 
 export default function ManageContributions() {
@@ -124,43 +53,87 @@ export default function ManageContributions() {
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedContribution, setSelectedContribution] = useState<
-    (typeof mockContributions)[0] | null
-  >(null);
+  const [selectedContribution, setSelectedContribution] = useState<Contribution | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const itemsPerPage = 5;
 
-  const filteredContributions = mockContributions.filter((contribution) => {
-    const matchesSearch =
-      contribution.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      contribution.author.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesType =
-      typeFilter === "all" || contribution.type === typeFilter;
-    const matchesStatus =
-      statusFilter === "all" || contribution.status === statusFilter;
-    return matchesSearch && matchesType && matchesStatus;
+  const queryClient = useQueryClient();
+
+  const queryParams = {
+    limit: 50, 
+    offset: 0,
+    ...(statusFilter !== "all" && { status: statusFilter.toUpperCase() }),
+  };
+
+  const { data: response, isLoading } = useQuery({
+    queryKey: ["admin_contributions", queryParams],
+    queryFn: () => contributionsApi.admin.list(queryParams),
   });
 
-  const totalPages = Math.ceil(filteredContributions.length / itemsPerPage);
+  const contributions = response?.items || [];
+
+  const filteredContributions = contributions.filter((contribution) => {
+    const matchesSearch =
+      contribution.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      contribution.uploader_id.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesType = typeFilter === "all" || typeFilter === "course_material";
+    return matchesSearch && matchesType;
+  });
+
+  const totalPages = Math.ceil(filteredContributions.length / itemsPerPage) || 1;
   const paginatedContributions = filteredContributions.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage,
   );
 
-  const pendingCount = mockContributions.filter(
-    (c) => c.status === "pending",
+  const pendingCount = contributions.filter(
+    (c) => c.status === "PENDING",
   ).length;
 
+  const approveMutation = useMutation({
+    mutationFn: async ({ id, note }: { id: string; note: string }) => {
+      return contributionsApi.admin.approve(id, { review_note: note });
+    },
+    onSuccess: () => {
+      alert("Contribution Approved");
+      queryClient.invalidateQueries({ queryKey: ["admin_contributions"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard", "teacher"] });
+      setSelectedContribution(null);
+      setReviewNote("");
+    },
+    onError: (error: Error) => {
+      alert(`Action failed: ${error.message}`);
+    }
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: async ({ id, note }: { id: string; note: string }) => {
+      return contributionsApi.admin.reject(id, note);
+    },
+    onSuccess: () => {
+      alert("Contribution Rejected");
+      queryClient.invalidateQueries({ queryKey: ["admin_contributions"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard", "teacher"] });
+      setSelectedContribution(null);
+      setReviewNote("");
+    },
+    onError: (error: Error) => {
+      alert(`Action failed: ${error.message}`);
+    }
+  });
+
   const handleApprove = () => {
-    console.log("Approved:", selectedContribution?.id, "Note:", reviewNote);
-    setSelectedContribution(null);
-    setReviewNote("");
+    if (!selectedContribution) return;
+    approveMutation.mutate({ id: selectedContribution.id, note: reviewNote });
   };
 
   const handleReject = () => {
-    console.log("Rejected:", selectedContribution?.id, "Reason:", reviewNote);
-    setSelectedContribution(null);
-    setReviewNote("");
+    if (!selectedContribution) return;
+    if (!reviewNote.trim()) {
+      alert("Review note required: You must provide a reason for rejection.");
+      return;
+    }
+    rejectMutation.mutate({ id: selectedContribution.id, note: reviewNote });
   };
 
   return (
@@ -174,7 +147,7 @@ export default function ManageContributions() {
         </div>
         <div className="flex items-center gap-2 rounded-lg bg-amber-100 px-4 py-2 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
           <Clock className="h-5 w-5" />
-          <span className="font-medium">{pendingCount} pending reviews</span>
+          <span className="font-medium">{isLoading ? "---" : pendingCount} pending reviews</span>
         </div>
       </div>
 
@@ -182,15 +155,15 @@ export default function ManageContributions() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search contributions..."
+            placeholder="Search titles or authors..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
             className="pl-10"
           />
         </div>
         <select
           value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
+          onChange={(e) => { setTypeFilter(e.target.value); setCurrentPage(1); }}
           className="rounded-lg border bg-background px-4 py-2 text-sm"
         >
           <option value="all">All Types</option>
@@ -198,10 +171,11 @@ export default function ManageContributions() {
           <option value="flashcard">Flashcards</option>
           <option value="summary">Summary</option>
           <option value="mindmap">Mind Map</option>
+          <option value="course_material">Material</option>
         </select>
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }}
           className="rounded-lg border bg-background px-4 py-2 text-sm"
         >
           <option value="all">All Status</option>
@@ -211,47 +185,61 @@ export default function ManageContributions() {
         </select>
       </div>
 
-      <div className="grid gap-4">
-        {paginatedContributions.map((contribution) => {
-          const TypeIcon = typeIcons[contribution.type] || FileText;
-          return (
-            <Card key={contribution.id}>
-              <CardContent className="p-4">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-                      <TypeIcon className="h-6 w-6 text-primary" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold">{contribution.title}</h3>
-                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
-                          {typeLabels[contribution.type]}
-                        </span>
+      {isLoading ? (
+        <div className="flex h-[300px] items-center justify-center border rounded-lg">
+           <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      ) : (
+        <div className="grid gap-4">
+          {paginatedContributions.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground border rounded-lg bg-card border-dashed">
+              No contributions match your filters.
+            </div>
+          ) : (
+            paginatedContributions.map((contribution) => {
+              const typeStr = "course_material";
+              const TypeIcon = typeIcons[typeStr] || FileText;
+              const uploaderName = contribution.uploader_id || "Unknown Student";
+              
+              return (
+                <Card key={contribution.id}>
+                  <CardContent className="p-4">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
+                          <TypeIcon className="h-6 w-6 text-primary" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold">{contribution.title}</h3>
+                            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                              {typeLabels[typeStr] || "Material"}
+                            </span>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            by {uploaderName} • {new Date(contribution.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
                       </div>
-                      <p className="text-sm text-muted-foreground">
-                        by {contribution.author} • {contribution.filiere} •{" "}
-                        {contribution.level} • {contribution.date}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <StatusChip status={contribution.status} />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedContribution(contribution)}
+                        >
+                          <Eye className="mr-2 h-4 w-4" />
+                          Review
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <StatusChip status={contribution.status} />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSelectedContribution(contribution)}
-                    >
-                      <Eye className="mr-2 h-4 w-4" />
-                      Review
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+                  </CardContent>
+                </Card>
+              );
+            })
+          )}
+        </div>
+      )}
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
@@ -293,80 +281,85 @@ export default function ManageContributions() {
 
       <Dialog
         open={!!selectedContribution}
-        onOpenChange={() => setSelectedContribution(null)}
+        onOpenChange={(open) => !open && setSelectedContribution(null)}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-5xl h-[85vh] overflow-hidden">
           <DialogHeader>
             <DialogTitle>Review Contribution</DialogTitle>
+            <DialogDescription>
+              Preview the uploaded file before you approve or reject it.
+            </DialogDescription>
           </DialogHeader>
           {selectedContribution && (
-            <div className="space-y-4">
+            <div className="flex h-full flex-col gap-4 overflow-hidden">
               <div className="rounded-lg border p-4">
                 <h3 className="font-semibold">{selectedContribution.title}</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  by {selectedContribution.author} (
-                  {selectedContribution.authorEmail})
+                  by {selectedContribution.uploader_id} 
                 </p>
                 <div className="mt-2 flex items-center gap-2">
                   <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
-                    {typeLabels[selectedContribution.type]}
+                    Material
                   </span>
-                  <span className="text-sm text-muted-foreground">
-                    {selectedContribution.filiere} •{" "}
-                    {selectedContribution.level}
-                  </span>
+                  <StatusChip status={selectedContribution.status} />
                 </div>
               </div>
 
               <div>
                 <h4 className="font-medium">Description</h4>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {selectedContribution.description}
+                  {selectedContribution.description || "No description provided."}
                 </p>
               </div>
 
-              {selectedContribution.rejectionReason && (
+              {selectedContribution.status === "REJECTED" && selectedContribution.review_note ? (
                 <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
                   <h4 className="font-medium text-destructive">
-                    Rejection Reason
+                    Previous Rejection Reason
                   </h4>
                   <p className="mt-1 text-sm">
-                    {selectedContribution.rejectionReason}
+                    {selectedContribution.review_note}
                   </p>
                 </div>
-              )}
+              ) : null}
 
-              <div>
-                <label className="font-medium">Review Note</label>
-                <Textarea
-                  placeholder="Add a note for the contributor..."
-                  value={reviewNote}
-                  onChange={(e) => setReviewNote(e.target.value)}
-                  className="mt-2"
-                  rows={3}
+              <div className="min-h-0 flex-1 overflow-auto">
+                <FilePreview
+                  storagePath={selectedContribution.s3_key}
+                  mimeType={selectedContribution.mime_type}
+                  title={selectedContribution.title}
+                  previewText={selectedContribution.preview_text}
                 />
               </div>
 
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Download className="h-4 w-4" />
-                <span>Preview and download options available</span>
-              </div>
+              {selectedContribution.status === "PENDING" ? (
+                <div>
+                  <label className="font-medium">Review Note</label>
+                  <Textarea
+                    placeholder="Add a note for the contributor (required for rejection)..."
+                    value={reviewNote}
+                    onChange={(e) => setReviewNote(e.target.value)}
+                    className="mt-2"
+                    rows={3}
+                  />
+                </div>
+              ) : null}
             </div>
           )}
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="gap-2 sm:gap-0 mt-4">
             <Button
               variant="outline"
               onClick={handleReject}
-              disabled={selectedContribution?.status !== "pending"}
+              disabled={selectedContribution?.status !== "PENDING" || rejectMutation.isPending}
             >
-              <XCircle className="mr-2 h-4 w-4" />
+              {rejectMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
               Reject
             </Button>
             <Button
               onClick={handleApprove}
-              disabled={selectedContribution?.status !== "pending"}
+              disabled={selectedContribution?.status !== "PENDING" || approveMutation.isPending}
             >
-              <CheckCircle className="mr-2 h-4 w-4" />
+              {approveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
               Approve
             </Button>
           </DialogFooter>

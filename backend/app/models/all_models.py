@@ -8,6 +8,8 @@ from app.models.user import (
     OTPToken,
     OTPPurpose,
     TeacherProfile,
+    TeacherVerificationRequest,
+    TeacherRequestStatus,
     Establishment,
     Department,
 )
@@ -123,6 +125,8 @@ __all__ = [
     "UserCreate",
     "UserRead",
     "TeacherProfile",
+    "TeacherVerificationRequest",
+    "TeacherRequestStatus",
     "Establishment",
     "Contribution",
     "ContributionStatus",

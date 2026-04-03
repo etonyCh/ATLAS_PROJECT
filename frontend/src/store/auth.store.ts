@@ -36,73 +36,87 @@ function toErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
-export const useAuthStore = create<AuthState>()((set) => ({
-  user: null,
-  status: "idle",
-  error: null,
-  hydrated: false,
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set) => ({
+      user: null,
+      status: "idle",
+      error: null,
+      hydrated: false,
 
-  login: async (email, password) => {
-    set({ status: "loading", error: null });
-    try {
-      const response = await authApi.login({ email, password });
-      setAccessToken(response.accessToken);
-      set({
-        user: response.user,
-        status: "authenticated",
-        error: null,
-      });
-    } catch (error) {
-      set({
-        user: null,
-        status: "unauthenticated",
-        error: toErrorMessage(error, "Login failed"),
-      });
-      throw error;
-    }
-  },
+      login: async (email, password) => {
+        set({ status: "loading", error: null });
+        try {
+          const response = await authApi.login({ email, password });
+          setAccessToken(response.accessToken);
+          set({
+            user: response.user,
+            status: "authenticated",
+            error: null,
+          });
+        } catch (error) {
+          set({
+            user: null,
+            status: "unauthenticated",
+            error: toErrorMessage(error, "Login failed"),
+          });
+          throw error;
+        }
+      },
 
-  register: async (data) => {
-    set({ status: "loading", error: null });
-    try {
-      await authApi.register(data);
-      set({ status: "unauthenticated", error: null });
-    } catch (error) {
-      set({ status: "idle", error: toErrorMessage(error, "Registration failed") });
-      throw error;
-    }
-  },
+      register: async (data) => {
+        set({ status: "loading", error: null });
+        try {
+          await authApi.register(data);
+          set({ status: "unauthenticated", error: null });
+        } catch (error) {
+          set({ status: "idle", error: toErrorMessage(error, "Registration failed") });
+          throw error;
+        }
+      },
 
-  logout: async () => {
-    set({ status: "loading", error: null });
-    try {
-      await authApi.logout();
-    } finally {
-      setAccessToken(null);
-      set({ user: null, status: "unauthenticated", error: null });
-    }
-  },
+      logout: async () => {
+        set({ status: "loading", error: null });
+        try {
+          await authApi.logout();
+        } finally {
+          setAccessToken(null);
+          set({ user: null, status: "unauthenticated", error: null });
+        }
+      },
 
-  checkAuth: async () => {
-    set({ status: "loading", error: null });
-    try {
-      const user = await authApi.me();
-      set({ user, status: "authenticated", error: null });
-    } catch {
-      setAccessToken(null);
-      set({ user: null, status: "unauthenticated", error: null });
-    }
-  },
+      checkAuth: async () => {
+        set({ status: "loading", error: null });
+        try {
+          const user = await authApi.me();
+          set({ user, status: "authenticated", error: null });
+        } catch {
+          setAccessToken(null);
+          set({ user: null, status: "unauthenticated", error: null });
+        }
+      },
 
-  setUser: (user) =>
-    set({
-      user,
-      status: user ? "authenticated" : "unauthenticated",
+      setUser: (user) =>
+        set({
+          user,
+          status: user ? "authenticated" : "unauthenticated",
+        }),
+
+      clearError: () => set({ error: null }),
+      markHydrated: () => set({ hydrated: true }),
     }),
-
-  clearError: () => set({ error: null }),
-  markHydrated: () => set({ hydrated: true }),
-}));
+    {
+      name: "atlas-auth",
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({ user: state.user }),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.hydrated = true;
+        }
+      },
+    },
+  ),
+);
 
 if (typeof window !== "undefined") {
   window.addEventListener("auth:logout", () => {

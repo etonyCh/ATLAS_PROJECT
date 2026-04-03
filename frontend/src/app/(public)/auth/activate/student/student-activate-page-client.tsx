@@ -76,8 +76,8 @@ export function StudentActivatePageClient() {
               <p className="text-muted-foreground">
                 Your student account has been verified. Welcome to ATLAS.
               </p>
-              <Button className="mt-4 w-full" onClick={() => router.push("/dashboard")}>
-                Go to Dashboard
+              <Button className="mt-4 w-full" onClick={() => router.push("/auth/login")}>
+                Login to Continue
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </div>

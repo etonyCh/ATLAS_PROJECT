@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   FileText,
@@ -16,11 +15,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusChip } from "@/components/ui/status-chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FilePreview } from "@/components/ui/file-preview";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useContributionsMineQuery } from "@/queries";
+import type { Contribution } from "@/types/api.types";
 
 export default function MyContributionsPage() {
   const router = useRouter();
   const { data: contributions, isLoading } = useContributionsMineQuery();
+  const [selectedContribution, setSelectedContribution] = useState<Contribution | null>(null);
   const [filter, setFilter] = useState<
     "all" | "PENDING" | "APPROVED" | "REJECTED"
   >("all");
@@ -111,10 +120,12 @@ export default function MyContributionsPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <StatusChip status={contribution.status} />
-                  <Button variant="ghost" size="icon" asChild>
-                    <Link href={`/contributions/${contribution.id}`}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setSelectedContribution(contribution)}
+                  >
                       <Eye className="h-4 w-4" />
-                    </Link>
                   </Button>
                 </div>
               </CardContent>
@@ -122,6 +133,33 @@ export default function MyContributionsPage() {
           ))}
         </div>
       )}
+
+      <Dialog
+        open={!!selectedContribution}
+        onOpenChange={(open) => !open && setSelectedContribution(null)}
+      >
+        <DialogContent className="max-w-5xl h-[85vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>{selectedContribution?.title}</DialogTitle>
+            <DialogDescription>
+              {selectedContribution?.status === "PENDING"
+                ? "Your file is still waiting for moderation. You can preview it here, but other students cannot access it until it is approved."
+                : selectedContribution?.status === "REJECTED"
+                  ? "This upload was rejected. You can still review the file and feedback here."
+                  : "Approved file preview."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-auto">
+            <FilePreview
+              storagePath={selectedContribution?.s3_key}
+              mimeType={selectedContribution?.mime_type}
+              title={selectedContribution?.title}
+              previewText={selectedContribution?.preview_text}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

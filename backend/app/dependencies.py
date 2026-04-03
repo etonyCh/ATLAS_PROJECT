@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import security
 from app.core.exceptions import atlas_error
 from app.db.session import get_session
-from app.models.user import User
+from app.models.user import AccountStatus, User, UserRole
 
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -41,7 +41,21 @@ async def get_current_user(
             "The access token is invalid or has expired.",
             status_code=401,
         )
+    
+    if not user.is_active or user.status == AccountStatus.SUSPENDED:
+        raise atlas_error("AUTH_007", "Account is inactive or suspended.", status_code=403)
+
     return user
+
+async def require_active(current_user: User = Depends(get_current_user)) -> User:
+    """Dependency to block PENDING_VERIFICATION users from standard endpoints."""
+    if current_user.status != AccountStatus.ACTIVE:
+        raise atlas_error(
+            "AUTH_008",
+            "Your account is pending verification and cannot access this resource.",
+            status_code=403,
+        )
+    return current_user
 
 
 def require_role(*roles: str) -> Callable[[User], User]:
@@ -56,3 +70,18 @@ def require_role(*roles: str) -> Callable[[User], User]:
         return current_user
 
     return dependency
+
+
+def verify_department_access(user: User, target_department_id: UUID) -> bool:
+    """ABAC Rule: Verify if user has rights over a specific department."""
+    if user.role == UserRole.SUPERADMIN:
+        return True
+    if user.role == UserRole.TEACHER:
+        if user.teacher_profile and user.teacher_profile.department_id == target_department_id:
+            return True
+        return False
+    # Admins check organization
+    # For now, allow Admins if they are in the same Establishment tree (simplification)
+    if user.role == UserRole.ADMIN:
+        return True
+    return False

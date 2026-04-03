@@ -7,6 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, Uplo
 from pydantic import BaseModel
 from redis.asyncio import Redis
 from sqlalchemy import desc, func, select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cache import invalidate_cache_patterns
@@ -15,7 +16,7 @@ from app.core.redis import get_redis_client
 from app.db.session import get_session
 from app.dependencies import get_current_user, require_role
 from app.models.all_models import Notification
-from app.models.contribution import Contribution
+from app.models.contribution import Contribution, DocumentVersion
 from app.models.user import User
 from app.schemas.pagination import build_paginated_response
 
@@ -24,8 +25,10 @@ router = APIRouter(tags=["Contributions"])
 
 
 class ReviewContributionRequest(BaseModel):
-    status: str
+    status: str | None = None
+    action: str | None = None
     rejection_reason: str | None = None
+    review_note: str | None = None
 
 
 class ReportCreateRequest(BaseModel):
@@ -42,6 +45,26 @@ class ResolveReportRequest(BaseModel):
 
 
 REPORT_TITLE_PREFIX = "Feedback received: "
+
+
+def _serialize_contribution(item: Contribution) -> dict[str, Any]:
+    data = item.model_dump()
+    latest_version: DocumentVersion | None = None
+    if item.document_versions:
+        latest_version = sorted(
+            item.document_versions,
+            key=lambda version: version.version_number,
+            reverse=True,
+        )[0]
+
+    data["review_note"] = item.rejection_reason
+    data["updated_at"] = None
+    data["mime_type"] = latest_version.mime_type if latest_version else None
+    data["s3_key"] = latest_version.storage_path if latest_version else None
+    data["preview_text"] = (
+        (latest_version.ocr_text[:1200] if latest_version and latest_version.ocr_text else None)
+    )
+    return data
 
 
 def _serialize_report(notification: Notification) -> dict[str, Any]:
@@ -121,13 +144,19 @@ async def list_my_contributions(
     ).scalar_one()
     result = await db.execute(
         select(Contribution)
+        .options(selectinload(Contribution.document_versions))
         .where(*filters)
         .order_by(desc(Contribution.created_at))
         .offset(offset)
         .limit(limit)
     )
     items = result.scalars().all()
-    return build_paginated_response(items, total=total, limit=limit, offset=offset)
+    return build_paginated_response(
+        [_serialize_contribution(item) for item in items],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/admin/contributions")
@@ -147,13 +176,19 @@ async def list_contribution_queue(
     ).scalar_one()
     result = await db.execute(
         select(Contribution)
+        .options(selectinload(Contribution.document_versions))
         .where(*filters)
         .order_by(desc(Contribution.created_at))
         .offset(offset)
         .limit(limit)
     )
     items = result.scalars().all()
-    return build_paginated_response(items, total=total, limit=limit, offset=offset)
+    return build_paginated_response(
+        [_serialize_contribution(item) for item in items],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.patch("/admin/contributions/{contribution_id}")
@@ -168,10 +203,19 @@ async def review_contribution(
     from app.services.doc_processing.moderation_service import execute_contribution_review
 
     try:
+        raw_status = payload.status or payload.action
+        normalized_status = (raw_status or "").upper()
+        if normalized_status == "APPROVE":
+            normalized_status = "APPROVED"
+        elif normalized_status == "REJECT":
+            normalized_status = "REJECTED"
+        if normalized_status not in {"APPROVED", "REJECTED", "REVISION_REQUESTED"}:
+            raise atlas_error("CONTRIBUTION_003", "Invalid review status.", status_code=400)
+
         result = await execute_contribution_review(
             contribution_id=str(contribution_id),
-            status=payload.status,
-            rejection_reason=payload.rejection_reason,
+            status=normalized_status,
+            rejection_reason=payload.rejection_reason or payload.review_note,
             admin_user=current_user,
             session=db,
             background_tasks=background_tasks,

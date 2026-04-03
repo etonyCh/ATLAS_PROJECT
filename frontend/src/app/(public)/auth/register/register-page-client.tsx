@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Check, Eye, EyeOff, GraduationCap, Loader2, X } from "lucide-react";
+import { ArrowRight, Check, Eye, EyeOff, GraduationCap, Loader2, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import {
@@ -46,8 +46,6 @@ const PASSWORD_REQUIREMENTS = [
 
 export function RegisterPageClient() {
   const router = useRouter();
-  const [step, setStep] = useState<"form" | "success">("form");
-  const [role, setRole] = useState<"STUDENT" | "TEACHER">("STUDENT");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -75,7 +73,7 @@ export function RegisterPageClient() {
       return;
     }
 
-    if (role === "STUDENT" && (!filiere || !level)) {
+    if (!filiere || !level) {
       setError("Please select your filiere and level");
       return;
     }
@@ -87,59 +85,17 @@ export function RegisterPageClient() {
         email,
         password,
         full_name: fullName,
-        role,
-        filiere: role === "STUDENT" ? filiere : undefined,
-        level: role === "STUDENT" ? (level as StudentLevel) : undefined,
+        role: "STUDENT",
+        filiere,
+        level: level as StudentLevel,
       });
-      // SOTA: Auto-redirect to OTP activation page with email pre-filled
-      const activatePath = role === "TEACHER" ? "/auth/activate/teacher" : "/auth/activate/student";
-      router.push(`${activatePath}?email=${encodeURIComponent(email)}`);
+      router.push(`/auth/activate/student?email=${encodeURIComponent(email)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
       setIsLoading(false);
     }
   };
-
-  if (step === "success") {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6">
-            <div className="space-y-4 text-center">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-success/10">
-                <GraduationCap className="h-8 w-8 text-success" />
-              </div>
-              <h2 className="text-2xl font-bold">Check your email</h2>
-              <p className="text-muted-foreground">
-                We&apos;ve sent an activation code to{" "}
-                <span className="font-medium text-foreground">{email}</span>
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Use the activation page to verify your account and continue.
-              </p>
-              <div className="space-y-3 pt-4">
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() =>
-                    router.push(
-                      role === "TEACHER" ? "/auth/activate/teacher" : "/auth/activate/student",
-                    )
-                  }
-                >
-                  Activate Account
-                </Button>
-                <Button variant="ghost" className="w-full" onClick={() => router.push("/auth/login")}>
-                  Back to Login
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -149,8 +105,8 @@ export function RegisterPageClient() {
             <GraduationCap className="h-6 w-6 text-primary-foreground" />
           </div>
           <div>
-            <CardTitle className="text-2xl font-bold">Create Account</CardTitle>
-            <CardDescription>Join ATLAS to start your learning journey</CardDescription>
+            <CardTitle className="text-2xl font-bold">Create Student Account</CardTitle>
+            <CardDescription>Join ATLAS as a student and unlock your learning workspace</CardDescription>
           </div>
         </CardHeader>
         <CardContent>
@@ -161,33 +117,22 @@ export function RegisterPageClient() {
               </div>
             ) : null}
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">I am a</label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setRole("STUDENT")}
-                  className={`rounded-lg border-2 p-3 text-center transition-all ${
-                    role === "STUDENT"
-                      ? "border-primary bg-primary/5 text-primary"
-                      : "border-border hover:border-primary/50"
-                  }`}
-                >
-                  <span className="block font-medium">Student</span>
-                  <span className="text-xs text-muted-foreground">Learner</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole("TEACHER")}
-                  className={`rounded-lg border-2 p-3 text-center transition-all ${
-                    role === "TEACHER"
-                      ? "border-primary bg-primary/5 text-primary"
-                      : "border-border hover:border-primary/50"
-                  }`}
-                >
-                  <span className="block font-medium">Teacher</span>
-                  <span className="text-xs text-muted-foreground">Educator</span>
-                </button>
+            <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-4 text-sm text-blue-950">
+              <div className="flex items-start gap-3">
+                <ShieldCheck className="mt-0.5 h-5 w-5 text-blue-700" />
+                <div className="space-y-1">
+                  <p className="font-medium">Student self-registration</p>
+                  <p className="text-blue-900/80">
+                    Teacher accounts now go through institutional verification before activation.
+                  </p>
+                  <Link
+                    href="/auth/teacher-request"
+                    className="inline-flex items-center gap-1 font-medium text-blue-700 hover:underline"
+                  >
+                    I&apos;m a teacher
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </div>
               </div>
             </div>
 
@@ -210,37 +155,33 @@ export function RegisterPageClient() {
               autoComplete="email"
             />
 
-            {role === "STUDENT" ? (
-              <>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">
-                    Filiere <span className="text-destructive">*</span>
-                  </label>
-                  <Select value={filiere} onChange={(event) => setFiliere(event.target.value)} required>
-                    <option value="">Select your filiere</option>
-                    {FILIERES.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                Filiere <span className="text-destructive">*</span>
+              </label>
+              <Select value={filiere} onChange={(event) => setFiliere(event.target.value)} required>
+                <option value="">Select your filiere</option>
+                {FILIERES.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </Select>
+            </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">
-                    Level <span className="text-destructive">*</span>
-                  </label>
-                  <Select value={level} onChange={(event) => setLevel(event.target.value as StudentLevel)} required>
-                    <option value="">Select your level</option>
-                    {STUDENT_LEVELS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-              </>
-            ) : null}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                Level <span className="text-destructive">*</span>
+              </label>
+              <Select value={level} onChange={(event) => setLevel(event.target.value as StudentLevel)} required>
+                <option value="">Select your level</option>
+                {STUDENT_LEVELS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
 
             <div className="space-y-2">
               <label className="text-sm font-medium">Password</label>
@@ -307,6 +248,12 @@ export function RegisterPageClient() {
             <span className="text-muted-foreground">Already have an account? </span>
             <Link href="/auth/login" className="font-medium text-primary hover:underline">
               Sign in
+            </Link>
+          </div>
+          <div className="mt-2 text-center text-sm">
+            <span className="text-muted-foreground">Need educator access? </span>
+            <Link href="/auth/teacher-request" className="font-medium text-primary hover:underline">
+              Request teacher verification
             </Link>
           </div>
         </CardContent>

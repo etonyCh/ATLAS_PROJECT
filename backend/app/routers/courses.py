@@ -38,6 +38,7 @@ def _serialize_version(version: DocumentVersion, contribution: Contribution | No
         "version_number": version.version_number,
         "pipeline_status": version.pipeline_status,
         "mime_type": version.mime_type,
+        "storage_path": version.storage_path,
         "file_size_bytes": version.file_size_bytes,
         "uploaded_at": version.uploaded_at,
         "quality_score": version.quality_score,
@@ -81,6 +82,17 @@ async def _get_latest_course_version(
     if row is None:
         return None, None
     return row[0], row[1]
+
+
+def _can_access_course_contribution(current_user: User, contribution: Contribution | None) -> bool:
+    if contribution is None:
+        return False
+    role_value = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    if role_value in {"ADMIN", "SUPERADMIN"}:
+        return True
+    if contribution.uploader_id == current_user.id:
+        return True
+    return contribution.status == "APPROVED"
 
 
 @router.post("/courses/upload", status_code=status.HTTP_202_ACCEPTED)
@@ -136,13 +148,15 @@ async def upload_course(
 @router.get("/courses")
 async def list_courses(
     db: AsyncSession = Depends(get_session),
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
     result = await db.execute(select(Course).order_by(desc(Course.created_at)).limit(100))
     courses = result.scalars().all()
     payload: list[dict[str, Any]] = []
     for course in courses:
-        latest_version, _ = await _get_latest_course_version(db, course.id)
+        latest_version, contribution = await _get_latest_course_version(db, course.id)
+        if latest_version is not None and not _can_access_course_contribution(current_user, contribution):
+            latest_version = None
         payload.append(_serialize_course(course, latest_version))
     return payload
 
@@ -175,13 +189,15 @@ async def get_my_uploads(
 async def get_course(
     course_id: UUID,
     db: AsyncSession = Depends(get_session),
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     course = await db.get(Course, course_id)
     if course is None:
         raise atlas_error("COURSE_001", "Course not found.", status_code=404)
 
-    latest_version, _ = await _get_latest_course_version(db, course_id)
+    latest_version, contribution = await _get_latest_course_version(db, course_id)
+    if latest_version is not None and not _can_access_course_contribution(current_user, contribution):
+        latest_version = None
     return _serialize_course(course, latest_version)
 
 
@@ -238,8 +254,6 @@ async def get_course_stats(
         word_count = len((latest_version.ocr_text or "").split())
         estimated_read_minutes = max(5, word_count // 200) if word_count else 0
         last_updated_at = latest_version.uploaded_at
-        total_views = latest_version.view_count or 0
-        total_downloads = latest_version.download_count or 0
 
     if document_version_ids:
         # Count unique students who engaged
@@ -356,7 +370,7 @@ async def get_course_stats(
 async def list_course_versions(
     course_id: UUID,
     db: AsyncSession = Depends(get_session),
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
     course = await db.get(Course, course_id)
     if course is None:
@@ -365,10 +379,15 @@ async def list_course_versions(
     result = await db.execute(
         select(DocumentVersion, Contribution)
         .join(Contribution, Contribution.id == DocumentVersion.contribution_id)
-        .where(Contribution.course_id == course_id)
+        .where(Contribution.course_id == course_id, DocumentVersion.is_deleted.is_(False))
         .order_by(desc(DocumentVersion.version_number))
     )
-    return [_serialize_version(version, contribution) for version, contribution in result.all()]
+    visible_rows = [
+        (version, contribution)
+        for version, contribution in result.all()
+        if _can_access_course_contribution(current_user, contribution)
+    ]
+    return [_serialize_version(version, contribution) for version, contribution in visible_rows]
 
 
 @router.patch("/courses/{course_id}")
@@ -426,11 +445,13 @@ async def delete_course(
 async def get_course_download_url(
     course_id: UUID,
     db: AsyncSession = Depends(get_session),
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    latest_version, _ = await _get_latest_course_version(db, course_id)
-    if latest_version is None:
+    latest_version, contribution = await _get_latest_course_version(db, course_id)
+    if latest_version is None or contribution is None:
         raise atlas_error("COURSE_001", "Course not found.", status_code=404)
+    if not _can_access_course_contribution(current_user, contribution):
+        raise atlas_error("COURSE_003", "This file is not available yet.", status_code=403)
 
     url = minio_client.get_file_url(latest_version.storage_path, expires_in_hours=0.25)
     expires_at = datetime.utcnow() + timedelta(minutes=15)
@@ -441,11 +462,13 @@ async def get_course_download_url(
 async def get_course_preview(
     course_id: UUID,
     db: AsyncSession = Depends(get_session),
-    _current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    latest_version, _ = await _get_latest_course_version(db, course_id)
-    if latest_version is None:
+    latest_version, contribution = await _get_latest_course_version(db, course_id)
+    if latest_version is None or contribution is None:
         raise atlas_error("COURSE_001", "Course not found.", status_code=404)
+    if not _can_access_course_contribution(current_user, contribution):
+        raise atlas_error("COURSE_003", "This file is not available yet.", status_code=403)
 
     preview_url = f"/api/v1/files/proxy/{latest_version.storage_path}"
     return {

@@ -63,5 +63,9 @@ export function useLogoutMutation() {
     onSuccess: () => {
       queryClient.clear();
     },
+    onError: () => {
+      // Token may already be invalid - still clear query cache
+      queryClient.clear();
+    },
   });
 }

@@ -72,9 +72,19 @@ async def create_email_otp(
         # prevents the `user` object from expiring.
         await session.flush()
         
+        # ALWAYS log the OTP prominently in backend logs for visibility during testing
+        banner = (
+            f"\n{'='*60}\n"
+            f"🚀🚀🚀 ATLAS OTP GENERATED (STUDENT/USER) 🚀🚀🚀\n"
+            f"📧 User:  {user.email}\n"
+            f"🔑 CODE:  [ {code} ]\n"
+            f"{'='*60}\n"
+        )
+        print(banner)
+        logger.warning(banner)
+
         # SOTA FIX: Bypass real SMTP in local development to prevent 500 errors
         if getattr(settings, "ENVIRONMENT", "development") == "development":
-            logger.info(f"DEV MODE OTP BYPASS: Code for {user.email} is -> {code} <-")
             email_sent = True
         else:
             # Dispatch real email in production.
@@ -120,16 +130,31 @@ async def create_teacher_onboarding_otp(
         session.add(token)
         await session.flush()
         
-        email_sent = send_teacher_invitation_email(
-            to_email=user.email,
-            otp_code=code,
-            teacher_name=teacher_name,
-            department_name=department_name
+        # ALWAYS log the OTP prominently in backend logs for visibility during testing
+        banner = (
+            f"\n{'='*60}\n"
+            f"🚀🚀🚀 ATLAS OTP GENERATED (TEACHER) 🚀🚀🚀\n"
+            f"📧 Teacher: {user.email}\n"
+            f"🔑 CODE:  [ {code} ]\n"
+            f"{'='*60}\n"
         )
-        
-        if not email_sent:
-            logger.error(f"Failed to send teacher onboarding OTP to {user.email}")
-            return None
+        print(banner)
+        logger.warning(banner)
+
+        # SOTA FIX: Bypass real SMTP in local development to prevent 500 errors
+        if getattr(settings, "ENVIRONMENT", "development") == "development":
+            email_sent = True
+        else:
+            email_sent = send_teacher_invitation_email(
+                to_email=user.email,
+                otp_code=code,
+                teacher_name=teacher_name,
+                department_name=department_name
+            )
+            
+            if not email_sent:
+                logger.error(f"Failed to send teacher onboarding OTP to {user.email}")
+                return None
             
         return code
     except Exception as e:

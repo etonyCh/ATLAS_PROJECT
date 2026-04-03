@@ -16,18 +16,6 @@ const exploreCards = [
     href: "/courses",
     icon: Search,
   },
-  {
-    title: "AI Workspace",
-    description: "Use the unified AI workspace to chat, summarize, and generate study assets.",
-    href: "/ai/workspace",
-    icon: Sparkles,
-  },
-  {
-    title: "Learning Paths",
-    description: "Generate step-by-step academic roadmaps and track what to tackle next.",
-    href: "/learning-path",
-    icon: Compass,
-  },
 ];
 
 export default function ExplorePage() {

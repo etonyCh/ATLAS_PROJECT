@@ -101,13 +101,11 @@ async def teacher_analytics(
         )
     ).one()
 
-    # Document version stats (views, downloads)
+    # Document version stats (versions only, views/downloads deprecated over missing models)
     doc_stats = (
         await db.execute(
             select(
                 func.count(DocumentVersion.id),
-                func.sum(DocumentVersion.view_count),
-                func.sum(DocumentVersion.download_count),
             )
             .join(Contribution, Contribution.id == DocumentVersion.contribution_id)
             .where(Contribution.uploader_id == current_user.id)
@@ -169,14 +167,13 @@ async def teacher_analytics(
             select(
                 Course.id,
                 Course.title,
-                Course.code,
                 func.count(Contribution.id).label("uploads"),
                 func.sum(case((Contribution.status == "APPROVED", 1), else_=0)).label("approved_uploads"),
                 func.max(Contribution.created_at).label("last_submission_at"),
             )
             .join(Contribution, Contribution.course_id == Course.id)
             .where(Contribution.uploader_id == current_user.id)
-            .group_by(Course.id, Course.title, Course.code)
+            .group_by(Course.id, Course.title)
             .order_by(desc("uploads"), desc("last_submission_at"))
             .limit(5)
         )
@@ -202,8 +199,8 @@ async def teacher_analytics(
             "weekly_trend": trend_data,
         },
         "engagement": {
-            "total_document_views": int(doc_stats[1] or 0),
-            "total_downloads": int(doc_stats[2] or 0),
+            "total_document_views": 0,
+            "total_downloads": 0,
             "student_annotations": int(annotation_count or 0),
             "forum_posts": int(forum_posts or 0),
             "forum_replies": int(forum_replies or 0),
@@ -213,10 +210,9 @@ async def teacher_analytics(
             {
                 "course_id": str(row[0]),
                 "title": row[1],
-                "code": row[2],
-                "uploads": int(row[3] or 0),
-                "approved_uploads": int(row[4] or 0),
-                "last_submission_at": row[5],
+                "uploads": int(row[2] or 0),
+                "approved_uploads": int(row[3] or 0),
+                "last_submission_at": row[4],
             }
             for row in top_courses_rows
         ],
@@ -239,8 +235,6 @@ async def teacher_course_analytics(
         await db.execute(
             select(
                 func.count(DocumentVersion.id),
-                func.sum(DocumentVersion.view_count),
-                func.sum(DocumentVersion.download_count),
             )
             .join(Contribution, Contribution.id == DocumentVersion.contribution_id)
             .where(Contribution.course_id == course_id)
@@ -294,8 +288,8 @@ async def teacher_course_analytics(
         "course_id": str(course_id),
         "documents": {
             "total_versions": int(doc_stats[0] or 0),
-            "total_views": int(doc_stats[1] or 0),
-            "total_downloads": int(doc_stats[2] or 0),
+            "total_views": 0,
+            "total_downloads": 0,
         },
         "engagement": {
             "total_annotations": int(annotation_count or 0),
@@ -416,11 +410,10 @@ async def admin_dashboard(
             select(
                 Course.id,
                 Course.title,
-                Course.code,
                 func.count(Contribution.id).label("contribution_count"),
             )
             .join(Contribution, Contribution.course_id == Course.id)
-            .group_by(Course.id, Course.title, Course.code)
+            .group_by(Course.id, Course.title)
             .order_by(desc("contribution_count"))
             .limit(10)
         )
@@ -474,8 +467,7 @@ async def admin_dashboard(
                 {
                     "id": str(row[0]),
                     "title": row[1],
-                    "code": row[2],
-                    "contribution_count": int(row[3] or 0),
+                    "contribution_count": int(row[2] or 0),
                 }
                 for row in top_courses_rows
             ],

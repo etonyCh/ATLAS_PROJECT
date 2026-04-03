@@ -28,28 +28,33 @@ export function AuthGuard({
 }: AuthGuardProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, status, checkAuth } = useAuthStore();
+  const { user, status, hydrated, checkAuth } = useAuthStore();
 
   const isLoading = status === "loading";
   const isAuthenticated = status === "authenticated";
   const isIdle = status === "idle";
 
   useEffect(() => {
-    if (isIdle) {
+    // Only check auth after hydration is complete
+    if (hydrated && isIdle) {
       checkAuth();
     }
-  }, [isIdle, checkAuth]);
+  }, [hydrated, isIdle, checkAuth]);
 
   useEffect(() => {
-    if (!isLoading) {
+    // Only redirect after hydration completes and auth check is done
+    if (hydrated && !isLoading && !isIdle) {
       if (!isAuthenticated) {
         const returnUrl = encodeURIComponent(pathname);
         router.push(`${redirectTo}?returnUrl=${returnUrl}`);
+      } else if (user?.status === "PENDING_VERIFICATION" && !pathname.includes("/auth/pending")) {
+        router.push("/auth/pending");
       } else if (allowedRoles && user && !allowedRoles.includes(user.role)) {
         router.push(roleHome[user.role] || "/auth/login");
       }
     }
   }, [
+    hydrated,
     isLoading,
     isAuthenticated,
     user,
@@ -59,7 +64,8 @@ export function AuthGuard({
     router,
   ]);
 
-  if (isLoading || isIdle) {
+  // Show loading while hydrating or loading auth
+  if (!hydrated || isLoading || isIdle) {
     if (loadingComponent) {
       return <>{loadingComponent}</>;
     }
@@ -74,6 +80,10 @@ export function AuthGuard({
     return null;
   }
 
+  if (user?.status === "PENDING_VERIFICATION" && !pathname.includes("/auth/pending")) {
+    return null; // Prevents rendering protected content briefly before redirect
+  }
+
   if (allowedRoles && user && !allowedRoles.includes(user.role)) {
     return null;
   }
@@ -84,26 +94,30 @@ export function AuthGuard({
 export function GuestGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { status, checkAuth } = useAuthStore();
+  const { status, hydrated, checkAuth } = useAuthStore();
 
   const isLoading = status === "loading";
   const isAuthenticated = status === "authenticated";
   const isIdle = status === "idle";
 
   useEffect(() => {
-    if (isIdle) {
+    if (hydrated && isIdle) {
       checkAuth();
     }
-  }, [isIdle, checkAuth]);
+  }, [hydrated, isIdle, checkAuth]);
 
   useEffect(() => {
-    if (!isLoading && isAuthenticated) {
+    if (hydrated && !isLoading && isAuthenticated) {
       const user = useAuthStore.getState().user;
-      router.push(user ? roleHome[user.role] || "/dashboard" : "/dashboard");
+      if (user?.status === "PENDING_VERIFICATION") {
+        router.push("/auth/pending");
+      } else {
+        router.push(user ? roleHome[user.role] || "/dashboard" : "/dashboard");
+      }
     }
-  }, [isLoading, isAuthenticated, router]);
+  }, [hydrated, isLoading, isAuthenticated, router]);
 
-  if (isLoading || isIdle) {
+  if (!hydrated || isLoading || isIdle) {
     return (
       <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />

@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@jvmr/pptx-to-html": "^1.0.1",
     "@next/bundle-analyzer": "^16.2.1",
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -30,6 +31,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
+    "docx-preview": "^0.3.7",
     "framer-motion": "^12.38.0",
     "isomorphic-dompurify": "^3.7.1",
     "lucide-react": "^1.7.0",
@@ -55,6 +57,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

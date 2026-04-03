@@ -1,11 +1,28 @@
 "use client";
 
+import { useParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { BookOpen, Download, ZoomIn, ZoomOut } from "lucide-react";
+import { BookOpen, Download } from "lucide-react";
+import { FilePreview } from "@/components/ui/file-preview";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useCourseQuery } from "@/queries";
 
 export default function ReadPage() {
+  const params = useParams();
+  const courseId = params.id as string;
+  const { data: course, isLoading } = useCourseQuery(courseId);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-[600px] w-full" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -16,32 +33,36 @@ export default function ReadPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="icon">
-            <ZoomOut className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" size="icon">
-            <ZoomIn className="h-4 w-4" />
-          </Button>
-          <Button variant="outline">
+          <Button variant="outline" disabled>
             <Download className="h-4 w-4 mr-2" />
-            Download
+            Use preview actions below
           </Button>
         </div>
       </div>
 
-      <Card className="min-h-[600px] flex items-center justify-center bg-muted/30">
-        <EmptyState
-          type="reader"
-          title="No document loaded"
-          description="Select a document version to start reading"
-        />
+      <Card className="min-h-[600px] bg-muted/30">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BookOpen className="h-5 w-5" />
+            {course?.title || "Course material"}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {course?.current_version?.storage_path ? (
+            <FilePreview
+              storagePath={course.current_version.storage_path}
+              mimeType={course.current_version.mime_type}
+              title={course.title}
+            />
+          ) : (
+            <EmptyState
+              type="reader"
+              title="No approved document available"
+              description="This course file is still being prepared or is waiting for approval."
+            />
+          )}
+        </CardContent>
       </Card>
-
-      <div className="flex justify-center gap-4">
-        <Button variant="outline">Previous Page</Button>
-        <span className="flex items-center px-4">Page 1 of 1</span>
-        <Button variant="outline">Next Page</Button>
-      </div>
     </div>
   );
 }

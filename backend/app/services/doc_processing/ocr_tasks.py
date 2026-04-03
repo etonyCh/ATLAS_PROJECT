@@ -32,6 +32,7 @@ sync_engine = create_engine(
 # DEFENSIVE HELPER METHODS
 # =============================================================================
 
+
 def _pil_to_base64(pil_img: Image.Image) -> str:
     """Converts a PIL Image to a Base64 string for Multimodal LLM ingestion."""
     buffered = io.BytesIO()
@@ -42,7 +43,7 @@ def _pil_to_base64(pil_img: Image.Image) -> str:
 def _perform_llm_ocr(base64_img: str) -> str:
     """
     Executes the SOTA Vision OCR via Ollama (minicpm-v).
-    Includes a strict system prompt to prevent conversational hallucinations 
+    Includes a strict system prompt to prevent conversational hallucinations
     and output sanitization to catch stray markdown formatting.
     """
     log = structlog.get_logger().bind(action="llm_vision_ocr")
@@ -54,19 +55,21 @@ def _perform_llm_ocr(base64_img: str) -> str:
         "Do NOT include any conversational filler, markdown formatting blocks, or explanations. "
         "Output strictly the extracted text."
     )
-    
+
     try:
         extracted_text = ollama.generate_vision(prompt=prompt, base64_images=[base64_img])
-        
+
         # SOTA Defensive: Strip potential markdown code blocks that LLMs sometimes inject
         if extracted_text.startswith("```"):
             lines = extracted_text.split("\n")
             if len(lines) > 2:
                 extracted_text = "\n".join(lines[1:-1])
-                
+
         return extracted_text.strip()
     except Exception as e:
         log.error("llm_vision_ocr_failed", error=str(e))
+        # Return empty string to allow pipeline to continue - don't block document upload
+        # The document will be stored but text extraction will be skipped
         return ""
 
 
@@ -112,15 +115,14 @@ def _scan_file_with_clamav(
         log.error("CRITICAL: ClamAV daemon connection timed out. Failing closed.")
         return False
     except Exception as e:
-        log.error(
-            "CRITICAL: ClamAV connection failed. Failing closed.", error=str(e)
-        )
+        log.error("CRITICAL: ClamAV connection failed. Failing closed.", error=str(e))
         return False
 
 
 # =============================================================================
 # SIDE EFFECTS & ROUTING
 # =============================================================================
+
 
 @shared_task(name="notify_admin_degraded_scan")
 def notify_admin_degraded_scan(contribution_id: str, quality_score: float, document_id: str):
@@ -132,21 +134,22 @@ def notify_admin_degraded_scan(contribution_id: str, quality_score: float, docum
     if not settings.ADMIN_ALERT_EMAIL:
         log.warning("admin_alert_email_not_configured_skipping_notification")
         return
-        
+
     log.info(
         "dispatching_admin_alert",
         to=settings.ADMIN_ALERT_EMAIL,
         subject=f"ATLAS Alert: Degraded Scan Detected (Score: {quality_score:.2f})",
         contribution_id=contribution_id,
-        document_id=document_id
+        document_id=document_id,
     )
-    # Architecture Node: Bind to app.services.email_service.send_email() here 
+    # Architecture Node: Bind to app.services.email_service.send_email() here
     # once SMTP templates for admins are finalized.
 
 
 # =============================================================================
 # CORE PIPELINE
 # =============================================================================
+
 
 @shared_task(name="process_document_ocr")
 def process_document_ocr(document_version_id: str):
@@ -176,7 +179,7 @@ def process_document_ocr(document_version_id: str):
         total_quality_score = 0.0
         scanned_pages_count = 0
         temp_path = None
-        
+
         _, file_extension = os.path.splitext(doc.storage_path)
         file_extension = file_extension.lower()
 
@@ -206,9 +209,7 @@ def process_document_ocr(document_version_id: str):
                     "SECURITY ALERT: File failed ClamAV scan. "
                     "Destroying object and aborting pipeline."
                 )
-                minio_client.client.remove_object(
-                    minio_client.bucket_name, doc.storage_path
-                )
+                minio_client.client.remove_object(minio_client.bucket_name, doc.storage_path)
                 doc.pipeline_status = DocumentPipelineStatus.FAILED
                 doc.storage_path = "DELETED_SECURITY_VIOLATION"
                 doc.is_deleted = True
@@ -235,9 +236,7 @@ def process_document_ocr(document_version_id: str):
                         permanent_path,
                         CopySource(minio_client.bucket_name, doc.storage_path),
                     )
-                    minio_client.client.remove_object(
-                        minio_client.bucket_name, doc.storage_path
-                    )
+                    minio_client.client.remove_object(minio_client.bucket_name, doc.storage_path)
                     doc.storage_path = permanent_path
                     session.add(doc)
                     session.commit()
@@ -247,7 +246,7 @@ def process_document_ocr(document_version_id: str):
             # ----------------------------------------------------------------
             log.info("running_extraction_pipeline", file_type=file_extension)
 
-            if file_extension == '.pdf':
+            if file_extension == ".pdf":
                 with pdfplumber.open(temp_path) as pdf:
                     for page in pdf.pages:
                         page_text = page.extract_text()
@@ -285,20 +284,20 @@ def process_document_ocr(document_version_id: str):
                         if page_text:
                             extracted_text += page_text + "\n\n"
 
-            elif file_extension in ['.png', '.jpg', '.jpeg']:
+            elif file_extension in [".png", ".jpg", ".jpeg"]:
                 log.info("direct_image_ocr_detected_routing_to_vision_llm")
                 scanned_pages_count = 1
-                
+
                 # Render via PIL for easy base64 encoding
                 try:
                     pil_img = Image.open(temp_path).convert("RGB")
                     img_cv = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-                    
+
                     # Quality Score
                     gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
                     variance = cv2.Laplacian(gray, cv2.CV_64F).var()
                     total_quality_score += variance
-                    
+
                     # Execute Multimodal Extraction
                     base64_img = _pil_to_base64(pil_img)
                     extracted_text = _perform_llm_ocr(base64_img)
@@ -347,27 +346,27 @@ def process_document_ocr(document_version_id: str):
 
             if scanned_pages_count > 0:
                 doc.quality_score = total_quality_score / scanned_pages_count
-                
+
                 # US-07: The Total Coverage Side-Effect Execution
                 if doc.quality_score < settings.OCR_QUALITY_ALERT_THRESHOLD:
                     log.warning(
                         "document_quality_below_alert_threshold",
                         avg_score=doc.quality_score,
                         threshold=settings.OCR_QUALITY_ALERT_THRESHOLD,
-                        contribution_id=str(doc.contribution_id)
+                        contribution_id=str(doc.contribution_id),
                     )
-                    
+
                     # 1. State Persistence (Schema Mutator)
                     contribution = session.get(Contribution, doc.contribution_id)
                     if contribution:
                         contribution.quality_flag = True
                         session.add(contribution)
-                    
+
                     # 2. Asynchronous Notification Dispatch
                     notify_admin_degraded_scan.delay(
                         contribution_id=str(doc.contribution_id),
                         quality_score=doc.quality_score,
-                        document_id=str(doc.id)
+                        document_id=str(doc.id),
                     )
 
             doc.pipeline_status = DocumentPipelineStatus.EMBEDDING
@@ -396,9 +395,7 @@ def process_document_ocr(document_version_id: str):
                 try:
                     os.remove(temp_path)
                 except OSError as cleanup_error:
-                    log.warning(
-                        "temp_file_cleanup_failed", error=str(cleanup_error)
-                    )
+                    log.warning("temp_file_cleanup_failed", error=str(cleanup_error))
 
     return {
         "status": "completed",

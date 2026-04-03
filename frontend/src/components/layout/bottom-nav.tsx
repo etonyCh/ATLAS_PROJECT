@@ -16,7 +16,7 @@ import { useAuthStore } from "@/store/auth.store";
 const studentNavItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Home" },
   { href: "/search", icon: Search, label: "Search" },
-  { href: "/study", icon: BookOpen, label: "Study" },
+  { href: "/courses", icon: BookOpen, label: "Courses" },
   { href: "/notifications", icon: Bell, label: "Alerts" },
   { href: "/profile", icon: User, label: "Profile" },
 ];

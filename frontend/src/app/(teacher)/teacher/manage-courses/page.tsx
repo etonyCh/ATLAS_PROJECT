@@ -77,9 +77,11 @@ export default function ManageCourses() {
             Create and manage your teaching courses
           </p>
         </div>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Create Course
+        <Button asChild>
+          <Link href="/teacher/courses/upload">
+            <Plus className="mr-2 h-4 w-4" />
+            Create Course
+          </Link>
         </Button>
       </div>
 
