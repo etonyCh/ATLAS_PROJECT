@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -37,6 +38,16 @@ async def import_teachers(
     from app.services.iam.teacher_service import process_teacher_batch_import
 
     return await process_teacher_batch_import(file=file, admin_user=current_user, session=db)
+
+
+@router.get("/admin/teachers/import-template")
+async def download_teacher_import_template(
+    current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_session),
+) -> Any:
+    from app.services.iam.teacher_service import generate_dynamic_teacher_template
+
+    return await generate_dynamic_teacher_template(admin_user=current_user, session=db)
 
 
 @router.get("/admin/users")

@@ -14,7 +14,7 @@ export function useStudentHistoryQuery(params?: {
 }) {
   return useQuery({
     queryKey: ["dashboard", "student", "history", params],
-    queryFn: () => dashboardApi.student.getHistory(params),
+    queryFn: () => dashboardApi.student.getHistory(),
   });
 }
 

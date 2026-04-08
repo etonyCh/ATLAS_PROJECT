@@ -5,11 +5,13 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.core.exceptions import atlas_error
 from app.core.limits import limiter
 from app.db.session import get_session
 from app.services.ai_core.rag_inference import execute_hybrid_search, meili_client
+from app.models.contribution import Contribution, DocumentVersion
 
 
 router = APIRouter(tags=["Search"])
@@ -17,6 +19,7 @@ router = APIRouter(tags=["Search"])
 
 class SearchResultItem(BaseModel):
     document_version_id: str
+    course_id: str | None = None
     title: str
     teacher_name: str | None = None
     is_official: bool = False
@@ -74,24 +77,46 @@ async def search(
         request_app_state=request.app.state,
     )
 
+    dv_ids = [item.get("document_version_id") for item in items if item.get("document_version_id")]
+    course_map: dict[str, str] = {}
+    if dv_ids:
+        result = await db.execute(
+            select(DocumentVersion.id, Contribution.course_id)
+            .join(Contribution, Contribution.id == DocumentVersion.contribution_id)
+            .where(DocumentVersion.id.in_(dv_ids))
+        )
+        for dv_id, course_id in result.all():
+            course_map[str(dv_id)] = str(course_id)
+
+    enriched = []
+    for item in items:
+        dv_id = item.get("document_version_id")
+        enriched.append(
+            SearchResultItem(
+                course_id=course_map.get(str(dv_id)),
+                **item,
+            )
+        )
+
     return SearchResponse(
-        items=[SearchResultItem(**item) for item in items],
+        items=enriched,
         page=page,
         limit=limit,
-        total=len(items),
+        total=len(enriched),
     )
 
 
 @router.get("/search/autocomplete", response_model=list[AutocompleteItem], dependencies=[Depends(limiter(60, 60))])
 async def autocomplete(
     q: str = Query(..., min_length=2),
+    db: AsyncSession = Depends(get_session),
 ) -> list[AutocompleteItem]:
     try:
         result: dict[str, Any] = meili_client.index("documents").search(
             q,
             {
                 "limit": 8,
-                "attributesToRetrieve": ["document_version_id", "title", "course_type"],
+                "attributesToRetrieve": ["document_version_id", "course_id", "title", "course_type"],
             },
         )
     except Exception as exc:
@@ -102,11 +127,32 @@ async def autocomplete(
             status_code=503,
         ) from exc
 
+    hits = result.get("hits", [])
+    dv_ids_to_resolve: list[str] = []
     suggestions: list[AutocompleteItem] = []
-    for hit in result.get("hits", []):
+
+    for hit in hits:
+        course_id = hit.get("course_id")
+        dv_id = hit.get("document_version_id")
+        if not course_id and dv_id:
+            dv_ids_to_resolve.append(str(dv_id))
+
+    course_map: dict[str, str] = {}
+    if dv_ids_to_resolve:
+        lookup = await db.execute(
+            select(DocumentVersion.id, Contribution.course_id)
+            .join(Contribution, Contribution.id == DocumentVersion.contribution_id)
+            .where(DocumentVersion.id.in_(dv_ids_to_resolve))
+        )
+        for dv_id, course_id in lookup.all():
+            course_map[str(dv_id)] = str(course_id)
+
+    for hit in hits:
+        dv_id = str(hit.get("document_version_id", ""))
+        resolved_course_id = str(hit.get("course_id") or course_map.get(dv_id, ""))
         suggestions.append(
             AutocompleteItem(
-                course_id=str(hit.get("document_version_id", "")),
+                course_id=resolved_course_id,
                 title=hit.get("title", ""),
                 type=hit.get("course_type"),
             )

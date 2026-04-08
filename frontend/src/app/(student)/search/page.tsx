@@ -2,15 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   GraduationCap,
   Search,
-  Filter,
   FileText,
   Star,
-  TrendingUp,
-  Award,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -38,7 +34,6 @@ const NIVEAUX = ["All", "L1", "L2", "L3", "M1", "M2"];
 const TYPES = ["All", "Cours", "TD", "TP", "Examen", "Corrige"];
 
 export default function SearchPage() {
-  const router = useRouter();
   const [query, setQuery] = useState("");
   const [filiere, setFiliere] = useState("");
   const [niveau, setNiveau] = useState("");
@@ -190,49 +185,54 @@ export default function SearchPage() {
                 >
                   <Card className="transition-colors hover:bg-muted/50 h-full overflow-hidden">
                     <CardContent className="pt-4 h-full">
-                      <div className="flex gap-4 h-full">
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                          <FileText className="h-6 w-6 text-primary" />
-                        </div>
-                        <div className="flex-1 min-w-0 flex flex-col justify-center">
-                          <div className="flex items-start justify-between gap-2">
-                            <h3 className="font-semibold line-clamp-1">
-                              {result.title}
-                            </h3>
-                            {result.is_official && (
-                              <span className="shrink-0 rounded-full bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
-                                Official
-                              </span>
-                            )}
+                      <Link
+                        href={result.course_id ? `/courses/${result.course_id}` : "#"}
+                        className="block"
+                      >
+                        <div className="flex gap-4 h-full">
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                            <FileText className="h-6 w-6 text-primary" />
                           </div>
-                          {result.snippet && (
-                            <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
-                              {result.snippet}
-                            </p>
-                          )}
-                          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                            {result.teacher_name && (
+                          <div className="flex-1 min-w-0 flex flex-col justify-center">
+                            <div className="flex items-start justify-between gap-2">
+                              <h3 className="font-semibold line-clamp-1">
+                                {result.title}
+                              </h3>
+                              {result.is_official && (
+                                <span className="shrink-0 rounded-full bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
+                                  Official
+                                </span>
+                              )}
+                            </div>
+                            {result.snippet && (
+                              <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
+                                {result.snippet}
+                              </p>
+                            )}
+                            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                              {result.teacher_name && (
+                                <span className="flex items-center gap-1">
+                                  <GraduationCap className="h-3 w-3" />
+                                  {result.teacher_name}
+                                </span>
+                              )}
+                              {result.filiere && <span>{result.filiere}</span>}
+                              {result.tags?.slice(0, 3).map((tag) => (
+                                <span
+                                  key={tag}
+                                  className="rounded bg-muted px-1.5 py-0.5"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
                               <span className="flex items-center gap-1">
-                                <GraduationCap className="h-3 w-3" />
-                                {result.teacher_name}
+                                <Star className="h-3 w-3" />
+                                {result.quality_score.toFixed(1)}
                               </span>
-                            )}
-                            {result.filiere && <span>{result.filiere}</span>}
-                            {result.tags?.slice(0, 3).map((tag) => (
-                              <span
-                                key={tag}
-                                className="rounded bg-muted px-1.5 py-0.5"
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                            <span className="flex items-center gap-1">
-                              <Star className="h-3 w-3" />
-                              {result.quality_score.toFixed(1)}
-                            </span>
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      </Link>
                     </CardContent>
                   </Card>
                 </div>

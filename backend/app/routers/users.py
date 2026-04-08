@@ -76,25 +76,26 @@ async def get_public_profile(
 
     # Badges earned
     badges_result = await db.execute(
-        select(Badge, UserBadge.earned_at)
+        select(Badge, UserBadge.awarded_at)
         .join(UserBadge, UserBadge.badge_id == Badge.id)
         .where(UserBadge.user_id == user_id)
-        .order_by(desc(UserBadge.earned_at))
+        .order_by(desc(UserBadge.awarded_at))
     )
     badges = [
         {
             "id": str(badge.id),
             "name": badge.name,
             "description": badge.description,
-            "icon": badge.icon_url or "trophy",
-            "earned_at": earned_at,
-            "rarity": badge.rarity or "common",
+            "icon": badge.icon or "trophy",
+            "awarded_at": awarded_at,
         }
-        for badge, earned_at in badges_result.all()
+        for badge, awarded_at in badges_result.all()
     ]
 
     # Current streak
-    streak = await db.get(UserStreak, user_id)
+    streak = (
+        await db.execute(select(UserStreak).where(UserStreak.user_id == user_id))
+    ).scalar_one_or_none()
     current_streak = streak.current_streak if streak else 0
     longest_streak = streak.longest_streak if streak else 0
 
@@ -145,7 +146,7 @@ async def get_public_profile(
     activity_feed = [
         {
             "id": str(tx.id),
-            "type": tx.type,
+            "type": tx.transaction_type,
             "amount": tx.amount,
             "description": tx.description or f"Earned {tx.amount} XP",
             "created_at": tx.created_at,

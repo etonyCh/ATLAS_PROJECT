@@ -3,7 +3,6 @@
 import {
   useState,
   useRef,
-  useEffect,
   type KeyboardEvent,
   type ClipboardEvent,
 } from "react";
@@ -21,30 +20,32 @@ interface OTPInputProps {
 
 export function OTPInput({
   length = 6,
-  value = "",
+  value,
   onChange,
   disabled = false,
   className,
   inputClassName,
   error = false,
 }: OTPInputProps) {
-  const [otp, setOtp] = useState<string[]>(
-    value ? value.split("") : Array(length).fill(""),
+  const isControlled = value !== undefined;
+  const [internalOtp, setInternalOtp] = useState<string[]>(
+    Array(length).fill(""),
   );
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  useEffect(() => {
-    if (value) {
-      setOtp(value.split(""));
-    }
-  }, [value]);
+  const otp = (isControlled ? value : internalOtp?.join(""))
+    ?.slice(0, length)
+    .split("") ?? [];
+  const normalizedOtp = Array.from({ length }, (_, index) => otp[index] || "");
 
   const handleChange = (index: number, val: string) => {
     if (!/^\d*$/.test(val)) return;
 
-    const newOtp = [...otp];
+    const newOtp = [...normalizedOtp];
     newOtp[index] = val.substring(val.length - 1);
-    setOtp(newOtp);
+    if (!isControlled) {
+      setInternalOtp(newOtp);
+    }
 
     const newValue = newOtp.join("");
     onChange?.(newValue);
@@ -55,7 +56,7 @@ export function OTPInput({
   };
 
   const handleKeyDown = (index: number, e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Backspace" && !otp[index] && index > 0) {
+    if (e.key === "Backspace" && !normalizedOtp[index] && index > 0) {
       inputRefs.current[index - 1]?.focus();
     }
   };
@@ -69,7 +70,9 @@ export function OTPInput({
     const newOtp = Array(length)
       .fill("")
       .map((_, i) => pastedData[i] || "");
-    setOtp(newOtp);
+    if (!isControlled) {
+      setInternalOtp(newOtp);
+    }
     onChange?.(newOtp.join(""));
   };
 
@@ -85,7 +88,7 @@ export function OTPInput({
           inputMode="numeric"
           maxLength={1}
           disabled={disabled}
-          value={otp[index] || ""}
+          value={normalizedOtp[index] || ""}
           onChange={(e) => handleChange(index, e.target.value)}
           onKeyDown={(e) => handleKeyDown(index, e)}
           onPaste={index === 0 ? handlePaste : undefined}

@@ -56,6 +56,7 @@ export function AuthGuard({
   }, [
     hydrated,
     isLoading,
+    isIdle,
     isAuthenticated,
     user,
     allowedRoles,
@@ -93,7 +94,6 @@ export function AuthGuard({
 
 export function GuestGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const pathname = usePathname();
   const { status, hydrated, checkAuth } = useAuthStore();
 
   const isLoading = status === "loading";

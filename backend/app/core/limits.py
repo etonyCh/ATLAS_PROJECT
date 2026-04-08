@@ -26,8 +26,6 @@ try:
         Critical for US-03: Max 3 OTP requests per hour per IP to prevent spam and financial drain.
         """
         try:
-            # DEFENSIVE ARCHITECTURE: fastapi-limiter pinned to 0.1.5 guarantees this exact signature.
-            # Removed brittle inspect.signature() reflection which caused initialization crashes on drifted environments.
             return _RL(times=times, seconds=seconds)
         except Exception as e:
             logger.critical(f"Security Warning: RateLimiter initialization failed ({str(e)}). Limits are NOT enforced.")

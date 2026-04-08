@@ -13,6 +13,7 @@ from app.core.exceptions import atlas_error
 from app.db.session import get_session
 from app.dependencies import get_current_user
 from app.models.contribution import Contribution, DocumentVersion
+from app.models.course import Course
 from app.models.study_tools import Flashcard, FlashcardDeck, MindMap, Question, QuizSession, Summary
 from app.models.user import User
 from app.services.study_engine import flashcard_service, generation_service
@@ -167,7 +168,12 @@ async def get_flashcard_deck(
         row = version_result.first()
         if row:
             _, _, course = row
-            course_info = {"id": str(course.id), "title": course.title, "code": course.code}
+            course_info = {
+                "id": str(course.id),
+                "title": course.title,
+                "academic_year": course.academic_year,
+                "language": course.language,
+            }
 
     return {
         "id": str(deck.id),

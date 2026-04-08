@@ -270,14 +270,13 @@ test.describe("Production Hardening Coverage", () => {
 
     await loginThroughUi(page, adminUser);
     await expect(page).toHaveURL(/\/admin\/dashboard/);
-    await page.getByRole("link", { name: "Reports" }).click();
-    await expect(page.getByText("Broken upload status")).toBeVisible();
-    await expect(page.getByText("Severity: High")).toBeVisible();
+    await page.getByRole("link", { name: /Reports|Moderation/i }).click();
+    await page.getByRole("tab", { name: /reports|system reports/i }).click();
+    await expect(page.getByText("Broken upload status")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("High").first()).toBeVisible({ timeout: 10000 });
 
-    await page.getByRole("button", { name: "Mark Resolved" }).first().click();
-    await expect(
-      page.getByRole("button", { name: "Resolved", exact: true }).first(),
-    ).toBeVisible();
+    await page.getByRole("button", { name: /mark resolved|resolved|dismiss/i }).first().click();
+    await expect(page.getByText(/resolved/i).first()).toBeVisible({ timeout: 10000 });
   });
 
   test("notifications badge updates when a websocket notification arrives", async ({

@@ -15,17 +15,28 @@ import {
   ChevronRight,
   Loader2,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { StatusChip } from "@/components/ui/status-chip";
-import { useTeacherCourses } from "@/queries/courses";
+import { useTeacherCourses, useDeleteCourseMutation, useUpdateCourseMutation } from "@/queries/courses";
+
+type ModalType = "view" | "edit" | "delete" | null;
 
 export default function ManageCourses() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -33,11 +44,69 @@ export default function ManageCourses() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
+  const [activeModal, setActiveModal] = useState<ModalType>(null);
+  const [selectedCourse, setSelectedCourse] = useState<any>(null);
+  const [editFormData, setEditFormData] = useState({ title: "", description: "", filiere: "", level: "" });
+
   const { data: courses = [], isLoading } = useTeacherCourses();
+  const deleteMutation = useDeleteCourseMutation();
+  const updateMutation = useUpdateCourseMutation();
+
+  const openModal = (type: ModalType, course: any) => {
+    setSelectedCourse(course);
+    if (type === "edit") {
+      setEditFormData({
+        title: course.title || "",
+        description: course.description || "",
+        filiere: course.filiere === "General" ? "" : (course.filiere || ""),
+        level: course.level === "-" ? "" : (course.level || ""),
+      });
+    }
+    setActiveModal(type);
+  };
+
+  const closeModal = () => {
+    setActiveModal(null);
+    setSelectedCourse(null);
+  };
+
+  const handleDelete = () => {
+    if (selectedCourse) {
+      console.log("🟡 Delete clicked:", selectedCourse.id);
+      deleteMutation.mutate(selectedCourse.id, {
+        onSuccess: (data) => {
+          console.log("🟢 Deleted:", data ?? selectedCourse.id);
+          closeModal();
+        },
+        onError: (err) => {
+          console.error("🔴 Delete error:", err);
+          alert("Failed to delete the course");
+        }
+      });
+    }
+  };
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedCourse) {
+      updateMutation.mutate({
+        courseId: selectedCourse.id,
+        data: editFormData
+      }, {
+        onSuccess: () => {
+          closeModal();
+        },
+        onError: () => {
+          alert("Failed to update the course");
+        }
+      });
+    }
+  };
 
   const mappedCourses = courses.map((c) => ({
     id: c.id,
     title: c.title,
+    description: c.description,
     code: "CRS-" + c.id.slice(0, 4).toUpperCase(),
     students: 0,
     status: c.is_deleted ? "archived" : "active",
@@ -136,15 +205,15 @@ export default function ManageCourses() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem>
+                      <DropdownMenuItem className="cursor-pointer" onClick={() => openModal("view", course)}>
                         <Eye className="mr-2 h-4 w-4" />
                         View Details
                       </DropdownMenuItem>
-                      <DropdownMenuItem>
+                      <DropdownMenuItem className="cursor-pointer" onClick={() => openModal("edit", course)}>
                         <Edit className="mr-2 h-4 w-4" />
                         Edit Course
                       </DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive">
+                      <DropdownMenuItem className="text-destructive cursor-pointer" onClick={() => openModal("delete", course)}>
                         <Trash2 className="mr-2 h-4 w-4" />
                         Delete
                       </DropdownMenuItem>
@@ -194,6 +263,138 @@ export default function ManageCourses() {
           </div>
         </div>
       )}
+
+      <Dialog open={activeModal !== null} onOpenChange={(open) => !open && closeModal()}>
+        <DialogContent className="sm:max-w-[425px]">
+          {activeModal === "delete" && selectedCourse && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Delete Course</DialogTitle>
+                <DialogDescription>
+                  Are you sure you want to delete the course &quot;{selectedCourse.title}&quot;? This action cannot be undone.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={closeModal} disabled={deleteMutation.isPending}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={handleDelete} disabled={deleteMutation.isPending}>
+                  {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Delete
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {activeModal === "view" && selectedCourse && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Course Details</DialogTitle>
+                <DialogDescription>
+                  Review the details for &quot;{selectedCourse.title}&quot;
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <span className="text-sm font-medium text-muted-foreground">Title</span>
+                  <span className="col-span-3 text-sm font-medium">{selectedCourse.title}</span>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <span className="text-sm font-medium text-muted-foreground">Code</span>
+                  <span className="col-span-3 text-sm font-medium">{selectedCourse.code}</span>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <span className="text-sm font-medium text-muted-foreground">Filiere</span>
+                  <span className="col-span-3 text-sm font-medium">{selectedCourse.filiere}</span>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <span className="text-sm font-medium text-muted-foreground">Level</span>
+                  <span className="col-span-3 text-sm font-medium">{selectedCourse.level}</span>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <span className="text-sm font-medium text-muted-foreground">Students</span>
+                  <span className="col-span-3 text-sm font-medium">{selectedCourse.students}</span>
+                </div>
+                {selectedCourse.description && (
+                  <div className="grid gap-2">
+                    <span className="text-sm font-medium text-muted-foreground">Description</span>
+                    <p className="text-sm text-muted-foreground">{selectedCourse.description}</p>
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button onClick={closeModal}>Close</Button>
+                <Button variant="outline" asChild>
+                  <Link href={`/courses/${selectedCourse.id}`}>View public page</Link>
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {activeModal === "edit" && selectedCourse && (
+            <form onSubmit={handleEditSubmit}>
+              <DialogHeader>
+                <DialogTitle>Edit Course</DialogTitle>
+                <DialogDescription>
+                  Make changes to your course &quot;{selectedCourse.title}&quot; here.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <label htmlFor="title" className="text-sm font-medium text-muted-foreground">Title</label>
+                  <Input
+                    id="title"
+                    value={editFormData.title}
+                    onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
+                    placeholder="Enter course title"
+                    required
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <label htmlFor="description" className="text-sm font-medium text-muted-foreground">Description</label>
+                  <Textarea
+                    id="description"
+                    value={editFormData.description}
+                    onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                    placeholder="Enter a brief description..."
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <label htmlFor="filiere" className="text-sm font-medium text-muted-foreground">Filiere</label>
+                    <Input
+                      id="filiere"
+                      value={editFormData.filiere}
+                      disabled
+                      title="Filiere is determined by the Department and cannot be edited directly."
+                      onChange={(e) => setEditFormData({ ...editFormData, filiere: e.target.value })}
+                      placeholder="e.g. Informatique"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <label htmlFor="level" className="text-sm font-medium text-muted-foreground">Level</label>
+                    <Input
+                      id="level"
+                      value={editFormData.level}
+                      onChange={(e) => setEditFormData({ ...editFormData, level: e.target.value })}
+                      placeholder="e.g. L3"
+                    />
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={closeModal} disabled={updateMutation.isPending}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={updateMutation.isPending}>
+                  {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save changes
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

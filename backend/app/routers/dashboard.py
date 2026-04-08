@@ -68,7 +68,7 @@ async def student_history(
     return [
         {
             "id": str(item.id),
-            "type": item.type,
+            "type": item.transaction_type,
             "amount": item.amount,
             "created_at": item.created_at,
         }
@@ -230,6 +230,14 @@ async def teacher_course_analytics(
     _current_user: User = Depends(require_role("TEACHER", "ADMIN")),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
+    document_version_ids = (
+        await db.execute(
+            select(DocumentVersion.id)
+            .join(Contribution, Contribution.id == DocumentVersion.contribution_id)
+            .where(Contribution.course_id == course_id)
+        )
+    ).scalars().all()
+
     # Document version stats
     doc_stats = (
         await db.execute(
@@ -270,19 +278,22 @@ async def teacher_course_analytics(
     ).scalar_one()
 
     # Study tools activity
-    flashcard_decks = (
-        await db.execute(
-            select(func.count(FlashcardDeck.id))
-            .where(FlashcardDeck.course_id == course_id)
-        )
-    ).scalar_one()
+    flashcard_decks = 0
+    quiz_sessions = 0
+    if document_version_ids:
+        flashcard_decks = (
+            await db.execute(
+                select(func.count(FlashcardDeck.id))
+                .where(FlashcardDeck.document_version_id.in_(document_version_ids))
+            )
+        ).scalar_one()
 
-    quiz_sessions = (
-        await db.execute(
-            select(func.count(QuizSession.id))
-            .where(QuizSession.course_id == course_id)
-        )
-    ).scalar_one()
+        quiz_sessions = (
+            await db.execute(
+                select(func.count(QuizSession.id))
+                .where(QuizSession.document_version_id.in_(document_version_ids))
+            )
+        ).scalar_one()
 
     return {
         "course_id": str(course_id),

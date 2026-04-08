@@ -25,7 +25,10 @@ export default function SuperadminEstablishmentsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  const establishments = (data ?? []) as EstablishmentRow[];
+  const establishments = useMemo(
+    () => (data ?? []) as EstablishmentRow[],
+    [data],
+  );
   const filteredEstablishments = useMemo(
     () =>
       establishments.filter((establishment) => {

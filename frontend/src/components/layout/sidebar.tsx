@@ -33,7 +33,7 @@ const studentNavigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Search", href: "/search", icon: Search },
   { name: "Courses", href: "/courses", icon: BookOpen },
-  { name: "Upload", href: "/upload", icon: Upload },
+  { name: "Contributor Access", href: "/upload", icon: Upload },
   { name: "Leaderboard", href: "/leaderboard", icon: Trophy },
 ];
 
@@ -51,6 +51,7 @@ const teacherNavigation = [
 const adminNavigation = [
   { name: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
   { name: "Users", href: "/admin/users", icon: Users },
+  { name: "Teacher Import", href: "/admin/teachers/import", icon: FileText },
   { name: "Teacher Requests", href: "/admin/teacher-requests", icon: ShieldCheck },
   { name: "Moderation Hub", href: "/admin/moderation", icon: ShieldAlert },
 ];
@@ -87,10 +88,6 @@ const studentSectionItems = [
   { name: "History", href: "/my/history", icon: Settings },
 ];
 
-interface SidebarProps {
-  role: Role;
-}
-
 export function Sidebar({ role }: { role: Role }) {
   const pathname = usePathname();
   const { user, logout } = useAuthStore();
@@ -103,6 +100,18 @@ export function Sidebar({ role }: { role: Role }) {
   const handleLogout = async () => {
     await logout();
   };
+
+  const navigation =
+    role === "STUDENT"
+      ? studentNavigation.map((item) =>
+          item.href === "/upload"
+            ? {
+                ...item,
+                name: user?.is_contributor ? "Upload" : "Contributor Access",
+              }
+            : item,
+        )
+      : baseNavigation[role];
 
   return (
     <>
@@ -135,7 +144,7 @@ export function Sidebar({ role }: { role: Role }) {
           </div>
 
           <nav className="flex-1 space-y-1 px-3 py-4">
-            {baseNavigation[role].map((item) => {
+            {navigation.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href;
               return (

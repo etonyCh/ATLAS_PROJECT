@@ -136,6 +136,13 @@ async def public_profile(
 
     total_xp = await gamification_service.get_total_xp(db, user.id)
     level = gamification_service.get_level_for_xp(total_xp)
+    establishment_name = None
+    if user.establishment_id:
+        establishment_name = (
+            await db.execute(
+                select(Establishment.name).where(Establishment.id == user.establishment_id)
+            )
+        ).scalar_one_or_none()
 
     badge_rows = (
         await db.execute(

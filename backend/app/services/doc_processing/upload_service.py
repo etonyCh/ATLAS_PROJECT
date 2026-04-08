@@ -10,8 +10,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-from app.models.contribution import Contribution, DocumentPipelineStatus, DocumentVersion
+from app.models.contribution import Contribution, ContributionStatus, DocumentPipelineStatus, DocumentVersion
 from app.models.course import Course, CourseLanguage, CourseLevel, CourseType
+from app.models.gamification import XPTransaction, XPTransactionType
 from app.models.user import User, UserRole
 from app.services.doc_processing.ocr_tasks import process_document_ocr
 from app.services.doc_processing.storage import calculate_sha256, minio_client
@@ -116,6 +117,7 @@ async def upload_official_course_document(
             description=description,
             uploader_id=current_user.id,
             course_id=course.id,
+            status=ContributionStatus.APPROVED,  # Teachers bypass moderation (Spec §5.2)
         )
         session.add(contribution)
         await session.flush()
@@ -143,6 +145,25 @@ async def upload_official_course_document(
         pipeline_status=DocumentPipelineStatus.QUEUED,
     )
     session.add(doc_version)
+
+    # Award +20 XP to teacher on upload (dedup-safe via unique constraint)
+    existing_xp = await session.execute(
+        select(XPTransaction).where(
+            XPTransaction.user_id == current_user.id,
+            XPTransaction.transaction_type == XPTransactionType.UPLOAD,
+            XPTransaction.reference_id == contribution.id,
+        )
+    )
+    if not existing_xp.scalars().first():
+        xp = XPTransaction(
+            user_id=current_user.id,
+            amount=20,
+            transaction_type=XPTransactionType.UPLOAD,
+            reference_id=contribution.id,
+            description=f"Official course upload: {title}",
+        )
+        session.add(xp)
+
     await session.commit()
     await session.refresh(contribution)
     await session.refresh(doc_version)
@@ -159,6 +180,7 @@ async def upload_student_contribution(
     description: Optional[str],
     course_id,
     file,
+    is_demo_submission: bool = False,
 ) -> Contribution:
     file_content, file_hash = await read_and_validate_upload(file)
 
@@ -179,6 +201,7 @@ async def upload_student_contribution(
         uploader_id=current_user.id,
         course_id=course.id,
         status="PENDING",
+        is_demo_submission=is_demo_submission,
     )
     session.add(contribution)
     await session.flush()

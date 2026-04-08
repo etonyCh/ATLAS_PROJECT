@@ -1,26 +1,38 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { ArrowRight, BookOpen, Brain, GraduationCap, Layers3, Sparkles, Users } from "lucide-react";
+import {
+  ArrowRight,
+  BookOpen,
+  Brain,
+  GraduationCap,
+  Layers3,
+  Sparkles,
+  Users,
+} from "lucide-react";
 
 export const metadata: Metadata = {
   title: "ATLAS",
-  description: "ATLAS helps students, teachers, and admins turn academic content into structured learning workflows.",
+  description:
+    "ATLAS helps students, teachers, and admins turn academic content into structured learning workflows.",
 };
 
 const highlights = [
   {
     title: "Course Intelligence",
-    description: "Search, read, annotate, and explore course material with a coherent academic shell.",
+    description:
+      "Search, read, annotate, and explore course material with a coherent academic shell.",
     icon: BookOpen,
   },
   {
     title: "AI Workspace",
-    description: "Chat, summary, flashcards, quizzes, and mind maps converge in one study flow.",
+    description:
+      "Chat, summary, flashcards, quizzes, and mind maps converge in one study flow.",
     icon: Brain,
   },
   {
     title: "Collaborative Learning",
-    description: "Study groups, forums, contributions, and live sessions keep the platform connected.",
+    description:
+      "Study groups, forums, contributions, and live sessions keep the platform connected.",
     icon: Users,
   },
 ];
@@ -35,6 +47,12 @@ export default function HomePage() {
             <span className="text-lg font-semibold tracking-tight">ATLAS</span>
           </Link>
           <div className="flex items-center gap-3">
+            <Link
+              href="/learn"
+              className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+            >
+              Learn
+            </Link>
             <Link
               href="/explore"
               className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
@@ -62,7 +80,9 @@ export default function HomePage() {
               Turn courses into structured learning journeys with ATLAS.
             </h1>
             <p className="max-w-2xl text-lg leading-8 text-slate-600">
-              Search courses, read intelligently, generate study assets, collaborate in context, and manage academic workflows in one connected platform.
+              Search courses, read intelligently, generate study assets,
+              collaborate in context, and manage academic workflows in one
+              connected platform.
             </p>
           </div>
           <div className="flex flex-wrap gap-4">
@@ -85,10 +105,15 @@ export default function HomePage() {
 
         <div className="grid gap-4">
           {highlights.map(({ title, description, icon: Icon }) => (
-            <div key={title} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div
+              key={title}
+              className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
+            >
               <Icon className="mb-4 h-8 w-8 text-blue-700" />
               <h2 className="text-xl font-semibold text-slate-950">{title}</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">{description}</p>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                {description}
+              </p>
             </div>
           ))}
         </div>

@@ -77,6 +77,65 @@ async def ensure_default_badges(session: AsyncSession) -> List[Badge]:
     return (await session.execute(select(Badge))).scalars().all()
 
 
+async def ensure_badge(
+    session: AsyncSession,
+    *,
+    code: str,
+    name: str,
+    description: str,
+    icon: str | None = None,
+    min_xp: int = 0,
+) -> Badge:
+    badge = (
+        await session.execute(select(Badge).where(Badge.code == code))
+    ).scalar_one_or_none()
+    if badge is not None:
+        return badge
+
+    badge = Badge(
+        code=code,
+        name=name,
+        description=description,
+        icon=icon,
+        min_xp=min_xp,
+    )
+    session.add(badge)
+    await session.flush()
+    return badge
+
+
+async def award_badge(
+    session: AsyncSession,
+    *,
+    user_id,
+    code: str,
+    name: str,
+    description: str,
+    icon: str | None = None,
+    min_xp: int = 0,
+) -> Badge:
+    badge = await ensure_badge(
+        session,
+        code=code,
+        name=name,
+        description=description,
+        icon=icon,
+        min_xp=min_xp,
+    )
+    existing = (
+        await session.execute(
+            select(UserBadge).where(
+                UserBadge.user_id == user_id,
+                UserBadge.badge_id == badge.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is None:
+        session.add(UserBadge(user_id=user_id, badge_id=badge.id))
+        await session.flush()
+    return badge
+
+
 async def get_total_xp(session: AsyncSession, user_id) -> int:
     total = (
         await session.execute(

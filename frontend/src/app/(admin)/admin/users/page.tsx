@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Download, Loader2, Search, Users, MoreVertical, ShieldAlert, ShieldCheck, UserX } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -28,7 +29,7 @@ export default function AdminUsersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  const users = data?.items ?? [];
+  const users = useMemo(() => data?.items ?? [], [data]);
   const filteredUsers = useMemo(
     () =>
       users.filter((user) => {
@@ -90,10 +91,18 @@ export default function AdminUsersPage() {
             Review and filter real user accounts across the platform.
           </p>
         </div>
-        <Button variant="outline">
-          <Download className="mr-2 h-4 w-4" />
-          Export
-        </Button>
+        <div className="flex gap-3">
+          <Button variant="outline" asChild>
+            <Link href="/admin/teachers/import">
+              <ShieldCheck className="mr-2 h-4 w-4" />
+              Teacher Import
+            </Link>
+          </Button>
+          <Button variant="outline">
+            <Download className="mr-2 h-4 w-4" />
+            Export
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

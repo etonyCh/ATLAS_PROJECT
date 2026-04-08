@@ -35,7 +35,7 @@ class Message(SQLModel, table=True):
     content: str = Field(...)
     source_page: Optional[int] = Field(default=None, description="Source page cited by the LLM")
     cosine_similarity: Optional[float] = Field(default=None, description="Vector search confidence score")
-    chunk_text: Optional[str] = Field(default=None, description="The exact raw text substring matched by ChromaDB for X-Ray highlighting")
+    chunk_text: Optional[str] = Field(default=None, description="The exact raw text substring matched by Qdrant hybrid search for X-Ray highlighting")
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     session: Optional[RAGSession] = Relationship(back_populates="messages")

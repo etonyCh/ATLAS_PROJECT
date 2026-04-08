@@ -9,7 +9,9 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 import meilisearch
 
+from app.core.cache import ttl_with_jitter
 from app.core.config import settings
+from app.core.qdrant_client import get_qdrant_manager, COLLECTION_DOCUMENTS
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +38,7 @@ def get_embedder():
     if _embedder is None:
         from sentence_transformers import SentenceTransformer
 
-        logger.info(
-            "[AI_CORE] Loading SentenceTransformer embedding model into memory..."
-        )
+        logger.info("[AI_CORE] Loading SentenceTransformer embedding model into memory...")
         _embedder = SentenceTransformer(
             "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
         )
@@ -54,9 +54,7 @@ PROMPT_FILE_PATH = os.path.abspath(
 try:
     with open(PROMPT_FILE_PATH, "r", encoding="utf-8") as f:
         RAG_SYSTEM_PROMPT_TEMPLATE = f.read().strip()
-        logger.info(
-            f"[AI_CORE] System prompt successfully loaded from {PROMPT_FILE_PATH}"
-        )
+        logger.info(f"[AI_CORE] System prompt successfully loaded from {PROMPT_FILE_PATH}")
 except FileNotFoundError:
     logger.error(
         f"[INFERENCE] Prompt template not found at {PROMPT_FILE_PATH}. Using hardcoded fallback."
@@ -135,7 +133,7 @@ async def execute_hybrid_search(
     request_app_state: Any,
 ) -> List[Dict[str, Any]]:
     """
-    US-09: True Hybrid Search combining MeiliSearch (Lexical/Typo) + pgvector (Semantic)
+    US-09: True Hybrid Search combining MeiliSearch (Lexical/Typo) + Qdrant (Semantic)
     - Utilizes Reciprocal Rank Fusion (RRF) on independently executed searches.
     - Applies strict backend-level facet filtering.
     """
@@ -175,41 +173,39 @@ async def execute_hybrid_search(
     if is_official is not None:
         filters.append(f"is_official = {str(is_official).lower()}")
 
-    # 3. Execute INDEPENDENT Semantic Search (pgvector)
+    # 3. Execute INDEPENDENT Semantic Search (Qdrant hybrid dense+sparse)
     sem_ranks = {}
     if query.strip():
         try:
             query_vector = await asyncio.to_thread(_embed_query_sync, query)
-            # Fetch broader candidate pool (top_k * 5) to account for facet drop-offs during metadata sync
-            sem_sql = sa.text("""
-                SELECT e.document_version_id, MIN(e.vector <=> :q_vec) as dist
-                FROM documentembedding e
-                GROUP BY e.document_version_id
-                ORDER BY dist ASC
-                LIMIT :limit
-            """)
 
-            sem_res = await session.execute(
-                sem_sql.bindparams(
-                    sa.bindparam("q_vec", value=query_vector),
-                    sa.bindparam("limit", value=top_k * 5),
-                )
+            # Qdrant hybrid search: dense semantic + sparse lexical fusion
+            qdrant = get_qdrant_manager()
+            qdrant_results = await asyncio.to_thread(
+                qdrant.search_similar,
+                COLLECTION_DOCUMENTS,
+                query_vector,
+                document_version_id=None,  # Search across all documents
+                top_k=top_k * 5,
             )
 
-            for i, row in enumerate(sem_res.mappings().all()):
-                sem_ranks[str(row["document_version_id"])] = i + 1
+            # Extract unique document_version_ids with their ranks
+            seen_docs = set()
+            for i, result in enumerate(qdrant_results):
+                doc_id = result.get("document_version_id")
+                if doc_id and doc_id not in seen_docs:
+                    sem_ranks[str(doc_id)] = i + 1
+                    seen_docs.add(doc_id)
 
         except Exception as e:
             logger.warning(
-                f"[SEARCH] Semantic search degraded. Falling back to Lexical-only: {e}"
+                f"[SEARCH] Qdrant semantic search degraded. Falling back to Lexical-only: {e}"
             )
 
     # 4. Execute INDEPENDENT Lexical Search (MeiliSearch)
     meili_ranks = {}
     try:
-        lex_results = await asyncio.to_thread(
-            _meili_search_sync, query, filters, top_k * 3
-        )
+        lex_results = await asyncio.to_thread(_meili_search_sync, query, filters, top_k * 3)
         for i, hit in enumerate(lex_results.get("hits", [])):
             meili_ranks[hit["document_version_id"]] = i + 1
     except Exception as e:
@@ -278,12 +274,64 @@ async def execute_hybrid_search(
         try:
             cache_ttl = getattr(settings, "CACHE_TTL_SEARCH", 3600)
             await redis_cache.setex(
-                name=cache_key, time=cache_ttl, value=json.dumps(final_results)
+                name=cache_key,
+                time=ttl_with_jitter(cache_ttl),
+                value=json.dumps(final_results),
             )
         except Exception as e:
             logger.warning(f"[SEARCH] Redis cache SET failure: {e}")
 
     return final_results
+
+
+async def retrieve_rag_context(
+    session: AsyncSession,
+    query: str,
+    document_version_id: str,
+) -> Tuple[Optional[str], float, Optional[int], Optional[str]]:
+    """
+    Phase 4: Uses query classifier to select optimal retrieval mode.
+    """
+    from app.services.ai_core.query_classifier import get_query_classifier
+
+    embedder = get_embedder()
+    if not embedder:
+        return None, 0.0, None, None
+
+    try:
+        classifier = await get_query_classifier()
+        mode = await classifier.classify(query)
+
+        qdrant = get_qdrant_manager()
+
+        if mode == "vector":
+            logger.info(f"[RAG] Using precise vector search for: {query[:50]}...")
+            context, max_score, chunk_idx, chunk_text = await asyncio.to_thread(
+                qdrant.search_by_text,
+                COLLECTION_DOCUMENTS,
+                query,
+                embedder,
+                document_version_id,
+                top_k=5,
+                score_threshold=0.25,
+            )
+        else:
+            logger.info(f"[RAG] Using hybrid search for: {query[:50]}...")
+            context, max_score, chunk_idx, chunk_text = await asyncio.to_thread(
+                qdrant.search_by_text,
+                COLLECTION_DOCUMENTS,
+                query,
+                embedder,
+                document_version_id,
+                top_k=8,
+                score_threshold=0.15,
+            )
+
+        return context, max_score, chunk_idx, chunk_text
+
+    except Exception as e:
+        logger.error(f"[RAG] Retrieval failed: {e}")
+        return None, 0.0, None, None
 
 
 # ==========================================
@@ -308,9 +356,7 @@ async def stream_llm_response(
         )
         words = fallback_msg.split(" ")
         for i, word in enumerate(words):
-            yield (
-                json.dumps({"delta": word + (" " if i < len(words) - 1 else "")}) + "\n"
-            )
+            yield (json.dumps({"delta": word + (" " if i < len(words) - 1 else "")}) + "\n")
             await asyncio.sleep(0.05)
         return
 
@@ -336,9 +382,7 @@ async def stream_llm_response(
 
     try:
         logger.info(f"[INFERENCE] Routing to Local Engine: {primary_model}")
-        async with http_client.stream(
-            "POST", ollama_url, json=ollama_payload
-        ) as response:
+        async with http_client.stream("POST", ollama_url, json=ollama_payload) as response:
             if response.status_code == 200:
                 async for chunk in response.aiter_lines():
                     if not chunk:
@@ -356,9 +400,7 @@ async def stream_llm_response(
                 raise Exception(f"Ollama returned HTTP {response.status_code}")
 
     except Exception as primary_err:
-        logger.warning(
-            f"[INFERENCE] Local Engine '{primary_model}' failed: {primary_err}"
-        )
+        logger.warning(f"[INFERENCE] Local Engine '{primary_model}' failed: {primary_err}")
 
     # -------------------------------------------------------------------------
     # PHASE 2: Cloud Fallback (Google AI Studio - Gemma 3 Optimized)
@@ -368,12 +410,7 @@ async def stream_llm_response(
 
     if not api_key or "INSERT_NEW" in api_key:
         logger.error("[INFERENCE] Cloud Fallback aborted: Missing GOOGLE_AI_API_KEY.")
-        yield (
-            json.dumps(
-                {"error": "Local engine offline. Cloud fallback not configured."}
-            )
-            + "\n"
-        )
+        yield (json.dumps({"error": "Local engine offline. Cloud fallback not configured."}) + "\n")
         return
 
     logger.info(f"[INFERENCE] Routing to Cloud Fallback: {fallback_model}")
@@ -386,9 +423,7 @@ async def stream_llm_response(
             {
                 "role": "user",
                 "parts": [
-                    {
-                        "text": f"SYSTEM_INSTRUCTIONS: {system_prompt}\n\nUSER_QUERY: {user_prompt}"
-                    }
+                    {"text": f"SYSTEM_INSTRUCTIONS: {system_prompt}\n\nUSER_QUERY: {user_prompt}"}
                 ],
             }
         ],
@@ -399,9 +434,7 @@ async def stream_llm_response(
     }
 
     try:
-        async with http_client.stream(
-            "POST", google_url, json=google_payload
-        ) as response:
+        async with http_client.stream("POST", google_url, json=google_payload) as response:
             if response.status_code != 200:
                 err_content = await response.aread()
                 logger.error(
@@ -432,9 +465,7 @@ async def stream_llm_response(
         logger.error(f"CRITICAL: All inference engines failed: {fallback_err}")
         yield (
             json.dumps(
-                {
-                    "error": "Service temporarily unavailable. Our engineers are investigating."
-                }
+                {"error": "Service temporarily unavailable. Our engineers are investigating."}
             )
             + "\n"
         )

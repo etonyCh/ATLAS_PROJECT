@@ -6,7 +6,6 @@ import {
   Activity,
   AlertTriangle,
   Building2,
-  CheckCircle,
   Server,
   Users,
 } from "lucide-react";

@@ -10,68 +10,30 @@ import {
   Calendar,
   Filter,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Select } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useStudentDashboardQuery } from "@/queries";
-
-const MOCK_HISTORY = [
-  {
-    id: "1",
-    type: "flashcard",
-    title: "Algorithms - Sorting",
-    duration: "15 min",
-    date: "2024-03-30",
-    score: 85,
-  },
-  {
-    id: "2",
-    type: "quiz",
-    title: "Database Fundamentals",
-    duration: "20 min",
-    date: "2024-03-29",
-    score: 72,
-  },
-  {
-    id: "3",
-    type: "read",
-    title: "Data Structures - Trees",
-    duration: "30 min",
-    date: "2024-03-28",
-    score: null,
-  },
-  {
-    id: "4",
-    type: "flashcard",
-    title: "Calculus - Derivatives",
-    duration: "10 min",
-    date: "2024-03-27",
-    score: 90,
-  },
-];
+import { api } from "@/lib/api";
+import type { ActivityLogItem } from "@/types/api.types";
+import { useQuery } from "@tanstack/react-query";
 
 export default function HistoryPage() {
-  const { data: dashboard } = useStudentDashboardQuery();
+  const { data: dashboard, isLoading: isDashboardLoading } =
+    useStudentDashboardQuery();
   const [filter, setFilter] = useState("all");
 
-  const getIcon = (type: string) => {
-    switch (type) {
-      case "flashcard":
-        return Brain;
-      case "quiz":
-        return FileQuestion;
-      case "read":
-        return BookOpen;
-      default:
-        return Clock;
-    }
-  };
-
-  const filteredHistory = MOCK_HISTORY.filter((h) => {
-    if (filter === "all") return true;
-    return h.type === filter;
+  const { data: historyItems, isLoading: isHistoryLoading } = useQuery({
+    queryKey: ["student-history"],
+    queryFn: () => api.get<ActivityLogItem[]>("/students/me/history"),
   });
+
+  const filteredHistory =
+    historyItems?.filter((h) => {
+      if (filter === "all") return true;
+      return h.activity_type === filter;
+    }) ?? [];
 
   return (
     <div className="space-y-6">
@@ -88,9 +50,13 @@ export default function HistoryPage() {
                 <Clock className="h-5 w-5 text-orange-600 dark:text-orange-400" />
               </div>
               <div>
-                <p className="text-2xl font-bold">
-                  {dashboard?.progress.active_streak_days || 5}
-                </p>
+                <div className="text-2xl font-bold">
+                  {isDashboardLoading ? (
+                    <Skeleton className="h-8 w-12" />
+                  ) : (
+                    dashboard?.progress.active_streak_days || 0
+                  )}
+                </div>
                 <p className="text-sm text-muted-foreground">Day Streak</p>
               </div>
             </div>
@@ -103,7 +69,13 @@ export default function HistoryPage() {
                 <TrendingUp className="h-5 w-5 text-green-600 dark:text-green-400" />
               </div>
               <div>
-                <p className="text-2xl font-bold">24</p>
+                <div className="text-2xl font-bold">
+                  {isDashboardLoading ? (
+                    <Skeleton className="h-8 w-12" />
+                  ) : (
+                    (historyItems?.length ?? 0)
+                  )}
+                </div>
                 <p className="text-sm text-muted-foreground">This Week</p>
               </div>
             </div>
@@ -116,7 +88,13 @@ export default function HistoryPage() {
                 <Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               </div>
               <div>
-                <p className="text-2xl font-bold">156</p>
+                <div className="text-2xl font-bold">
+                  {isDashboardLoading ? (
+                    <Skeleton className="h-8 w-12" />
+                  ) : (
+                    (historyItems?.length ?? 0)
+                  )}
+                </div>
                 <p className="text-sm text-muted-foreground">Total Hours</p>
               </div>
             </div>
@@ -138,7 +116,21 @@ export default function HistoryPage() {
         </Select>
       </div>
 
-      {filteredHistory.length === 0 ? (
+      {isHistoryLoading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <Card key={i}>
+              <CardContent className="flex items-center gap-4 py-4">
+                <Skeleton className="h-10 w-10 rounded-lg" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-48" />
+                  <Skeleton className="h-3 w-32" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : filteredHistory.length === 0 ? (
         <EmptyState
           type="history"
           title="No history yet"
@@ -147,7 +139,7 @@ export default function HistoryPage() {
       ) : (
         <div className="space-y-3">
           {filteredHistory.map((item) => {
-            const Icon = getIcon(item.type);
+            const Icon = getIcon(item.activity_type);
             return (
               <Card
                 key={item.id}
@@ -158,32 +150,15 @@ export default function HistoryPage() {
                     <Icon className="h-5 w-5 text-muted-foreground" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{item.title}</p>
+                    <p className="font-medium truncate">{item.description}</p>
                     <p className="text-sm text-muted-foreground">
-                      {item.duration} •{" "}
-                      {new Date(item.date).toLocaleDateString("fr-TN", {
+                      {new Date(item.created_at).toLocaleDateString("fr-TN", {
                         weekday: "short",
                         month: "short",
                         day: "numeric",
                       })}
                     </p>
                   </div>
-                  {item.score !== null && (
-                    <div className="text-right">
-                      <p
-                        className={`font-bold ${
-                          item.score >= 80
-                            ? "text-success"
-                            : item.score >= 60
-                              ? "text-warning"
-                              : "text-destructive"
-                        }`}
-                      >
-                        {item.score}%
-                      </p>
-                      <p className="text-xs text-muted-foreground">Score</p>
-                    </div>
-                  )}
                 </CardContent>
               </Card>
             );
@@ -192,4 +167,17 @@ export default function HistoryPage() {
       )}
     </div>
   );
+}
+
+function getIcon(type: string) {
+  switch (type) {
+    case "flashcard":
+      return Brain;
+    case "quiz":
+      return FileQuestion;
+    case "read":
+      return BookOpen;
+    default:
+      return Clock;
+  }
 }

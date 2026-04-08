@@ -19,6 +19,29 @@ export function useSubmitContributionMutation() {
   });
 }
 
+export function useContributorStatusQuery() {
+  return useQuery({
+    queryKey: ["contributor", "status"],
+    queryFn: () => contributionsApi.getContributorStatus(),
+  });
+}
+
+export function useSubmitContributorRequestMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (formData: FormData) =>
+      contributionsApi.submitContributorRequest(formData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["contributor"] });
+      queryClient.invalidateQueries({ queryKey: ["contributions"] });
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "contributor-requests"],
+      });
+    },
+  });
+}
+
 export function useAdminContributionsQuery(params?: {
   status?: string;
   limit?: number;
@@ -63,6 +86,63 @@ export function useRejectContributionMutation() {
     }) => contributionsApi.admin.reject(contributionId, reviewNote),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "contributions"] });
+    },
+  });
+}
+
+export function useAdminContributorRequestsQuery(params?: {
+  status?: "PENDING" | "APPROVED" | "REJECTED";
+  limit?: number;
+  offset?: number;
+}) {
+  return useQuery({
+    queryKey: ["admin", "contributor-requests", params],
+    queryFn: () => contributionsApi.admin.listContributorRequests(params),
+  });
+}
+
+export function useApproveContributorRequestMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      requestId,
+      reviewNote,
+    }: {
+      requestId: string;
+      reviewNote?: string;
+    }) =>
+      contributionsApi.admin.approveContributorRequest(requestId, {
+        review_note: reviewNote,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "contributor-requests"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["contributor"] });
+      queryClient.invalidateQueries({ queryKey: ["contributions"] });
+    },
+  });
+}
+
+export function useRejectContributorRequestMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      requestId,
+      reviewNote,
+    }: {
+      requestId: string;
+      reviewNote: string;
+    }) =>
+      contributionsApi.admin.rejectContributorRequest(requestId, reviewNote),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["admin", "contributor-requests"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["contributor"] });
+      queryClient.invalidateQueries({ queryKey: ["contributions"] });
     },
   });
 }

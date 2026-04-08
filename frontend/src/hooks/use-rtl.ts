@@ -23,20 +23,22 @@ function applyDocumentLanguage(lang: Language, setRTL: (rtl: boolean) => void) {
 
 export function useRTL(): RTLContext {
   const { isRTL, setRTL } = useUIStore();
-  const [lang, setLangState] = useState<Language>("fr");
+  const [lang, setLangState] = useState<Language>(() => {
+    if (typeof window === "undefined") {
+      return "fr";
+    }
+    return (localStorage.getItem("atlas_lang") as Language | null) || "fr";
+  });
 
   const setLanguage = (nextLang: Language) => {
     setLangState(nextLang);
     localStorage.setItem("atlas_lang", nextLang);
     document.cookie = `atlas_lang=${nextLang}; path=/; max-age=31536000; SameSite=Lax`;
-    applyDocumentLanguage(nextLang, setRTL);
   };
 
   useEffect(() => {
-    const stored = (localStorage.getItem("atlas_lang") as Language | null) || "fr";
-    setLangState(stored);
-    applyDocumentLanguage(stored, setRTL);
-  }, [setRTL]);
+    applyDocumentLanguage(lang, setRTL);
+  }, [lang, setRTL]);
 
   return {
     dir: isRTL ? "rtl" : "ltr",

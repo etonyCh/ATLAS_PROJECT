@@ -12,7 +12,8 @@ celery_app = Celery(
     include=[
         # ARCHITECT FIX: Mapped tasks to their strict domain boundaries
         "app.services.doc_processing.ocr_tasks",
-        "app.services.ai_core.embedding_tasks",
+        # QDRANT MIGRATION: Using Qdrant-based embeddings instead of pgvector
+        "app.services.ai_core.embedding_tasks_qdrant",
         "app.services.study_engine.flashcard_tasks"
     ]
 )

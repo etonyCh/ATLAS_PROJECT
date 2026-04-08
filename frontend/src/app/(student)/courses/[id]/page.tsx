@@ -201,9 +201,11 @@ export default function CourseDetailPage() {
                 <p className="mt-1 text-sm text-muted-foreground">
                   {courseMeta}
                 </p>
-                <Button className="mt-4 min-h-11 w-full">
-                  <Play className="mr-2 h-4 w-4" />
-                  Start Learning
+                <Button className="mt-4 min-h-11 w-full" asChild>
+                  <Link href={`/courses/${courseId}/read`}>
+                    <Play className="mr-2 h-4 w-4" />
+                    Start Learning
+                  </Link>
                 </Button>
               </div>
             </CardContent>

@@ -11,7 +11,6 @@ import {
   Plus,
   Play,
   Settings,
-  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useTeacherCourses } from "@/queries/courses";
 
 interface ScheduledSession {
   id: string;
@@ -36,34 +36,6 @@ interface ScheduledSession {
   max_participants: number;
 }
 
-const MOCK_COURSES = [
-  { id: "c1", title: "Introduction to Algorithms" },
-  { id: "c2", title: "Data Structures" },
-  { id: "c3", title: "Linear Algebra" },
-  { id: "c4", title: "Physics 101" },
-];
-
-const MOCK_SCHEDULED: ScheduledSession[] = [
-  {
-    id: "s1",
-    title: "Weekly Q&A Session",
-    course_id: "c1",
-    course_name: "Introduction to Algorithms",
-    scheduled_at: "2024-01-25T18:00:00Z",
-    participant_count: 0,
-    max_participants: 50,
-  },
-  {
-    id: "s2",
-    title: "Midterm Review",
-    course_id: "c2",
-    course_name: "Data Structures",
-    scheduled_at: "2024-01-27T14:00:00Z",
-    participant_count: 12,
-    max_participants: 30,
-  },
-];
-
 export default function LiveSessionHostPage() {
   const router = useRouter();
   const [showCreate, setShowCreate] = useState(false);
@@ -73,18 +45,37 @@ export default function LiveSessionHostPage() {
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
   const [maxParticipants, setMaxParticipants] = useState("50");
+  const [scheduledSessions] = useState<ScheduledSession[]>([]);
+  const { data: teacherCourses = [], isLoading: isLoadingCourses } = useTeacherCourses();
+
+  const buildLiveSessionUrl = (sessionId: string, sessionTitle: string, selectedCourseId?: string) => {
+    const params = new URLSearchParams({
+      mode: "host",
+      title: sessionTitle,
+    });
+
+    if (selectedCourseId) {
+      params.set("courseId", selectedCourseId);
+    }
+
+    return `/live-session/${sessionId}?${params.toString()}`;
+  };
 
   const handleCreateSession = () => {
     if (!title || !courseId || !scheduledDate || !scheduledTime) return;
     const sessionId = `session-${Date.now()}`;
-    router.push(
-      `/live-session/${sessionId}?mode=host&title=${encodeURIComponent(title)}`,
-    );
+    router.push(buildLiveSessionUrl(sessionId, title, courseId));
   };
 
   const startImmediateSession = () => {
     const sessionId = `session-${Date.now()}`;
-    router.push(`/live-session/${sessionId}?mode=host&title=Live+Session`);
+    router.push(
+      buildLiveSessionUrl(
+        sessionId,
+        "Live Session",
+        teacherCourses.length === 1 ? teacherCourses[0].id : undefined,
+      ),
+    );
   };
 
   return (
@@ -138,16 +129,29 @@ export default function LiveSessionHostPage() {
               <label className="text-sm font-medium mb-2 block">Course</label>
               <Select value={courseId} onValueChange={setCourseId}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a course" />
+                  <SelectValue
+                    placeholder={
+                      isLoadingCourses ? "Loading courses..." : "Select a course"
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  {MOCK_COURSES.map((course) => (
-                    <SelectItem key={course.id} value={course.id}>
-                      {course.title}
+                  {teacherCourses.length > 0 ? (
+                    teacherCourses.map((course) => (
+                      <SelectItem key={course.id} value={course.id}>
+                        {course.title}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="__no-courses__" disabled>
+                      No courses available
                     </SelectItem>
-                  ))}
+                  )}
                 </SelectContent>
               </Select>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Live PDF presentation uses the approved document attached to the selected course.
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -230,7 +234,7 @@ export default function LiveSessionHostPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {MOCK_SCHEDULED.length === 0 ? (
+            {scheduledSessions.length === 0 ? (
               <div className="text-center py-12">
                 <Calendar className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                 <p className="text-muted-foreground">No scheduled sessions</p>
@@ -245,7 +249,7 @@ export default function LiveSessionHostPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {MOCK_SCHEDULED.map((session) => (
+                {scheduledSessions.map((session) => (
                   <div
                     key={session.id}
                     className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 transition-colors"
@@ -289,7 +293,13 @@ export default function LiveSessionHostPage() {
                           : "Ready"}
                       </Badge>
                       <Button size="sm" asChild>
-                        <Link href={`/live-session/${session.id}?mode=host`}>
+                        <Link
+                          href={buildLiveSessionUrl(
+                            session.id,
+                            session.title,
+                            session.course_id,
+                          )}
+                        >
                           <Play className="h-4 w-4 mr-2" />
                           Start
                         </Link>

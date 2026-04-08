@@ -30,9 +30,12 @@ class CourseUpdateRequest(BaseModel):
     description: str | None = None
     academic_year: str | None = None
     tags: list[str] | None = None
+    level: str | None = None
 
 
-def _serialize_version(version: DocumentVersion, contribution: Contribution | None = None) -> dict[str, Any]:
+def _serialize_version(
+    version: DocumentVersion, contribution: Contribution | None = None
+) -> dict[str, Any]:
     return {
         "id": str(version.id),
         "version_number": version.version_number,
@@ -43,11 +46,15 @@ def _serialize_version(version: DocumentVersion, contribution: Contribution | No
         "uploaded_at": version.uploaded_at,
         "quality_score": version.quality_score,
         "contribution_id": str(version.contribution_id),
-        "course_id": str(contribution.course_id) if contribution and contribution.course_id else None,
+        "course_id": str(contribution.course_id)
+        if contribution and contribution.course_id
+        else None,
     }
 
 
-def _serialize_course(course: Course, latest_version: DocumentVersion | None = None) -> dict[str, Any]:
+def _serialize_course(
+    course: Course, latest_version: DocumentVersion | None = None
+) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "id": str(course.id),
         "title": course.title,
@@ -58,6 +65,7 @@ def _serialize_course(course: Course, latest_version: DocumentVersion | None = N
         "language": course.language,
         "tags": course.tags or [],
         "created_at": course.created_at,
+        "is_deleted": latest_version is None,
     }
     if latest_version is not None:
         payload["latestVersion"] = _serialize_version(latest_version)
@@ -87,7 +95,9 @@ async def _get_latest_course_version(
 def _can_access_course_contribution(current_user: User, contribution: Contribution | None) -> bool:
     if contribution is None:
         return False
-    role_value = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    role_value = (
+        current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    )
     if role_value in {"ADMIN", "SUPERADMIN"}:
         return True
     if contribution.uploader_id == current_user.id:
@@ -150,12 +160,19 @@ async def list_courses(
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
-    result = await db.execute(select(Course).order_by(desc(Course.created_at)).limit(100))
+    result = await db.execute(
+        select(Course)
+        .where(Course.is_deleted.is_(False))
+        .order_by(desc(Course.created_at))
+        .limit(100)
+    )
     courses = result.scalars().all()
     payload: list[dict[str, Any]] = []
     for course in courses:
         latest_version, contribution = await _get_latest_course_version(db, course.id)
-        if latest_version is not None and not _can_access_course_contribution(current_user, contribution):
+        if latest_version is not None and not _can_access_course_contribution(
+            current_user, contribution
+        ):
             latest_version = None
         payload.append(_serialize_course(course, latest_version))
     return payload
@@ -169,7 +186,7 @@ async def get_my_uploads(
     result = await db.execute(
         select(Course, Contribution)
         .join(Contribution, Contribution.course_id == Course.id)
-        .where(Contribution.uploader_id == current_user.id)
+        .where(Contribution.uploader_id == current_user.id, Course.is_deleted.is_(False))
         .order_by(desc(Course.created_at))
     )
     payload: list[dict[str, Any]] = []
@@ -192,11 +209,13 @@ async def get_course(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     course = await db.get(Course, course_id)
-    if course is None:
+    if course is None or course.is_deleted:
         raise atlas_error("COURSE_001", "Course not found.", status_code=404)
 
     latest_version, contribution = await _get_latest_course_version(db, course_id)
-    if latest_version is not None and not _can_access_course_contribution(current_user, contribution):
+    if latest_version is not None and not _can_access_course_contribution(
+        current_user, contribution
+    ):
         latest_version = None
     return _serialize_course(course, latest_version)
 
@@ -220,7 +239,9 @@ async def get_course_stats(
         )
     ).scalar_one()
     contribution_count = (
-        await db.execute(select(func.count(Contribution.id)).where(Contribution.course_id == course_id))
+        await db.execute(
+            select(func.count(Contribution.id)).where(Contribution.course_id == course_id)
+        )
     ).scalar_one()
     approved_contributions = (
         await db.execute(
@@ -232,12 +253,16 @@ async def get_course_stats(
     ).scalar_one()
 
     document_version_ids = (
-        await db.execute(
-            select(DocumentVersion.id)
-            .join(Contribution, Contribution.id == DocumentVersion.contribution_id)
-            .where(Contribution.course_id == course_id, DocumentVersion.is_deleted.is_(False))
+        (
+            await db.execute(
+                select(DocumentVersion.id)
+                .join(Contribution, Contribution.id == DocumentVersion.contribution_id)
+                .where(Contribution.course_id == course_id, DocumentVersion.is_deleted.is_(False))
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     # Student engagement metrics
     learner_count = 0
@@ -257,44 +282,44 @@ async def get_course_stats(
 
     if document_version_ids:
         # Count unique students who engaged
+        selectable = union_all(
+            select(FlashcardDeck.student_id).where(
+                FlashcardDeck.document_version_id.in_(document_version_ids)
+            ),
+            select(QuizSession.student_id).where(
+                QuizSession.document_version_id.in_(document_version_ids)
+            ),
+            select(Summary.student_id).where(Summary.document_version_id.in_(document_version_ids)),
+            select(MindMap.student_id).where(MindMap.document_version_id.in_(document_version_ids)),
+        ).subquery("selectable")
+
         learner_rows = (
             await db.execute(
-                select(func.count(func.distinct(selectable.c.student_id))).select_from(
-                    union_all(
-                        select(FlashcardDeck.student_id).where(
-                            FlashcardDeck.document_version_id.in_(document_version_ids)
-                        ),
-                        select(QuizSession.student_id).where(
-                            QuizSession.document_version_id.in_(document_version_ids)
-                        ),
-                        select(Summary.student_id).where(
-                            Summary.document_version_id.in_(document_version_ids)
-                        ),
-                        select(MindMap.student_id).where(
-                            MindMap.document_version_id.in_(document_version_ids)
-                        ),
-                    ).subquery("selectable")
-                )
+                select(func.count(func.distinct(selectable.c.student_id))).select_from(selectable)
             )
         ).scalar_one()
         learner_count = int(learner_rows or 0)
 
         # Active students in last 7 days
         from datetime import timedelta
+
         week_ago = datetime.utcnow() - timedelta(days=7)
+
+        active_selectable = union_all(
+            select(FlashcardDeck.student_id).where(
+                FlashcardDeck.document_version_id.in_(document_version_ids),
+                FlashcardDeck.created_at >= week_ago,
+            ),
+            select(QuizSession.student_id).where(
+                QuizSession.document_version_id.in_(document_version_ids),
+                QuizSession.created_at >= week_ago,
+            ),
+        ).subquery("active_selectable")
+
         active_rows = (
             await db.execute(
-                select(func.count(func.distinct(selectable.c.student_id))).select_from(
-                    union_all(
-                        select(FlashcardDeck.student_id).where(
-                            FlashcardDeck.document_version_id.in_(document_version_ids),
-                            FlashcardDeck.created_at >= week_ago,
-                        ),
-                        select(QuizSession.student_id).where(
-                            QuizSession.document_version_id.in_(document_version_ids),
-                            QuizSession.created_at >= week_ago,
-                        ),
-                    ).subquery("selectable")
+                select(func.count(func.distinct(active_selectable.c.student_id))).select_from(
+                    active_selectable
                 )
             )
         ).scalar_one()
@@ -350,7 +375,9 @@ async def get_course_stats(
         },
         "duration": {
             "estimated_read_minutes": estimated_read_minutes,
-            "estimated_duration_label": f"{estimated_read_minutes // 60}h {estimated_read_minutes % 60}m" if estimated_read_minutes >= 60 else f"{estimated_read_minutes}m",
+            "estimated_duration_label": f"{estimated_read_minutes // 60}h {estimated_read_minutes % 60}m"
+            if estimated_read_minutes >= 60
+            else f"{estimated_read_minutes}m",
         },
         "rating": {
             "average": 4.2,  # Placeholder - would come from actual ratings table
@@ -402,9 +429,10 @@ async def update_course(
     if course is None:
         raise atlas_error("COURSE_001", "Course not found.", status_code=404)
 
-    for field in ("title", "description", "academic_year", "tags"):
+    for field in ("title", "description", "academic_year", "tags", "level"):
         value = getattr(payload, field)
         if value is not None:
+            # Handle enum mapping if needed, SQLModel might automatically coerce strings
             setattr(course, field, value)
 
     db.add(course)
@@ -423,6 +451,7 @@ async def delete_course(
     _current_user: User = Depends(require_role("TEACHER", "ADMIN")),
     redis_client: Redis = Depends(get_redis_client),
 ) -> dict[str, bool]:
+    print(f"🔥 DELETE request received for course: {course_id}")
     course = await db.get(Course, course_id)
     if course is None:
         raise atlas_error("COURSE_001", "Course not found.", status_code=404)
@@ -436,7 +465,11 @@ async def delete_course(
         version.is_deleted = True
         db.add(version)
 
+    course.is_deleted = True
+    db.add(course)
+
     await db.commit()
+    print(f"✅ Course {course_id} marked as deleted")
     await invalidate_cache_patterns(redis_client, "course_meta:*", "search_autocomplete:*")
     return {"success": True}
 

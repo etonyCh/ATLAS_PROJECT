@@ -29,7 +29,7 @@ export default function ContributePage() {
   const [description, setDescription] = useState("");
   const [level, setLevel] = useState("L1");
   const [courseType, setCourseType] = useState("LECTURE");
-  const [academicYear, setAcademicYear] = useState("2024-2025");
+  const [academicYear, setAcademicYear] = useState("2025-2026");
   const [language, setLanguage] = useState("FR");
   const [error, setError] = useState("");
 
@@ -257,7 +257,9 @@ export default function ContributePage() {
               </div>
               <div className="flex gap-2">
                 <Check className="h-4 w-4 text-success shrink-0 mt-0.5" />
-                <p>Supported formats: PDF, DOC, DOCX, PPT, PPTX, PNG, JPG, JPEG</p>
+                <p>
+                  Supported formats: PDF, DOC, DOCX, PPT, PPTX, PNG, JPG, JPEG
+                </p>
               </div>
               <div className="flex gap-2">
                 <Check className="h-4 w-4 text-success shrink-0 mt-0.5" />

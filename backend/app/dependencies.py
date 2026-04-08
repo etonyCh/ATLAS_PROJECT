@@ -85,3 +85,29 @@ def verify_department_access(user: User, target_department_id: UUID) -> bool:
     if user.role == UserRole.ADMIN:
         return True
     return False
+
+
+def require_teacher():
+    """Dependency: Strictly TEACHER or ADMIN role required (Spec §7.4)."""
+    return require_role("TEACHER", "ADMIN")
+
+
+def require_contributor():
+    """Dependency: STUDENT role + is_contributor flag required (Spec §7.4)."""
+    async def dependency(current_user: User = Depends(get_current_user)) -> User:
+        role_value = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+        if role_value != "STUDENT":
+            raise atlas_error(
+                "AUTH_008",
+                "Only students can submit contributions.",
+                status_code=403,
+            )
+        if not current_user.is_contributor:
+            raise atlas_error(
+                "CONTRIBUTION_004",
+                "Contributor access is required before submitting community uploads.",
+                status_code=403,
+            )
+        return current_user
+
+    return dependency

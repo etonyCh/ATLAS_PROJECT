@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { useDropzone } from "react-dropzone";
+import { useDropzone, type FileRejection } from "react-dropzone";
 import { Upload, File, X, Loader2, CheckCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -65,13 +65,13 @@ export function FileDropzone({
   hint = "PDF, DOCX, PPTX up to 50MB",
 }: FileDropzoneProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const [isUploading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
   const [errorMsgs, setErrorMsgs] = useState<string | null>(null);
 
   const onDrop = useCallback(
-    async (acceptedFiles: File[], fileRejections: any[]) => {
+    async (acceptedFiles: File[], fileRejections: FileRejection[]) => {
       setErrorMsgs(null);
       if (fileRejections.length > 0) {
         setErrorMsgs(`File is invalid or exceeds ${Math.round(maxSize / (1024 * 1024))}MB limit.`);

@@ -136,7 +136,7 @@ allowed_origins = getattr(settings, "BACKEND_CORS_ORIGINS", ["http://localhost:3
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[str(origin) for origin in allowed_origins],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

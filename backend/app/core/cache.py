@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import random
 
 from redis.asyncio import Redis
 
@@ -66,6 +67,17 @@ WRITE_INVALIDATIONS: dict[str, CacheInvalidation] = {
         keys=("admin_dashboard:*",),
     ),
 }
+
+
+def ttl_with_jitter(base_ttl: int, *, jitter_ratio: float = 0.1) -> int:
+    """
+    Spread expirations slightly to reduce synchronized cache invalidation bursts.
+    """
+    if base_ttl <= 0:
+        return 1
+
+    jitter_window = max(1, int(base_ttl * jitter_ratio))
+    return base_ttl + random.randint(0, jitter_window)
 
 
 async def invalidate_cache_patterns(redis_client: Redis, *patterns: str) -> None:

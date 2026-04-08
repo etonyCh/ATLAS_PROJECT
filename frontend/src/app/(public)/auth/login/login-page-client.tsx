@@ -114,12 +114,7 @@ export function LoginPageClient() {
               Student registration
             </Link>
           </div>
-          <div className="mt-2 text-center text-sm">
-            <span className="text-muted-foreground">Need educator access? </span>
-            <Link href="/auth/teacher-request" className="font-medium text-primary hover:underline">
-              Request teacher verification
-            </Link>
-          </div>
+
         </CardContent>
       </Card>
     </div>

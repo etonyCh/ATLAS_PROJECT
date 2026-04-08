@@ -10,6 +10,7 @@ import {
   FileText,
   MessageSquareWarning,
   ShieldAlert,
+  ShieldCheck,
   FileUp,
   XCircle,
 } from "lucide-react";
@@ -29,7 +30,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useAdminContributionsQuery, useApproveContributionMutation, useRejectContributionMutation } from "@/queries/contributions";
+import {
+  useAdminContributionsQuery,
+  useAdminContributorRequestsQuery,
+  useApproveContributionMutation,
+  useApproveContributorRequestMutation,
+  useRejectContributionMutation,
+  useRejectContributorRequestMutation,
+} from "@/queries/contributions";
+import type { Contribution, ContributorRequest } from "@/types/api.types";
 
 const statusOptions = [
   { value: "all", label: "All" },
@@ -234,28 +243,159 @@ function ReportsTab() {
 // Contributions Tab Component
 // ----------------------------------------------------------------------
 function ContributionsTab() {
-  const [rejectionDialog, setRejectionDialog] = useState<{ open: boolean; contributionId: string | null }>({ open: false, contributionId: null });
+  type PreviewDocument = Contribution | ContributorRequest["demo_contribution"];
+
+  const [rejectionDialog, setRejectionDialog] = useState<{
+    open: boolean;
+    targetId: string | null;
+    targetType: "contribution" | "contributor_request" | null;
+  }>({ open: false, targetId: null, targetType: null });
   const [rejectionReason, setRejectionReason] = useState("");
-  const [previewDialog, setPreviewDialog] = useState<{ open: boolean; doc: any | null }>({ open: false, doc: null });
+  const [previewDialog, setPreviewDialog] = useState<{
+    open: boolean;
+    doc: PreviewDocument | null;
+    targetType: "contribution" | "contributor_request" | null;
+    targetId: string | null;
+  }>({ open: false, doc: null, targetType: null, targetId: null });
 
   const queueQuery = useAdminContributionsQuery({ status: "PENDING" });
+  const contributorRequestsQuery = useAdminContributorRequestsQuery({
+    status: "PENDING",
+  });
   const approveMutation = useApproveContributionMutation();
   const rejectMutation = useRejectContributionMutation();
+  const approveContributorMutation = useApproveContributorRequestMutation();
+  const rejectContributorMutation = useRejectContributorRequestMutation();
 
   const handleApprove = (id: string) => {
     approveMutation.mutate({ contributionId: id });
   };
 
+  const handleApproveContributorRequest = (id: string) => {
+    approveContributorMutation.mutate({ requestId: id });
+  };
+
   const submitRejection = () => {
-    if (rejectionDialog.contributionId && rejectionReason.trim()) {
-      rejectMutation.mutate({ contributionId: rejectionDialog.contributionId, reviewNote: rejectionReason });
-      setRejectionDialog({ open: false, contributionId: null });
+    if (rejectionDialog.targetId && rejectionReason.trim()) {
+      if (rejectionDialog.targetType === "contributor_request") {
+        rejectContributorMutation.mutate({
+          requestId: rejectionDialog.targetId,
+          reviewNote: rejectionReason,
+        });
+      } else {
+        rejectMutation.mutate({
+          contributionId: rejectionDialog.targetId,
+          reviewNote: rejectionReason,
+        });
+      }
+      setRejectionDialog({ open: false, targetId: null, targetType: null });
       setRejectionReason("");
     }
   };
 
   return (
     <div className="space-y-6">
+      <Card className="border-t-4 border-t-sky-500 shadow-sm overflow-hidden">
+        <CardHeader className="bg-muted/30">
+          <CardTitle className="text-lg">Contributor Access Requests</CardTitle>
+          <CardDescription>
+            Review demo documents before unlocking student upload privileges.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-4">
+          {contributorRequestsQuery.isLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-24 w-full" />
+            </div>
+          ) : contributorRequestsQuery.data?.items.length ? (
+            <div className="grid gap-4">
+              {contributorRequestsQuery.data.items.map((request) => (
+                <div
+                  key={request.id}
+                  className="flex flex-col gap-4 rounded-xl border p-5 shadow-sm transition-shadow hover:shadow-md sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-sky-500/10 text-sky-500">
+                      <ShieldCheck className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">
+                        {request.full_name || request.email}
+                      </h3>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                        <StatusChip status="pending" label="Contributor Request" />
+                        <span>{request.demo_contribution.title}</span>
+                        <span>OCR {Number(request.ocr_quality_score || 0).toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="shadow-sm"
+                      onClick={() =>
+                        setPreviewDialog({
+                          open: true,
+                          targetType: "contributor_request",
+                          targetId: request.id,
+                          doc: {
+                            ...request.demo_contribution,
+                            s3_key: request.demo_contribution.s3_key,
+                            mime_type: request.demo_contribution.mime_type,
+                            preview_text: request.demo_contribution.preview_text,
+                            created_at: request.demo_contribution.created_at,
+                          },
+                        })
+                      }
+                    >
+                      <FileText className="mr-2 h-4 w-4" />
+                      View Demo
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="shadow-sm"
+                      onClick={() =>
+                        setRejectionDialog({
+                          open: true,
+                          targetId: request.id,
+                          targetType: "contributor_request",
+                        })
+                      }
+                      disabled={rejectContributorMutation.isPending}
+                    >
+                      <XCircle className="mr-2 h-4 w-4" />
+                      Reject
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
+                      onClick={() => handleApproveContributorRequest(request.id)}
+                      disabled={
+                        approveContributorMutation.isPending ||
+                        rejectContributorMutation.isPending
+                      }
+                    >
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                      Approve Access
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              type="no-data"
+              title="No contributor requests pending"
+              description="Student contributor applications will appear here for review."
+              icon={ShieldCheck}
+            />
+          )}
+        </CardContent>
+      </Card>
+
       <Card className="border-t-4 border-t-amber-500 shadow-sm overflow-hidden">
         <CardHeader className="bg-muted/30">
           <CardTitle className="text-lg">Pending Contributions Queue</CardTitle>
@@ -279,20 +419,38 @@ function ContributionsTab() {
                       <h3 className="font-semibold">{doc.title}</h3>
                       <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
                         <StatusChip status="pending" label="Awaiting Review" />
-                        <span>•</span>
+                        <span>|</span>
                         {new Date(doc.created_at).toLocaleDateString()}
                       </div>
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2 shrink-0">
-                    <Button variant="outline" size="sm" className="shadow-sm" onClick={() => setPreviewDialog({ open: true, doc })}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="shadow-sm"
+                      onClick={() =>
+                        setPreviewDialog({
+                          open: true,
+                          doc,
+                          targetId: doc.id,
+                          targetType: "contribution",
+                        })
+                      }
+                    >
                       <FileText className="h-4 w-4 mr-2" /> View Document
                     </Button>
                     <Button 
                       variant="destructive" 
                       size="sm"
                       className="shadow-sm"
-                      onClick={() => setRejectionDialog({ open: true, contributionId: doc.id })}
+                      onClick={() =>
+                        setRejectionDialog({
+                          open: true,
+                          targetId: doc.id,
+                          targetType: "contribution",
+                        })
+                      }
                       disabled={rejectMutation.isPending}
                     >
                       <XCircle className="h-4 w-4 mr-2" /> Reject
@@ -321,10 +479,24 @@ function ContributionsTab() {
       </Card>
 
       {/* Reject Modal */}
-      <Dialog open={rejectionDialog.open} onOpenChange={(val) => !val && setRejectionDialog({ open: false, contributionId: null })}>
+      <Dialog
+        open={rejectionDialog.open}
+        onOpenChange={(val) =>
+          !val &&
+          setRejectionDialog({
+            open: false,
+            targetId: null,
+            targetType: null,
+          })
+        }
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Reject Contribution</DialogTitle>
+            <DialogTitle>
+              {rejectionDialog.targetType === "contributor_request"
+                ? "Reject Contributor Request"
+                : "Reject Contribution"}
+            </DialogTitle>
             <DialogDescription>
               Please provide a reason. This feedback will be sent back to the uploader.
             </DialogDescription>
@@ -343,7 +515,13 @@ function ContributionsTab() {
             <Button
               type="button"
               variant="secondary"
-              onClick={() => setRejectionDialog({ open: false, contributionId: null })}
+              onClick={() =>
+                setRejectionDialog({
+                  open: false,
+                  targetId: null,
+                  targetType: null,
+                })
+              }
             >
               Cancel
             </Button>
@@ -351,7 +529,11 @@ function ContributionsTab() {
               type="button"
               variant="destructive"
               onClick={submitRejection}
-              disabled={!rejectionReason.trim() || rejectMutation.isPending}
+              disabled={
+                !rejectionReason.trim() ||
+                rejectMutation.isPending ||
+                rejectContributorMutation.isPending
+              }
             >
               Confirm Rejection
             </Button>
@@ -360,7 +542,18 @@ function ContributionsTab() {
       </Dialog>
 
       {/* SOTA Preview Modal */}
-      <Dialog open={previewDialog.open} onOpenChange={(val) => !val && setPreviewDialog({ open: false, doc: null })}>
+      <Dialog
+        open={previewDialog.open}
+        onOpenChange={(val) =>
+          !val &&
+          setPreviewDialog({
+            open: false,
+            doc: null,
+            targetType: null,
+            targetId: null,
+          })
+        }
+      >
         <DialogContent className="max-w-5xl h-[85vh] flex flex-col p-0 overflow-hidden bg-background">
           <div className="flex justify-between items-center p-4 border-b">
             <div>
@@ -375,8 +568,17 @@ function ContributionsTab() {
                 variant="destructive" 
                 size="sm"
                 onClick={() => {
-                  setPreviewDialog({ open: false, doc: null });
-                  setRejectionDialog({ open: true, contributionId: previewDialog.doc?.id });
+                  setPreviewDialog({
+                    open: false,
+                    doc: null,
+                    targetType: null,
+                    targetId: null,
+                  });
+                  setRejectionDialog({
+                    open: true,
+                    targetId: previewDialog.targetId,
+                    targetType: previewDialog.targetType,
+                  });
                 }}
               >
                 <XCircle className="h-4 w-4 mr-2" /> Reject
@@ -385,12 +587,24 @@ function ContributionsTab() {
                 size="sm" 
                 className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 onClick={() => {
-                  if (previewDialog.doc) handleApprove(previewDialog.doc.id);
-                  setPreviewDialog({ open: false, doc: null });
+                  if (previewDialog.targetType === "contributor_request" && previewDialog.targetId) {
+                    handleApproveContributorRequest(previewDialog.targetId);
+                  } else if (previewDialog.doc) {
+                    handleApprove(previewDialog.doc.id);
+                  }
+                  setPreviewDialog({
+                    open: false,
+                    doc: null,
+                    targetId: null,
+                    targetType: null,
+                  });
                 }}
-                disabled={approveMutation.isPending}
+                disabled={approveMutation.isPending || approveContributorMutation.isPending}
               >
-                <CheckCircle2 className="h-4 w-4 mr-2" /> Approve Now
+                <CheckCircle2 className="h-4 w-4 mr-2" />
+                {previewDialog.targetType === "contributor_request"
+                  ? "Approve Access"
+                  : "Approve Now"}
               </Button>
             </div>
           </div>

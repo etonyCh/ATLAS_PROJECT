@@ -69,7 +69,6 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   const router = useRouter();
   const {
     currentStep,
-    setStep,
     nextStep,
     prevStep,
     profile,
@@ -117,7 +116,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
             <h2 className="text-2xl font-bold mb-2">Welcome to ATLAS</h2>
             <p className="text-muted-foreground max-w-md mx-auto">
               Your intelligent companion for academic excellence in Tunisia.
-              Let's take a few minutes to set up your profile.
+              Let&apos;s take a few minutes to set up your profile.
             </p>
           </div>
         );
@@ -240,7 +239,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
             <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
               <Sparkle className="h-10 w-10 text-primary" />
             </div>
-            <h2 className="text-2xl font-bold mb-2">You're All Set!</h2>
+            <h2 className="text-2xl font-bold mb-2">You&apos;re All Set!</h2>
             <p className="text-muted-foreground max-w-md mx-auto mb-6">
               Your profile is ready. Start exploring courses and let ATLAS help
               you achieve academic excellence.

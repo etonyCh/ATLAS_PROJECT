@@ -28,7 +28,15 @@ const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
 );
 Avatar.displayName = "Avatar";
 
-const AvatarImage = ({ className, src, alt, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & { src?: string; alt?: string; }) => {
+type AvatarImageProps = Omit<
+  React.ComponentProps<typeof Image>,
+  "src" | "alt" | "fill"
+> & {
+  src?: string;
+  alt?: string;
+};
+
+const AvatarImage = ({ className, src, alt, ...props }: AvatarImageProps) => {
   if (!src) return null;
   return (
     <div className={cn("relative h-full w-full", className)}>
@@ -38,7 +46,7 @@ const AvatarImage = ({ className, src, alt, ...props }: React.ImgHTMLAttributes<
         fill
         className="aspect-square object-cover"
         sizes="100vw"
-        {...(props as any)}
+        {...props}
       />
     </div>
   );

@@ -51,3 +51,16 @@ export function useApproveTeacherRequestMutation() {
     },
   });
 }
+
+export function useImportTeachersMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (formData: FormData) => adminApi.importTeachers(formData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "teacher-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard", "admin"] });
+    },
+  });
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Loader2, ShieldCheck, UserRoundSearch } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,7 @@ export default function AdminTeacherRequestsPage() {
       <div>
         <h1 className="text-2xl font-bold">Teacher Verification Requests</h1>
         <p className="text-muted-foreground">
-          Review educator onboarding requests and approve institutional access.
+          Review fallback educator requests and approve institutional access when teachers were not imported through the admin template flow.
         </p>
       </div>
 
@@ -34,10 +35,15 @@ export default function AdminTeacherRequestsPage() {
           <div>
             <CardTitle>Pending Queue</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              Requests remain pending until an admin approves them.
+              CDC-aligned onboarding starts with teacher import. This queue handles exceptions and fallback requests.
             </p>
           </div>
-          <StatusChip status={requests.length ? "warning" : "active"} label={`${requests.length} pending`} />
+          <div className="flex items-center gap-3">
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/admin/teachers/import">Open Teacher Import</Link>
+            </Button>
+            <StatusChip status={requests.length ? "warning" : "active"} label={`${requests.length} pending`} />
+          </div>
         </CardHeader>
         <CardContent>
           {requests.length ? (

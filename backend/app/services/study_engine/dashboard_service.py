@@ -7,9 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import desc, func
 
+from app.core.cache import ttl_with_jitter
+from app.core.config import settings
 from app.models.all_models import (
     Contribution,
     Flashcard,
+    FlashcardDeck,
     QuizSession,
     Notification
 )
@@ -99,8 +102,9 @@ async def fetch_student_dashboard_data(
 
     due_count_query = await session.execute(
         select(func.count(Flashcard.id))
+        .join(FlashcardDeck, FlashcardDeck.id == Flashcard.deck_id)
         .where(
-            Flashcard.user_id == user_id,
+            FlashcardDeck.student_id == user_id,
             Flashcard.next_review_at <= datetime.utcnow()
         )
     )
@@ -147,7 +151,11 @@ async def fetch_student_dashboard_data(
     # 5. Populate Cache Layer (300 seconds / 5 min TTL)
     if redis_cache:
         try:
-            await redis_cache.setex(cache_key, 300, json.dumps(payload, default=str))
+            await redis_cache.setex(
+                cache_key,
+                ttl_with_jitter(settings.CACHE_TTL_PROFILE),
+                json.dumps(payload, default=str),
+            )
             logger.debug(f"[DASHBOARD] Cached Smart Overview for User: {user_id}")
         except Exception as e:
             logger.warning(f"[DASHBOARD] Redis cache SET failed for user {user_id}: {e}")
@@ -173,8 +181,9 @@ async def generate_student_calendar_ics(
     # Query 1: Upcoming Flashcard Reviews (Next 14 Days)
     cards_query = await session.execute(
         select(Flashcard)
+        .join(FlashcardDeck, FlashcardDeck.id == Flashcard.deck_id)
         .where(
-            Flashcard.user_id == user_id,
+            FlashcardDeck.student_id == user_id,
             Flashcard.next_review_at >= now,
             Flashcard.next_review_at <= window_end,
         )

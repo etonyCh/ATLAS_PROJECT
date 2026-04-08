@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowRight, Check, Eye, EyeOff, GraduationCap, Loader2, ShieldCheck, X } from "lucide-react";
+import { Check, Eye, EyeOff, GraduationCap, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import {
@@ -63,18 +63,28 @@ export function RegisterPageClient() {
     event.preventDefault();
     setError("");
 
-    if (!passwordsMatch) {
-      setError("Passwords do not match");
+    if (!fullName.trim()) {
+      setError("Please enter your full name");
       return;
     }
 
-    if (!passwordStrong) {
-      setError("Password does not meet requirements");
+    if (!email.trim()) {
+      setError("Please enter your email");
       return;
     }
 
     if (!filiere || !level) {
       setError("Please select your filiere and level");
+      return;
+    }
+
+    if (!passwordStrong) {
+      setError("Password does not meet all requirements");
+      return;
+    }
+
+    if (!passwordsMatch) {
+      setError("Passwords do not match");
       return;
     }
 
@@ -117,25 +127,6 @@ export function RegisterPageClient() {
               </div>
             ) : null}
 
-            <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-4 text-sm text-blue-950">
-              <div className="flex items-start gap-3">
-                <ShieldCheck className="mt-0.5 h-5 w-5 text-blue-700" />
-                <div className="space-y-1">
-                  <p className="font-medium">Student self-registration</p>
-                  <p className="text-blue-900/80">
-                    Teacher accounts now go through institutional verification before activation.
-                  </p>
-                  <Link
-                    href="/auth/teacher-request"
-                    className="inline-flex items-center gap-1 font-medium text-blue-700 hover:underline"
-                  >
-                    I&apos;m a teacher
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </div>
-              </div>
-            </div>
-
             <Input
               type="text"
               label="Full Name"
@@ -156,10 +147,10 @@ export function RegisterPageClient() {
             />
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">
+              <label htmlFor="filiere" className="text-sm font-medium">
                 Filiere <span className="text-destructive">*</span>
               </label>
-              <Select value={filiere} onChange={(event) => setFiliere(event.target.value)} required>
+              <Select id="filiere" name="filiere" value={filiere} onChange={(event) => setFiliere(event.target.value)} required>
                 <option value="">Select your filiere</option>
                 {FILIERES.map((option) => (
                   <option key={option} value={option}>
@@ -170,10 +161,10 @@ export function RegisterPageClient() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">
+              <label htmlFor="level" className="text-sm font-medium">
                 Level <span className="text-destructive">*</span>
               </label>
-              <Select value={level} onChange={(event) => setLevel(event.target.value as StudentLevel)} required>
+              <Select id="level" name="level" value={level} onChange={(event) => setLevel(event.target.value as StudentLevel)} required>
                 <option value="">Select your level</option>
                 {STUDENT_LEVELS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -184,21 +175,22 @@ export function RegisterPageClient() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Password</label>
+              <label htmlFor="password" className="text-sm font-medium">Password</label>
               <div className="relative">
-                <Input
+                <input
+                  id="password"
                   type={showPassword ? "text" : "password"}
                   placeholder="Create a strong password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   required
                   autoComplete="new-password"
-                  className="pr-10"
+                  className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 pr-10"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((current) => !current)}
-                  className="absolute right-3 top-3 text-muted-foreground transition-colors hover:text-foreground"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground z-10"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -230,10 +222,9 @@ export function RegisterPageClient() {
               onChange={(event) => setConfirmPassword(event.target.value)}
               required
               autoComplete="new-password"
-              className={confirmPassword && !passwordsMatch ? "border-destructive focus:border-destructive" : ""}
             />
 
-            <Button type="submit" className="w-full" disabled={isLoading || !passwordsMatch || !passwordStrong}>
+            <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -250,12 +241,7 @@ export function RegisterPageClient() {
               Sign in
             </Link>
           </div>
-          <div className="mt-2 text-center text-sm">
-            <span className="text-muted-foreground">Need educator access? </span>
-            <Link href="/auth/teacher-request" className="font-medium text-primary hover:underline">
-              Request teacher verification
-            </Link>
-          </div>
+
         </CardContent>
       </Card>
     </div>

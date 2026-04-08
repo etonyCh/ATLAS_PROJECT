@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Compass, Search, Sparkles } from "lucide-react";
+import { Search } from "lucide-react";
 
 export const revalidate = 300;
 

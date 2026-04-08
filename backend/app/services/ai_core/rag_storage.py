@@ -30,6 +30,8 @@ logger = logging.getLogger(__name__)
 # Architect Note: Model is decoupled. Default is set to SOTA Multilingual MPNet.
 EMBEDDER_MODEL = getattr(settings, "EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-mpnet-base-v2")
 SIMILARITY_THRESHOLD = 0.15
+RELEVANT_CONTEXT_FLOOR = 0.22
+RELEVANT_CONTEXT_MARGIN = 0.08
 
 def _initialize_embedder() -> Optional[SentenceTransformer]:
     """
@@ -144,8 +146,22 @@ async def retrieve_rag_context(
         logger.info(f"Anti-hallucination guard: {top_similarity:.3f} < {SIMILARITY_THRESHOLD}")
         return None, top_similarity, None, None
 
+    relevant_rows = [
+        row
+        for row in rows
+        if row.chunk_text
+        and float(row.similarity) >= max(RELEVANT_CONTEXT_FLOOR, top_similarity - RELEVANT_CONTEXT_MARGIN)
+    ]
+    if not relevant_rows:
+        logger.info(
+            "RAG relevance filter removed all retrieved chunks for document %s",
+            document_version_id,
+        )
+        return None, top_similarity, None, None
+
     # Structural Layout Preservation for LLM Context
-    context_parts = [f"[Snippet {row.chunk_index}] {row.chunk_text}" for row in rows if row.chunk_text]
+    context_parts = [f"[Snippet {row.chunk_index}] {row.chunk_text}" for row in relevant_rows]
     context = "\n\n".join(context_parts)
     
-    return context, top_similarity, 1, rows[0].chunk_text
+    top_row = relevant_rows[0]
+    return context, top_similarity, top_row.chunk_index + 1, top_row.chunk_text

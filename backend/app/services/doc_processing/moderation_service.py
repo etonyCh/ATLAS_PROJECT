@@ -61,7 +61,7 @@ def _sync_to_meilisearch(doc_payload: dict):
             }
         })
         
-        index.add_documents([doc_payload])
+        index.add_documents([doc_payload], primary_key="id")
         logger.info(f"[SEARCH AUDIT] Successfully indexed document {doc_payload['id']} to MeiliSearch")
     except Exception as e:
         logger.error(f"[SEARCH AUDIT] MeiliSearch indexing failed for {doc_payload.get('id')}: {e}")
@@ -116,6 +116,14 @@ async def execute_contribution_review(
     if c.status == status:
         return c
 
+    # Guard: Reject review attempts on already-APPROVED teacher uploads
+    if c.status == ContributionStatus.APPROVED and status != ContributionStatus.APPROVED:
+        uploader = (await session.execute(select(User).where(User.id == c.uploader_id))).scalars().first()
+        if uploader and uploader.role in (UserRole.TEACHER, UserRole.ADMIN):
+            raise ValueError(
+                f"Contribution {contribution_id} is an auto-approved teacher upload and cannot be moderated."
+            )
+
     # 2. State Machine Validation
     if status in [ContributionStatus.REJECTED, ContributionStatus.REVISION_REQUESTED]:
         if not rejection_reason or not rejection_reason.strip():
@@ -136,13 +144,14 @@ async def execute_contribution_review(
             )
         )
         if not existing_xp.scalars().first():
-            # Gamification: Grant +50 XP securely linked to this contribution
+            # Gamification: Grant +30 XP contributor approval bonus
+            # (base +10 was already awarded at submission time)
             xp = XPTransaction(
                 user_id=c.uploader_id,
-                amount=50,
+                amount=30,
                 transaction_type=XPTransactionType.APPROVAL,
                 reference_id=c.id,
-                description=f"Approval of contribution: {c.title}"
+                description=f"Approval bonus for contribution: {c.title}"
             )
             session.add(xp)
         
@@ -183,6 +192,7 @@ async def execute_contribution_review(
             doc_payload = {
                 "id": str(dv.id),
                 "document_version_id": str(dv.id),
+                "course_id": str(course.id) if course else None,
                 "title": getattr(c, "title", None) or (course.title if course else "Untitled Document"),
                 "teacher_name": teacher_name,
                 "is_official": is_official,

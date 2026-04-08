@@ -90,7 +90,7 @@ export async function mockAuthenticatedPage(
       code: string;
       description?: string;
       level?: string;
-    }>;
+    } & Record<string, unknown>>;
     contributions?: Array<{
       id: string;
       title: string;
@@ -125,23 +125,34 @@ export async function mockAuthenticatedPage(
     });
   });
 
-  if (options?.courses) {
-    await page.route("**/api/v1/courses?**", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          items: options.courses,
-          meta: {
-            total: options.courses?.length ?? 0,
-            limit: 20,
-            offset: 0,
-            has_more: false,
-          },
-        }),
+    if (options?.courses) {
+      await page.route("**/api/v1/courses?**", async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            items: options?.courses ?? [],
+            meta: {
+              total: options?.courses?.length ?? 0,
+              limit: 20,
+              offset: 0,
+              has_more: false,
+            },
+          }),
+        });
       });
-    });
-  }
+      await page.route("**/api/v1/courses/*", async (route) => {
+        if (route.request().url().includes('/versions') || route.request().url().includes('/stats') || route.request().url().includes('/content')) {
+          await route.continue();
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(options?.courses?.[0] ?? {}),
+        });
+      });
+    }
 
   if (options?.contributions) {
     await page.route("**/api/v1/contributions?**", async (route) => {
@@ -172,7 +183,25 @@ export async function loginThroughUi(page: Page, user: MockUser): Promise<void> 
 }
 
 export async function mockStudyTools(page: Page): Promise<void> {
-  await page.route("**/api/v1/study/flashcards/**", async (route) => {
+  await page.route(/.*\/api\/v1\/(study\/flashcards|flashcards)\/.*/, async (route) => {
+    // Also mock /flashcards/due
+    if (route.request().url().includes("/due")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          items: [
+            { id: "card-1", question: "What is React?", answer: "A JavaScript library for building UIs" },
+            { id: "card-2", question: "What is useState?", answer: "A React hook for state management" },
+            { id: "card-3", question: "What is JSX?", answer: "JavaScript XML syntax extension" },
+            { id: "card-4", question: "What is Next.js?", answer: "A React framework for production" },
+            { id: "card-5", question: "What is TypeScript?", answer: "A typed superset of JavaScript" },
+          ],
+          total: 5
+        })
+      });
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -190,7 +219,7 @@ export async function mockStudyTools(page: Page): Promise<void> {
     });
   });
 
-  await page.route("**/api/v1/study/quizzes/**", async (route) => {
+  await page.route(/.*\/api\/v1\/(study\/quizzes|quiz)\/.*/, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -248,10 +277,12 @@ export async function mockSearchResults(page: Page, query: string, results: Arra
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          hits: results.map((r) => ({ ...r, _matchesPosition: {} })),
+          items: results.map((r) => ({ ...r, _matchesPosition: {} })),
           query: searchQuery,
           processingTimeMs: 15,
-          hitsCount: results.length,
+          page: 1,
+          limit: 20,
+          total: results.length,
         }),
       });
     } else {

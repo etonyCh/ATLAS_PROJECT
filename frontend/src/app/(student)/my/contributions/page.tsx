@@ -5,13 +5,10 @@ import { useRouter } from "next/navigation";
 import {
   FileText,
   Clock,
-  CheckCircle2,
-  XCircle,
-  Loader2,
   Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { StatusChip } from "@/components/ui/status-chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -90,7 +87,7 @@ export default function MyContributionsPage() {
           description="Start contributing to see your uploads here"
           action={{
             label: "Upload Now",
-            onClick: () => router.push("/contribute"),
+            onClick: () => router.push("/upload"),
           }}
         />
       ) : (
@@ -112,6 +109,11 @@ export default function MyContributionsPage() {
                     {contribution.description || "No description"}
                   </p>
                   <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                    {contribution.is_demo_submission ? (
+                      <span className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
+                        Contributor application
+                      </span>
+                    ) : null}
                     <span className="flex items-center gap-1">
                       <Clock className="h-3 w-3" />
                       {new Date(contribution.created_at).toLocaleDateString()}

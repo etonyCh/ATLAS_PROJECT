@@ -7,6 +7,7 @@ from sqlmodel import SQLModel, Field, Relationship
 # Defensive Forward Referencing to prevent Circular Imports
 if TYPE_CHECKING:
     from .contribution import Contribution
+    from .contribution import ContributorRequest
     from .gamification import XPTransaction
     from .course import Course
 
@@ -97,6 +98,8 @@ class UserBase(SQLModel):
     # Represents the "Enseignant Vérifié" badge or general verification
     is_verified: bool = False
     verified_at: Optional[datetime] = Field(default=None, description="Timestamp of when the user was verified")
+    is_contributor: bool = Field(default=False, index=True)
+    contributor_badge_awarded_at: Optional[datetime] = Field(default=None)
     
     # Student specific fields
     filiere: Optional[str] = None  # Major/Department
@@ -139,6 +142,7 @@ class TeacherVerificationRequest(SQLModel, table=True):
     reviewed_at: Optional[datetime] = None
 
     user: Optional["User"] = Relationship(
+        back_populates="teacher_request",
         sa_relationship_kwargs={"foreign_keys": "[TeacherVerificationRequest.user_id]"}
     )
     establishment: Optional[Establishment] = Relationship()
@@ -159,7 +163,13 @@ class User(UserBase, table=True):
     teacher_profile: Optional[TeacherProfile] = Relationship(back_populates="user", cascade_delete=True)
     establishment: Optional[Establishment] = Relationship(back_populates="users")
     teacher_request: Optional[TeacherVerificationRequest] = Relationship(
+        back_populates="user",
         sa_relationship_kwargs={"foreign_keys": "[TeacherVerificationRequest.user_id]"},
+        cascade_delete=True,
+    )
+    contributor_requests: List["ContributorRequest"] = Relationship(
+        back_populates="student",
+        sa_relationship_kwargs={"foreign_keys": "[ContributorRequest.student_id]"},
         cascade_delete=True,
     )
 

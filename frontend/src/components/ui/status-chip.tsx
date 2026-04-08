@@ -181,7 +181,9 @@ export function mapContributionStatus(status: string): StatusType {
 export function mapPipelineStatus(status: string): StatusType {
   const statusMap: Record<string, StatusType> = {
     QUEUED: "pending",
+    OCR_PROCESSING: "processing",
     PROCESSING: "processing",
+    EMBEDDING: "processing",
     READY: "ready",
     FAILED: "error",
   };

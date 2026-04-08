@@ -20,6 +20,8 @@ from app.models.contribution import (
     ContributionRead,
     DocumentVersion,
     DocumentPipelineStatus,
+    ContributorRequest,
+    ContributorRequestStatus,
 )
 from app.models.gamification import (
     XPTransaction,
@@ -134,6 +136,8 @@ __all__ = [
     "ContributionRead",
     "DocumentVersion",
     "DocumentPipelineStatus",
+    "ContributorRequest",
+    "ContributorRequestStatus",
     "DocumentEmbedding",
     "XPTransaction",
     "XPTransactionType",

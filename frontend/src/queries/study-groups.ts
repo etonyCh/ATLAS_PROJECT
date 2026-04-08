@@ -13,6 +13,16 @@ export interface StudyGroup {
   members?: Array<{user_id: string; name: string; is_online: boolean; role: string}>;
 }
 
+interface StudyGroupMembershipResponse {
+  success: boolean;
+  group?: StudyGroup;
+}
+
+interface StudyGroupNotesResponse {
+  success: boolean;
+  notes: string;
+}
+
 export const studyGroupKeys = {
   all: ["study-groups"] as const,
   list: () => [...studyGroupKeys.all, "list"] as const,
@@ -57,8 +67,7 @@ export const useJoinStudyGroupMutation = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const res = await api.post(`/study-groups/${id}/join`);
-      return res as any;
+      return api.post<StudyGroupMembershipResponse>(`/study-groups/${id}/join`);
     },
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: studyGroupKeys.detail(id) });
@@ -71,8 +80,9 @@ export const useUpdateStudyGroupNotesMutation = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, notes }: { id: string; notes: string }) => {
-      const res = await api.patch(`/study-groups/${id}/notes`, { notes });
-      return res as any;
+      return api.patch<StudyGroupNotesResponse>(`/study-groups/${id}/notes`, {
+        notes,
+      });
     },
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: studyGroupKeys.detail(id) });

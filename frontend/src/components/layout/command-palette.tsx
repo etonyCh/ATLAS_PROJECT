@@ -49,154 +49,160 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
   const { user, logout } = useAuthStore();
   const [query, setQuery] = useState("");
 
-  const recentCourses =
-    typeof window !== "undefined"
-      ? JSON.parse(localStorage.getItem("atlas_recent_courses") || "[]").slice(
-          0,
-          5,
-        )
-      : [];
+  const recentCourses = useMemo(
+    () =>
+      typeof window !== "undefined"
+        ? JSON.parse(localStorage.getItem("atlas_recent_courses") || "[]").slice(
+            0,
+            5,
+          )
+        : [],
+    [],
+  );
 
-  const commands: Command[] = [
-    {
-      id: "nav-dashboard",
-      label: "Go to Dashboard",
-      icon: LayoutDashboard,
-      action: () => {
-        router.push(
-          user?.role === "STUDENT"
-            ? "/dashboard"
-            : `/${user?.role?.toLowerCase()}/dashboard`,
-        );
-        onOpenChange(false);
+  const commands = useMemo<Command[]>(
+    () => [
+      {
+        id: "nav-dashboard",
+        label: "Go to Dashboard",
+        icon: LayoutDashboard,
+        action: () => {
+          router.push(
+            user?.role === "STUDENT"
+              ? "/dashboard"
+              : `/${user?.role?.toLowerCase()}/dashboard`,
+          );
+          onOpenChange(false);
+        },
+        group: "navigation",
       },
-      group: "navigation",
-    },
-    {
-      id: "nav-search",
-      label: "Go to Search",
-      icon: Search,
-      action: () => {
-        router.push("/search");
-        onOpenChange(false);
+      {
+        id: "nav-search",
+        label: "Go to Search",
+        icon: Search,
+        action: () => {
+          router.push("/search");
+          onOpenChange(false);
+        },
+        group: "navigation",
       },
-      group: "navigation",
-    },
-    {
-      id: "nav-flashcards",
-      label: "Go to My Flashcards",
-      icon: Layers,
-      action: () => {
-        router.push("/my/flashcards");
-        onOpenChange(false);
+      {
+        id: "nav-flashcards",
+        label: "Go to My Flashcards",
+        icon: Layers,
+        action: () => {
+          router.push("/my/flashcards");
+          onOpenChange(false);
+        },
+        group: "navigation",
       },
-      group: "navigation",
-    },
-    {
-      id: "nav-forum",
-      label: "Go to Forum",
-      icon: MessageSquare,
-      action: () => {
-        router.push("/forum");
-        onOpenChange(false);
+      {
+        id: "nav-forum",
+        label: "Go to Forum",
+        icon: MessageSquare,
+        action: () => {
+          router.push("/forum");
+          onOpenChange(false);
+        },
+        group: "navigation",
       },
-      group: "navigation",
-    },
-    {
-      id: "nav-leaderboard",
-      label: "Go to Leaderboard",
-      icon: GraduationCap,
-      action: () => {
-        router.push("/leaderboard");
-        onOpenChange(false);
+      {
+        id: "nav-leaderboard",
+        label: "Go to Leaderboard",
+        icon: GraduationCap,
+        action: () => {
+          router.push("/leaderboard");
+          onOpenChange(false);
+        },
+        group: "navigation",
       },
-      group: "navigation",
-    },
-    {
-      id: "action-quiz",
-      label: "Start New Quiz",
-      icon: FileQuestion,
-      action: () => {
-        router.push("/ai/workspace?tab=quiz");
-        onOpenChange(false);
+      {
+        id: "action-quiz",
+        label: "Start New Quiz",
+        icon: FileQuestion,
+        action: () => {
+          router.push("/ai/workspace?tab=quiz");
+          onOpenChange(false);
+        },
+        group: "actions",
       },
-      group: "actions",
-    },
-    {
-      id: "action-flashcards",
-      label: "Generate Flashcard Deck",
-      icon: Brain,
-      action: () => {
-        router.push("/ai/workspace?tab=flashcards");
-        onOpenChange(false);
+      {
+        id: "action-flashcards",
+        label: "Generate Flashcard Deck",
+        icon: Brain,
+        action: () => {
+          router.push("/ai/workspace?tab=flashcards");
+          onOpenChange(false);
+        },
+        group: "actions",
       },
-      group: "actions",
-    },
-    {
-      id: "action-chat",
-      label: "Open AI Chat",
-      icon: MessageSquare,
-      action: () => {
-        router.push("/ai/workspace?tab=chat");
-        onOpenChange(false);
+      {
+        id: "action-chat",
+        label: "Open AI Chat",
+        icon: MessageSquare,
+        action: () => {
+          router.push("/ai/workspace?tab=chat");
+          onOpenChange(false);
+        },
+        group: "actions",
       },
-      group: "actions",
-    },
-    {
-      id: "action-upload",
-      label: "Upload Course",
-      icon: Upload,
-      action: () => {
-        router.push("/teacher/courses/upload");
-        onOpenChange(false);
+      {
+        id: "action-upload",
+        label: "Upload Course",
+        icon: Upload,
+        action: () => {
+          router.push("/teacher/courses/upload");
+          onOpenChange(false);
+        },
+        group: "actions",
+        roles: ["TEACHER", "ADMIN", "SUPERADMIN"],
       },
-      group: "actions",
-      roles: ["TEACHER", "ADMIN", "SUPERADMIN"],
-    },
-    {
-      id: "action-contributions",
-      label: "Review Contributions",
-      icon: FolderKanban,
-      action: () => {
-        router.push("/admin/contributions");
-        onOpenChange(false);
+      {
+        id: "action-contributions",
+        label: "Review Contributions",
+        icon: FolderKanban,
+        action: () => {
+          router.push("/admin/contributions");
+          onOpenChange(false);
+        },
+        group: "actions",
+        roles: ["ADMIN", "SUPERADMIN"],
       },
-      group: "actions",
-      roles: ["ADMIN", "SUPERADMIN"],
-    },
-    {
-      id: "action-users",
-      label: "Manage Users",
-      icon: Users,
-      action: () => {
-        router.push("/admin/users");
-        onOpenChange(false);
+      {
+        id: "action-users",
+        label: "Manage Users",
+        icon: Users,
+        action: () => {
+          router.push("/admin/users");
+          onOpenChange(false);
+        },
+        group: "actions",
+        roles: ["ADMIN", "SUPERADMIN"],
       },
-      group: "actions",
-      roles: ["ADMIN", "SUPERADMIN"],
-    },
-    {
-      id: "nav-settings",
-      label: "Go to Settings",
-      icon: Settings,
-      action: () => {
-        router.push("/settings");
-        onOpenChange(false);
+      {
+        id: "nav-settings",
+        label: "Go to Settings",
+        icon: Settings,
+        action: () => {
+          router.push("/settings");
+          onOpenChange(false);
+        },
+        group: "navigation",
       },
-      group: "navigation",
-    },
-    {
-      id: "action-logout",
-      label: "Logout",
-      icon: LogOut,
-      action: async () => {
-        await logout();
-        router.push("/auth/login");
-        onOpenChange(false);
+      {
+        id: "action-logout",
+        label: "Logout",
+        icon: LogOut,
+        action: async () => {
+          await logout();
+          router.push("/auth/login");
+          onOpenChange(false);
+        },
+        group: "actions",
       },
-      group: "actions",
-    },
-  ];
+    ],
+    [logout, onOpenChange, router, user],
+  );
 
   const filteredCommands = useMemo(
     () =>
@@ -206,7 +212,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         }
         return cmd.label.toLowerCase().includes(query.toLowerCase());
       }),
-    [commands, query, user?.role],
+    [commands, query, user],
   );
 
   const groupedCommands = useMemo(
@@ -243,16 +249,15 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [onOpenChange, open]);
 
-  useEffect(() => {
-    if (!open) {
-      setQuery("");
-    }
-  }, [open]);
-
   return (
     <CommandDialog
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          setQuery("");
+        }
+        onOpenChange(nextOpen);
+      }}
       label="ATLAS command palette"
       className="fixed left-1/2 top-[18%] z-50 w-full max-w-2xl -translate-x-1/2 overflow-hidden rounded-2xl border bg-background shadow-2xl"
     >

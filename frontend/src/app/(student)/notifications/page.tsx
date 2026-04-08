@@ -1,8 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   Bell,
   Check,
@@ -11,12 +9,9 @@ import {
   FileText,
   GraduationCap,
   MessageSquare,
-  Settings,
-  Trash2,
-  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
@@ -26,7 +21,6 @@ import {
 } from "@/queries";
 
 export default function NotificationsPage() {
-  const router = useRouter();
   const { data: notifications, isLoading } = useNotificationsQuery();
   const markRead = useMarkNotificationReadMutation();
   const markAllRead = useMarkAllNotificationsReadMutation();

@@ -7,7 +7,6 @@ import {
   Clock,
   Star,
   Plus,
-  ChevronRight,
   Share2,
   Play,
 } from "lucide-react";

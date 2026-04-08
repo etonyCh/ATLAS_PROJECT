@@ -2,17 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   GraduationCap,
   Search,
-  Filter,
   BookOpen,
   Users,
-  Star,
   TrendingUp,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/input";
@@ -34,7 +30,6 @@ const FILIERES = [
 const LEVELS = ["All", "L1", "L2", "L3", "M1", "M2"];
 
 export default function CoursesPage() {
-  const router = useRouter();
   const [search, setSearch] = useState("");
   const [filiere, setFiliere] = useState("All");
   const [level, setLevel] = useState("All");

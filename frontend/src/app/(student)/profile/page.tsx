@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   User,
   Mail,
@@ -9,8 +8,6 @@ import {
   GraduationCap,
   Save,
   Camera,
-  Eye,
-  EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,7 +29,6 @@ const FILIERES = [
 ];
 
 export default function ProfilePage() {
-  const router = useRouter();
   const { user } = useAuthStore();
   const [isEditing, setIsEditing] = useState(false);
   const [fullName, setFullName] = useState(user?.full_name || "");

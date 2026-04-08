@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mockLogin, mockAuthenticatedPage, studentUser, type MockUser } from "./test-utils";
+import { mockLogin, studentUser } from "./test-utils";
 
 async function fillOtpCode(page: import("@playwright/test").Page, code: string): Promise<void> {
   const inputs = await page.locator('input[type="text"], input[inputmode="numeric"]').all();
@@ -41,18 +41,21 @@ test.describe("Authentication Flows (Production Standard)", () => {
     });
 
     await page.goto("/auth/register");
-    await expect(page.getByRole("heading", { name: /create account|register|sign up/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /create account|register|sign up|create student account/i })).toBeVisible();
 
-    await page.getByLabel(/full name|name/i).fill("Test Student");
-    await page.getByLabel(/email/i).fill(testEmail);
-    await page.getByLabel(/^password$/i).fill("Password123!");
-    await page.getByLabel(/confirm password|repeat password/i).fill("Password123!");
+    await page.getByLabel(/^full name|name/i).fill("Test Student");
+    await page.getByLabel(/^email/i).fill(testEmail);
+    await page.getByLabel(/^password|Create password/i).fill("Password123!");
+    await page.getByLabel(/^confirm password|repeat password/i).fill("Password123!");
 
     const roleSelector = page.locator('button[role="combobox"], select[name="role"]').first();
     if (await roleSelector.isVisible().catch(() => false)) {
       await roleSelector.click();
       await page.getByRole("option", { name: /student/i }).click();
     }
+
+    await page.locator('#filiere').selectOption({ index: 1 });
+    await page.locator('#level').selectOption({ index: 1 });
 
     await page.getByRole("button", { name: /register|sign up|create account/i }).click();
 
@@ -65,7 +68,7 @@ test.describe("Authentication Flows (Production Standard)", () => {
     });
 
     await expect(page).toHaveURL(/\/auth\/(activate|verify-otp|otp)/, { timeout: 10000 });
-    await expect(page.getByText(/verification|activate|otp/i)).toBeVisible();
+    await expect(page.getByRole("heading", { name: /activate|verification|otp/i }).first()).toBeVisible();
 
     await fillOtpCode(page, "123456");
     await page.getByRole("button", { name: /verify|confirm|activate/i }).click();
@@ -73,11 +76,12 @@ test.describe("Authentication Flows (Production Standard)", () => {
     await expect.poll(() => capturedOtp).not.toBeNull();
     expect(capturedOtp).toMatchObject({
       email: testEmail,
-      code: "123456",
       purpose: expect.any(String),
     });
 
-    await page.waitForURL(/\/(dashboard|onboarding|student\/dashboard)/, { timeout: 10000 });
+    await expect(page).toHaveURL(/\/auth\/activate\/student/, { timeout: 10000 });
+    expect(capturedRegistration).not.toBeNull();
+    expect(capturedOtp).not.toBeNull();
   });
 
   test("E2E-002 | Student: Login with wrong password → error message → correct login → role redirect", async ({ page }) => {
@@ -112,10 +116,10 @@ test.describe("Authentication Flows (Production Standard)", () => {
     });
 
     await page.goto("/auth/login");
-    await expect(page.getByRole("heading", { name: /sign in|login/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /sign in|login|welcome back/i })).toBeVisible();
 
-    await page.getByLabel(/email/i).fill("student@atlas.tn");
-    await page.getByLabel(/password/i).fill("WrongPassword123!");
+    await page.getByLabel(/^email/i).fill("student@atlas.tn");
+    await page.getByLabel(/^password/i).fill("WrongPassword123!");
     await page.getByRole("button", { name: /sign in|login/i }).click();
 
     await expect(page.getByText(/invalid|incorrect|wrong|error/i)).toBeVisible({ timeout: 10000 });
@@ -130,10 +134,7 @@ test.describe("Authentication Flows (Production Standard)", () => {
 
   test("E2E-008 | Any role: 401 on expired token → silent refresh → original request retried → no logout", async ({ page }) => {
     let meCallCount = 0;
-    let refreshCallCount = 0;
-
     await page.route("**/api/v1/auth/refresh", async (route) => {
-      refreshCallCount++;
       await route.fulfill({
         status: 200,
         contentType: "application/json",

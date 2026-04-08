@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 import asyncpg
 
@@ -8,6 +8,10 @@ from app.core.security import get_password_hash
 
 
 DB_URL = "postgresql://atlas_user:atlas_password@localhost:5433/atlas_db"
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 async def ensure_establishment(conn: asyncpg.Connection, name: str, domain: str) -> str:
@@ -27,7 +31,7 @@ async def ensure_establishment(conn: asyncpg.Connection, name: str, domain: str)
         establishment_id,
         name,
         domain,
-        datetime.utcnow(),
+        utc_now(),
     )
     return establishment_id
 
@@ -50,7 +54,7 @@ async def ensure_department(conn: asyncpg.Connection, establishment_id: str, nam
         department_id,
         name,
         establishment_id,
-        datetime.utcnow(),
+        utc_now(),
     )
     return department_id
 
@@ -71,7 +75,7 @@ async def ensure_user(
 ) -> str:
     existing = await conn.fetchrow('SELECT id FROM "user" WHERE email = $1', email)
     hashed_password = get_password_hash(password)
-    now = datetime.utcnow()
+    now = utc_now()
 
     if existing:
         user_id = str(existing["id"])
@@ -171,58 +175,58 @@ async def ensure_teacher_profile(conn: asyncpg.Connection, user_id: str, departm
 
 async def main() -> None:
     conn = await asyncpg.connect(DB_URL)
+    async with conn.transaction():
+        atlas_id = await ensure_establishment(conn, "ATLAS University", "atlas.tn")
+        fss_id = await ensure_establishment(conn, "Faculty of Sciences", "fss.tn")
+        enit_id = await ensure_establishment(conn, "ENIT", "enit.tn")
 
-    atlas_id = await ensure_establishment(conn, "ATLAS University", "atlas.tn")
-    fss_id = await ensure_establishment(conn, "Faculty of Sciences", "fss.tn")
-    enit_id = await ensure_establishment(conn, "ENIT", "enit.tn")
+        atlas_cs_id = await ensure_department(conn, atlas_id, "Computer Science")
+        await ensure_department(conn, atlas_id, "Mathematics")
+        await ensure_department(conn, atlas_id, "Physics")
+        await ensure_department(conn, fss_id, "Computer Science")
+        await ensure_department(conn, fss_id, "Biology")
+        await ensure_department(conn, enit_id, "Engineering")
 
-    atlas_cs_id = await ensure_department(conn, atlas_id, "Computer Science")
-    await ensure_department(conn, atlas_id, "Mathematics")
-    await ensure_department(conn, atlas_id, "Physics")
-    await ensure_department(conn, fss_id, "Computer Science")
-    await ensure_department(conn, fss_id, "Biology")
-    await ensure_department(conn, enit_id, "Engineering")
-
-    admin_id = await ensure_user(
-        conn,
-        email="admin@atlas.tn",
-        password="Admin123!",
-        full_name="Atlas Admin",
-        role="ADMIN",
-        establishment_id=atlas_id,
-        trust_score=90,
-    )
-    await ensure_user(
-        conn,
-        email="superadmin@atlas.tn",
-        password="SuperAdmin123!",
-        full_name="Atlas Superadmin",
-        role="SUPERADMIN",
-        trust_score=100,
-    )
-    await ensure_user(
-        conn,
-        email="student@atlas.tn",
-        password="Student123!",
-        full_name="Atlas Student",
-        role="STUDENT",
-        establishment_id=atlas_id,
-        filiere="Informatique",
-        level="L3",
-        onboarding_completed=False,
-        trust_score=10,
-        profile_completeness=65,
-    )
-    teacher_id = await ensure_user(
-        conn,
-        email="teacher@atlas.tn",
-        password="Teacher123!",
-        full_name="Atlas Teacher",
-        role="TEACHER",
-        establishment_id=atlas_id,
-        trust_score=75,
-    )
-    await ensure_teacher_profile(conn, teacher_id, atlas_cs_id, "Computer Science")
+        await ensure_user(
+            conn,
+            email="admin@atlas.tn",
+            password="Admin123!",
+            full_name="Atlas Admin",
+            role="ADMIN",
+            establishment_id=atlas_id,
+            trust_score=90,
+        )
+        await ensure_user(
+            conn,
+            email="superadmin@atlas.tn",
+            password="SuperAdmin123!",
+            full_name="Atlas Superadmin",
+            role="SUPERADMIN",
+            trust_score=100,
+        )
+        await ensure_user(
+            conn,
+            email="student@atlas.tn",
+            password="Student123!",
+            full_name="Atlas Student",
+            role="STUDENT",
+            establishment_id=atlas_id,
+            filiere="Informatique",
+            level="L3",
+            onboarding_completed=False,
+            trust_score=10,
+            profile_completeness=65,
+        )
+        teacher_id = await ensure_user(
+            conn,
+            email="teacher@atlas.tn",
+            password="Teacher123!",
+            full_name="Atlas Teacher",
+            role="TEACHER",
+            establishment_id=atlas_id,
+            trust_score=75,
+        )
+        await ensure_teacher_profile(conn, teacher_id, atlas_cs_id, "Computer Science")
 
     print("Fresh test state created.")
     print("")

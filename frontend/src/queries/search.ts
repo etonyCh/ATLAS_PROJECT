@@ -6,7 +6,7 @@ export function useSearchQuery(params: SearchParams) {
   return useQuery({
     queryKey: ["search", params],
     queryFn: () => searchApi.hybrid(params),
-    enabled: Boolean(params.q || params.filiere || params.niveau),
+    enabled: Boolean((params.q && params.q.length >= 2) || params.filiere || params.niveau),
     staleTime: 2 * 60 * 1000,
   });
 }

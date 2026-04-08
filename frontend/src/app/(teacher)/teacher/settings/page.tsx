@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Settings, Bell, Moon, Globe, Shield, Save } from "lucide-react";
+import { Settings, Bell, Globe, Shield, Save } from "lucide-react";
 import {
   Card,
   CardContent,

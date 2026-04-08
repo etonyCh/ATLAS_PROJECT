@@ -12,7 +12,6 @@ import {
   FileText,
   BarChart3,
   Clock,
-  Map,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "./button";

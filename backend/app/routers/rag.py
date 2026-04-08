@@ -18,6 +18,7 @@ from app.models.rag import Message, RAGSession
 from app.models.user import User
 from app.schemas.pagination import PageMeta
 from app.services.ai_core import rag_inference, rag_storage
+from app.services.ai_core.guardrails import sanitize_rag_query
 
 
 router = APIRouter(tags=["RAG"])
@@ -236,6 +237,8 @@ async def create_message(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ) -> StreamingResponse:
+    payload = CreateMessageRequest(content=sanitize_rag_query(payload.content))
+
     result = await db.execute(
         select(RAGSession).where(
             RAGSession.id == session_id,

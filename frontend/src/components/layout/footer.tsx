@@ -151,11 +151,7 @@ export function Footer() {
                   Student Sign Up
                 </Link>
               </li>
-              <li>
-                <Link href="/auth/teacher-request" className="transition-colors hover:text-foreground">
-                  Teacher Verification
-                </Link>
-              </li>
+
             </ul>
           </div>
 

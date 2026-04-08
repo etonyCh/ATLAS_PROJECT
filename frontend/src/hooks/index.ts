@@ -179,6 +179,7 @@ export function useWebSocket(
   const [lastMessage, setLastMessage] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const connectRef = useRef<() => void>(() => {});
 
   const connect = useCallback(() => {
     if (!url || !options?.enabled) return;
@@ -202,7 +203,7 @@ export function useWebSocket(
 
       if (options?.reconnectInterval) {
         reconnectTimeoutRef.current = setTimeout(() => {
-          connect();
+          connectRef.current();
         }, options.reconnectInterval);
       }
     };
@@ -211,6 +212,10 @@ export function useWebSocket(
       options?.onError?.(event);
     };
   }, [url, options]);
+
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -243,8 +248,8 @@ export function useWebSocket(
     isConnected,
     lastMessage,
     send,
-    connect: disconnect,
-    disconnect: connect,
+    connect,
+    disconnect,
   };
 }
 
@@ -332,13 +337,15 @@ export function useLocalStorage<T>(
 }
 
 export function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(false);
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia(query).matches;
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const media = window.matchMedia(query);
-    setMatches(media.matches);
 
     const listener = () => setMatches(media.matches);
     media.addEventListener("change", listener);

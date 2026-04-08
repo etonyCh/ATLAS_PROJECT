@@ -16,7 +16,7 @@ export default function PendingVerificationPage() {
         
         <h1 className="mb-2 text-2xl font-bold tracking-tight">Account Under Review</h1>
         <p className="mb-8 text-muted-foreground">
-          Hello {user?.full_name || "Educator"}, your account is currently pending verification by your institution's administrator.
+          Hello {user?.full_name || "Educator"}, your account is currently pending verification by your institution&apos;s administrator.
         </p>
 
         <div className="mb-8 flex items-center justify-center space-x-3 rounded-lg bg-secondary/50 p-4 text-sm text-secondary-foreground">

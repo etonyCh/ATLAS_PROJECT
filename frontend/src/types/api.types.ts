@@ -9,7 +9,13 @@ export type OTPPurpose =
   | "TEACHER_ONBOARDING"
   | "PASSWORD_RESET";
 
-export type ContributionStatus = "PENDING" | "APPROVED" | "REJECTED";
+export type ContributionStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "REVISION_REQUESTED";
+
+export type ContributorRequestStatus = "PENDING" | "APPROVED" | "REJECTED";
 
 export type PipelineStatus = "QUEUED" | "PROCESSING" | "INDEXED" | "FAILED";
 
@@ -29,8 +35,10 @@ export interface User {
   establishment_id: string | null;
   is_active: boolean;
   is_verified: boolean;
+  is_contributor?: boolean;
   onboarding_completed?: boolean;
   verified_at: string | null;
+  contributor_badge_awarded_at?: string | null;
   filiere: string | null;
   niveau: StudentLevel | null;
   level?: StudentLevel | null;
@@ -100,6 +108,23 @@ export interface TeacherVerificationRequest {
   requested_domain: string;
   status: "PENDING" | "APPROVED" | "REJECTED";
   created_at: string;
+}
+
+export interface TeacherImportDuplicate {
+  row: number;
+  email: string;
+}
+
+export interface TeacherImportError {
+  row: number;
+  email: string;
+  reason: string;
+}
+
+export interface TeacherImportResult {
+  success_count: number;
+  duplicates: TeacherImportDuplicate[];
+  errors: TeacherImportError[];
 }
 
 export interface VerifyOTPRequest {
@@ -300,10 +325,42 @@ export interface Contribution {
   uploader_name?: string | null;
   filiere: string;
   status: ContributionStatus;
+  is_demo_submission?: boolean;
+  quality_score?: number | null;
   created_at: string;
   updated_at: string | null;
   reviewed_by?: string | null;
   review_note?: string | null;
+}
+
+export interface ContributorRequest {
+  id: string;
+  student_id: string;
+  email: string;
+  full_name: string | null;
+  status: ContributorRequestStatus;
+  review_note?: string | null;
+  ocr_quality_score: number;
+  created_at: string;
+  reviewed_at?: string | null;
+  demo_contribution: {
+    id: string;
+    title: string;
+    description: string | null;
+    course_id?: string | null;
+    status: ContributionStatus;
+    created_at: string;
+    mime_type?: string | null;
+    s3_key?: string | null;
+    preview_text?: string | null;
+    quality_score?: number | null;
+  };
+}
+
+export interface ContributorStatusResponse {
+  is_contributor: boolean;
+  contributor_badge_awarded_at?: string | null;
+  request: ContributorRequest | null;
 }
 
 export interface ContributionQueryResponse {
@@ -437,9 +494,9 @@ export interface Mindmap {
   created_at: string;
 }
 
-export interface MindmapNode extends Record<string, unknown> {}
+export type MindmapNode = Record<string, unknown>;
 
-export interface MindmapEdge extends Record<string, unknown> {}
+export type MindmapEdge = Record<string, unknown>;
 
 export interface GamificationProfile {
   user_id: string;

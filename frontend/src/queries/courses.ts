@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { coursesApi } from "@/lib/api";
 
 export function useCoursesQuery(params?: {
@@ -45,5 +45,27 @@ export function useTeacherCourses() {
     queryKey: ["courses", "my-uploads"],
     queryFn: () => coursesApi.getMyUploads(),
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useDeleteCourseMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (courseId: string) => coursesApi.delete(courseId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["courses", "my-uploads"] });
+    },
+  });
+}
+
+export function useUpdateCourseMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ courseId, data }: { courseId: string; data: any }) =>
+      coursesApi.update(courseId, data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["courses", "my-uploads"] });
+      queryClient.invalidateQueries({ queryKey: ["course", variables.courseId] });
+    },
   });
 }

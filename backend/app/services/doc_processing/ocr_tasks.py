@@ -16,7 +16,7 @@ from PIL import Image
 from app.core.config import settings
 from app.models.all_models import DocumentVersion, DocumentPipelineStatus, Contribution
 from app.services.doc_processing.storage import minio_client
-from app.services.ai_core.embedding_tasks import embed_document
+from app.services.ai_core.embedding_tasks_qdrant import embed_document
 from app.services.ai_core.ollama_client import ollama  # NEW: SOTA Lego Client
 
 # US-07 Dependencies
@@ -42,9 +42,8 @@ def _pil_to_base64(pil_img: Image.Image) -> str:
 
 def _perform_llm_ocr(base64_img: str) -> str:
     """
-    Executes the SOTA Vision OCR via Ollama (minicpm-v).
-    Includes a strict system prompt to prevent conversational hallucinations
-    and output sanitization to catch stray markdown formatting.
+    Executes vision OCR via Ollama and sanitizes formatting artifacts so
+    downstream indexing stays deterministic and frontend preview remains coherent.
     """
     log = structlog.get_logger().bind(action="llm_vision_ocr")
     prompt = (
@@ -59,17 +58,21 @@ def _perform_llm_ocr(base64_img: str) -> str:
     try:
         extracted_text = ollama.generate_vision(prompt=prompt, base64_images=[base64_img])
 
-        # SOTA Defensive: Strip potential markdown code blocks that LLMs sometimes inject
-        if extracted_text.startswith("```"):
-            lines = extracted_text.split("\n")
-            if len(lines) > 2:
-                extracted_text = "\n".join(lines[1:-1])
+        if not extracted_text:
+            return ""
 
-        return extracted_text.strip()
+        # Defensive cleanup for occasional fenced-output artifacts from VLMs
+        cleaned = extracted_text.strip()
+        if cleaned.startswith("```") and cleaned.endswith("```"):
+            lines = cleaned.splitlines()
+            if len(lines) >= 3:
+                cleaned = "\n".join(lines[1:-1]).strip()
+
+        # Normalize BOM and null chars that can pollute embedding stage
+        cleaned = cleaned.replace("\ufeff", "").replace("\x00", "")
+        return cleaned.strip()
     except Exception as e:
         log.error("llm_vision_ocr_failed", error=str(e))
-        # Return empty string to allow pipeline to continue - don't block document upload
-        # The document will be stored but text extraction will be skipped
         return ""
 
 
@@ -242,73 +245,140 @@ def process_document_ocr(document_version_id: str):
                     session.commit()
 
             # ----------------------------------------------------------------
-            # Stage 4 & 5 — Defensive Hybrid extraction & Multimodal OCR
+            # Stage 4 — Intelligent Parser Selection (Phase 1 Addition)
             # ----------------------------------------------------------------
-            log.info("running_extraction_pipeline", file_type=file_extension)
+            log.info("selecting_optimal_parser", file_type=file_extension)
+
+            extracted_text = ""
+            parser_used = "unknown"
+            docling_result = None
 
             if file_extension == ".pdf":
-                with pdfplumber.open(temp_path) as pdf:
-                    for page in pdf.pages:
-                        page_text = page.extract_text()
+                from app.services.doc_processing.docling_parser import (
+                    parse_with_docling,
+                    should_use_docling,
+                    is_docling_available,
+                )
 
-                        # Fallback to Vision LLM if page is scanned or text is too sparse
-                        if not page_text or len(page_text.strip()) < 50:
-                            log.info(
-                                "scanned_page_detected_routing_to_vision_llm",
-                                page_number=page.page_number,
-                            )
-                            scanned_pages_count += 1
+                quick_text = ""
+                try:
+                    with pdfplumber.open(temp_path) as pdf:
+                        for page in pdf.pages[:3]:
+                            page_text = page.extract_text() or ""
+                            quick_text += page_text + "\n"
+                except Exception:
+                    quick_text = ""
 
-                            pil_img = page.to_image(resolution=300).original
+                use_docling = is_docling_available() and should_use_docling(temp_path, quick_text)
+
+                if use_docling:
+                    log.info("routing_to_docling_parser", reason="complex_document_detected")
+                    docling_result = parse_with_docling(temp_path)
+
+                    if docling_result:
+                        extracted_text = docling_result["markdown"]
+                        parser_used = "docling"
+                        log.info(
+                            "docling_extraction_complete",
+                            has_equations=docling_result.get("has_equations", False),
+                            has_tables=docling_result.get("has_tables", False),
+                            pages=docling_result.get("page_count", 0),
+                        )
+
+                if not extracted_text:
+                    log.info("routing_to_pdfplumber_pipeline")
+                    parser_used = "pdfplumber_hybrid"
+
+                    with pdfplumber.open(temp_path) as pdf:
+                        for page in pdf.pages:
+                            page_text = page.extract_text()
+
+                            if not page_text or len(page_text.strip()) < 50:
+                                log.info(
+                                    "scanned_page_detected_routing_to_vision_llm",
+                                    page_number=page.page_number,
+                                )
+                                scanned_pages_count += 1
+
+                                pil_img = page.to_image(resolution=300).original
+                                img_cv = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+
+                                gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
+                                variance = cv2.Laplacian(gray, cv2.CV_64F).var()
+                                total_quality_score += variance
+
+                                if variance < 100.0:
+                                    log.warning(
+                                        "low_scan_quality",
+                                        variance=variance,
+                                        page_number=page.page_number,
+                                    )
+
+                                base64_img = _pil_to_base64(pil_img)
+                                page_text = _perform_llm_ocr(base64_img)
+
+                                if not page_text:
+                                    log.warning(
+                                        "vision_ocr_empty_result",
+                                        page_number=page.page_number,
+                                    )
+
+                            if page_text:
+                                extracted_text += page_text + "\n\n"
+
+            elif file_extension in [".png", ".jpg", ".jpeg"]:
+                from app.services.doc_processing.docling_parser import (
+                    parse_with_docling,
+                    is_docling_available,
+                )
+
+                if is_docling_available():
+                    docling_result = parse_with_docling(temp_path)
+                    if docling_result:
+                        extracted_text = docling_result["text"]
+                        parser_used = "docling_vision"
+                    else:
+                        log.info("routing_to_vision_llm")
+                        parser_used = "ollama_vision"
+                        scanned_pages_count = 1
+
+                        try:
+                            pil_img = Image.open(temp_path).convert("RGB")
                             img_cv = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
 
-                            # Quality Score: Laplacian Variance
                             gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
                             variance = cv2.Laplacian(gray, cv2.CV_64F).var()
                             total_quality_score += variance
 
-                            if variance < 100.0:
-                                log.warning(
-                                    "low_scan_quality",
-                                    variance=variance,
-                                    page_number=page.page_number,
-                                )
-
-                            # Execute Multimodal Extraction
                             base64_img = _pil_to_base64(pil_img)
-                            page_text = _perform_llm_ocr(base64_img)
+                            extracted_text = _perform_llm_ocr(base64_img)
+                        except Exception as img_err:
+                            log.error("failed_to_process_direct_image", error=str(img_err))
+                else:
+                    log.info("routing_to_vision_llm")
+                    parser_used = "ollama_vision"
+                    scanned_pages_count = 1
 
-                            # Notice: The Multimodal LLM natively handles Arabic handwriting,
-                            # rendering the legacy fallback hook obsolete.
+                    try:
+                        pil_img = Image.open(temp_path).convert("RGB")
+                        img_cv = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
 
-                        if page_text:
-                            extracted_text += page_text + "\n\n"
+                        gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
+                        variance = cv2.Laplacian(gray, cv2.CV_64F).var()
+                        total_quality_score += variance
 
-            elif file_extension in [".png", ".jpg", ".jpeg"]:
-                log.info("direct_image_ocr_detected_routing_to_vision_llm")
-                scanned_pages_count = 1
-
-                # Render via PIL for easy base64 encoding
-                try:
-                    pil_img = Image.open(temp_path).convert("RGB")
-                    img_cv = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-
-                    # Quality Score
-                    gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
-                    variance = cv2.Laplacian(gray, cv2.CV_64F).var()
-                    total_quality_score += variance
-
-                    # Execute Multimodal Extraction
-                    base64_img = _pil_to_base64(pil_img)
-                    extracted_text = _perform_llm_ocr(base64_img)
-                except Exception as img_err:
-                    log.error("failed_to_process_direct_image", error=str(img_err))
+                        base64_img = _pil_to_base64(pil_img)
+                        extracted_text = _perform_llm_ocr(base64_img)
+                    except Exception as img_err:
+                        log.error("failed_to_process_direct_image", error=str(img_err))
 
             else:
                 log.warning("unsupported_file_format_for_text_extraction", extension=file_extension)
                 extracted_text = f"[Text extraction not supported natively for {file_extension} files in this version. File stored safely.]"
 
             extracted_text = extracted_text.strip()
+            if not extracted_text:
+                log.warning("ocr_extracted_text_empty")
 
             # ----------------------------------------------------------------
             # Stage 6 — Language detection & SimHash deduplication (US-07)
@@ -343,6 +413,13 @@ def process_document_ocr(document_version_id: str):
             doc.ocr_text = extracted_text
             doc.language = detected_lang
             doc.simhash = simhash_str
+            doc.parser_used = parser_used
+            doc.has_structured_content = (
+                docling_result.get("has_equations", False)
+                or docling_result.get("has_tables", False)
+                if docling_result
+                else False
+            )
 
             if scanned_pages_count > 0:
                 doc.quality_score = total_quality_score / scanned_pages_count
