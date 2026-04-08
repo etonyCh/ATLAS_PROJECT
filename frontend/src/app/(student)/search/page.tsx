@@ -227,7 +227,7 @@ export default function SearchPage() {
                               ))}
                               <span className="flex items-center gap-1">
                                 <Star className="h-3 w-3" />
-                                {result.quality_score.toFixed(1)}
+                                {(result.quality_score ?? 0).toFixed(1)}
                               </span>
                             </div>
                           </div>

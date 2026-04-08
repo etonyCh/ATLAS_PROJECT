@@ -73,7 +73,10 @@ class DocumentVersion(SQLModel, table=True):
     contribution_id: uuid.UUID = Field(foreign_key="contribution.id", index=True)
     contribution: Optional["Contribution"] = Relationship(back_populates="document_versions")
 
-    embeddings: List["DocumentEmbedding"] = Relationship(back_populates="document_version")
+    embeddings: List["DocumentEmbedding"] = Relationship(
+        back_populates="document_version",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
 
 
 class Contribution(SQLModel, table=True):
@@ -111,7 +114,10 @@ class Contribution(SQLModel, table=True):
     # US-12: Complete the bidirectional mapping back to Course
     course: Optional["Course"] = Relationship(back_populates="contributions")
 
-    document_versions: List[DocumentVersion] = Relationship(back_populates="contribution")
+    document_versions: List[DocumentVersion] = Relationship(
+        back_populates="contribution",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
     contributor_request: Optional["ContributorRequest"] = Relationship(
         back_populates="demo_contribution"
     )

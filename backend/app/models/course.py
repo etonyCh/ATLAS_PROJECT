@@ -72,5 +72,8 @@ class Course(SQLModel, table=True):
     department_id: Optional[uuid.UUID] = Field(foreign_key="department.id", index=True)
     department: Optional["Department"] = Relationship(back_populates="courses")
 
-    # US-12: Bidirectional relationship to fetch all versions/contributions for this course efficiently
-    contributions: List["Contribution"] = Relationship(back_populates="course")
+    # US-12: Bidirectional relationship with cascade delete to remove all data when course is deleted
+    contributions: List["Contribution"] = Relationship(
+        back_populates="course",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )

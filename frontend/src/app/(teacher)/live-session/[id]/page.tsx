@@ -313,7 +313,9 @@ export default function LiveSessionDetailPage() {
                   <PdfViewer
                     url={coursePreview?.url}
                     pageNumber={currentPdfPage}
+                    onPageChange={setPage}
                     onLoadSuccess={setNumPdfPages}
+                    showChrome={false}
                   />
                 )}
                 <div className="absolute top-2 right-2 flex gap-2 z-10">

@@ -10,8 +10,8 @@ class RAGSession(SQLModel, table=True):
     __tablename__ = "ragsession"
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    student_id: uuid.UUID = Field(foreign_key="user.id", index=True)
-    document_version_id: uuid.UUID = Field(foreign_key="documentversion.id", index=True)
+    student_id: uuid.UUID = Field(foreign_key="user.id", index=True, ondelete="CASCADE")
+    document_version_id: uuid.UUID = Field(foreign_key="documentversion.id", index=True, ondelete="CASCADE")
     message_count: int = Field(default=0, ge=0)
     is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

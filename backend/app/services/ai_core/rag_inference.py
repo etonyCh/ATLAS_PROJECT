@@ -4,7 +4,7 @@ import json
 import logging
 import asyncio
 import httpx
-from typing import AsyncGenerator, Optional, List, Dict, Any
+from typing import AsyncGenerator, Optional, List, Dict, Any, Tuple
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 import meilisearch

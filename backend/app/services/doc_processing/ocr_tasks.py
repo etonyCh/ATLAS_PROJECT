@@ -304,7 +304,7 @@ def process_document_ocr(document_version_id: str):
                                 img_cv = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
 
                                 gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
-                                variance = cv2.Laplacian(gray, cv2.CV_64F).var()
+                                variance = float(cv2.Laplacian(gray, cv2.CV_64F).var())
                                 total_quality_score += variance
 
                                 if variance < 100.0:
@@ -347,7 +347,7 @@ def process_document_ocr(document_version_id: str):
                             img_cv = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
 
                             gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
-                            variance = cv2.Laplacian(gray, cv2.CV_64F).var()
+                            variance = float(cv2.Laplacian(gray, cv2.CV_64F).var())
                             total_quality_score += variance
 
                             base64_img = _pil_to_base64(pil_img)
@@ -364,7 +364,7 @@ def process_document_ocr(document_version_id: str):
                         img_cv = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
 
                         gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
-                        variance = cv2.Laplacian(gray, cv2.CV_64F).var()
+                        variance = float(cv2.Laplacian(gray, cv2.CV_64F).var())
                         total_quality_score += variance
 
                         base64_img = _pil_to_base64(pil_img)
@@ -392,7 +392,8 @@ def process_document_ocr(document_version_id: str):
                 except LangDetectException:
                     log.warning("langdetect_failed")
 
-                simhash_str = str(Simhash(extracted_text).value)
+                # Truncate text to prevent uint8 overflow in Simhash (max 255 count per feature)
+                simhash_str = str(Simhash(extracted_text[:10000]).value)
 
                 existing_dup = session.exec(
                     select(DocumentVersion).where(
@@ -422,7 +423,7 @@ def process_document_ocr(document_version_id: str):
             )
 
             if scanned_pages_count > 0:
-                doc.quality_score = total_quality_score / scanned_pages_count
+                doc.quality_score = float(total_quality_score / scanned_pages_count)
 
                 # US-07: The Total Coverage Side-Effect Execution
                 if doc.quality_score < settings.OCR_QUALITY_ALERT_THRESHOLD:

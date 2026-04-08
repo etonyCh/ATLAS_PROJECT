@@ -14,6 +14,7 @@ import re
 import math
 import logging
 import asyncio
+import uuid
 from typing import List, Dict, Optional, Any, Tuple
 from functools import lru_cache
 
@@ -176,7 +177,8 @@ class QdrantManager:
         sparse_vectors = _compute_bm25_sparse_vectors([chunk[0] for chunk in chunks])
 
         for idx, ((chunk_text, dense_vector), sparse_vec) in enumerate(zip(chunks, sparse_vectors)):
-            point_id = f"{document_version_id}_{idx}"
+            # Generate valid UUID5 from document_version_id + chunk index
+            point_id = uuid.uuid5(uuid.NAMESPACE_DNS, f"{document_version_id}_{idx}")
 
             payload = {
                 "document_version_id": document_version_id,
@@ -192,7 +194,7 @@ class QdrantManager:
 
             points.append(
                 models.PointStruct(
-                    id=point_id,
+                    id=str(point_id),  # Convert UUID to string for Pydantic validation
                     vector={
                         DENSE_VECTOR_NAME: dense_vector,
                         SPARSE_VECTOR_NAME: sparse_vec,

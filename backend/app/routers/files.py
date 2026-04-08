@@ -21,8 +21,15 @@ router = APIRouter(tags=["Files"])
 
 
 def _can_access_document(current_user: User, contribution: Contribution) -> bool:
-    role_value = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
-    if role_value in (UserRole.ADMIN.value, UserRole.SUPERADMIN.value):
+    role_value = (
+        current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    )
+    # Align with /admin/contributions (ADMIN + TEACHER can moderate pending uploads).
+    if role_value in (
+        UserRole.ADMIN.value,
+        UserRole.SUPERADMIN.value,
+        UserRole.TEACHER.value,
+    ):
         return True
     if contribution.uploader_id == current_user.id:
         return True
@@ -53,7 +60,9 @@ async def proxy_file(
             raise HTTPException(status_code=404, detail="File not found")
 
         if not _can_access_document(current_user, contribution):
-            raise HTTPException(status_code=403, detail="You do not have permission to access this file")
+            raise HTTPException(
+                status_code=403, detail="You do not have permission to access this file"
+            )
 
         response = minio_client.client.get_object(minio_client.bucket_name, path)
         data = response.read()
@@ -61,10 +70,9 @@ async def proxy_file(
         response.release_conn()
 
         content_type = document_version.mime_type or _get_content_type(path)
-        
-        # Validate that we have actual file data
+
         if not data or len(data) == 0:
-            raise HTTPException(status_code=500, detail="File is empty or corrupted")
+            raise HTTPException(status_code=404, detail="File not found in storage or is empty")
 
         return StreamingResponse(
             io.BytesIO(data),
@@ -79,6 +87,8 @@ async def proxy_file(
         if e.code == "NoSuchKey":
             raise HTTPException(status_code=404, detail="File not found")
         raise HTTPException(status_code=500, detail=f"Storage error: {str(e)}")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to load file: {str(e)}")
 
@@ -86,6 +96,7 @@ async def proxy_file(
 # ---------------------------------------------------------------------------
 # SOTA PDF Previewer — Presigned URL Endpoint
 # ---------------------------------------------------------------------------
+
 
 @router.get("/files/pdf-view-url/{contribution_id}")
 async def get_pdf_view_url(
@@ -152,23 +163,25 @@ async def get_pdf_view_url(
             detail=f"This file type ({mime}) is not supported for in-browser preview. Use the download endpoint instead.",
         )
 
-    # 4. Generate presigned URL — strictly 15 minutes
-    try:
-        presigned_url = minio_client.get_file_url(
-            document_version.storage_path,
-            expires_in_hours=0.25,  # 15 minutes
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to generate secure viewing URL: {str(exc)}",
-        )
-
+    # 4. Return a freshly generated presigned URL for direct storage access.
+    filename = (
+        document_version.storage_path.split("/")[-1]
+        if document_version.storage_path
+        else "document"
+    )
+    signed_url = minio_client.get_file_url(
+        document_version.storage_path,
+        expires_in_hours=1,
+        response_headers={
+            "response-content-type": document_version.mime_type
+            or _get_content_type(document_version.storage_path),
+            "response-content-disposition": f'inline; filename="{filename}"',
+        },
+    )
     expires_at = datetime.utcnow() + timedelta(minutes=15)
-    filename = document_version.storage_path.split("/")[-1] if document_version.storage_path else "document"
 
     return {
-        "url": presigned_url,
+        "url": signed_url,
         "expires_at": expires_at.isoformat(),
         "filename": filename,
         "mime_type": document_version.mime_type,
@@ -211,23 +224,25 @@ async def get_pdf_view_url_by_path(
             detail="You do not have permission to view this document.",
         )
 
-    # 3. Generate presigned URL — strictly 15 minutes
-    try:
-        presigned_url = minio_client.get_file_url(
-            document_version.storage_path,
-            expires_in_hours=0.25,
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to generate secure viewing URL: {str(exc)}",
-        )
-
+    # 3. Return a freshly generated presigned URL for direct storage access.
+    filename = (
+        document_version.storage_path.split("/")[-1]
+        if document_version.storage_path
+        else "document"
+    )
+    signed_url = minio_client.get_file_url(
+        document_version.storage_path,
+        expires_in_hours=1,
+        response_headers={
+            "response-content-type": document_version.mime_type
+            or _get_content_type(document_version.storage_path),
+            "response-content-disposition": f'inline; filename="{filename}"',
+        },
+    )
     expires_at = datetime.utcnow() + timedelta(minutes=15)
-    filename = document_version.storage_path.split("/")[-1] if document_version.storage_path else "document"
 
     return {
-        "url": presigned_url,
+        "url": signed_url,
         "expires_at": expires_at.isoformat(),
         "filename": filename,
         "mime_type": document_version.mime_type,
@@ -238,6 +253,7 @@ async def get_pdf_view_url_by_path(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _get_content_type(path: str) -> str:
     """Determine content type based on file extension."""

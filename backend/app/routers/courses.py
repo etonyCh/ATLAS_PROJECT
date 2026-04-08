@@ -92,6 +92,26 @@ async def _get_latest_course_version(
     return row[0], row[1]
 
 
+async def _get_latest_accessible_course_version(
+    db: AsyncSession,
+    course_id: UUID,
+    current_user: User,
+) -> tuple[DocumentVersion | None, Contribution | None]:
+    result = await db.execute(
+        select(DocumentVersion, Contribution)
+        .join(Contribution, Contribution.id == DocumentVersion.contribution_id)
+        .where(
+            Contribution.course_id == course_id,
+            DocumentVersion.is_deleted.is_(False),
+        )
+        .order_by(desc(DocumentVersion.version_number))
+    )
+    for version, contribution in result.all():
+        if _can_access_course_contribution(current_user, contribution):
+            return version, contribution
+    return None, None
+
+
 def _can_access_course_contribution(current_user: User, contribution: Contribution | None) -> bool:
     if contribution is None:
         return False
@@ -169,11 +189,7 @@ async def list_courses(
     courses = result.scalars().all()
     payload: list[dict[str, Any]] = []
     for course in courses:
-        latest_version, contribution = await _get_latest_course_version(db, course.id)
-        if latest_version is not None and not _can_access_course_contribution(
-            current_user, contribution
-        ):
-            latest_version = None
+        latest_version, _ = await _get_latest_accessible_course_version(db, course.id, current_user)
         payload.append(_serialize_course(course, latest_version))
     return payload
 
@@ -212,11 +228,7 @@ async def get_course(
     if course is None or course.is_deleted:
         raise atlas_error("COURSE_001", "Course not found.", status_code=404)
 
-    latest_version, contribution = await _get_latest_course_version(db, course_id)
-    if latest_version is not None and not _can_access_course_contribution(
-        current_user, contribution
-    ):
-        latest_version = None
+    latest_version, _ = await _get_latest_accessible_course_version(db, course_id, current_user)
     return _serialize_course(course, latest_version)
 
 
@@ -451,25 +463,93 @@ async def delete_course(
     _current_user: User = Depends(require_role("TEACHER", "ADMIN")),
     redis_client: Redis = Depends(get_redis_client),
 ) -> dict[str, bool]:
+    """
+    Hard cascade delete: removes course and all related data permanently.
+    Deletes from: PostgreSQL, MinIO, Qdrant, and MeiliSearch.
+    """
+    from sqlalchemy import delete
+    from app.models.study_tools import FlashcardDeck, QuizSession, MindMap, Summary
+    from app.models.rag import RAGSession
+    from app.models.annotation import DocumentAnnotation
+    from app.models.all_models import ReadingProgress
+    from app.core.qdrant_client import get_qdrant_manager, COLLECTION_DOCUMENTS
+
     print(f"🔥 DELETE request received for course: {course_id}")
     course = await db.get(Course, course_id)
     if course is None:
         raise atlas_error("COURSE_001", "Course not found.", status_code=404)
 
+    # Get all contributions for this course
     result = await db.execute(
-        select(DocumentVersion)
-        .join(Contribution, Contribution.id == DocumentVersion.contribution_id)
-        .where(Contribution.course_id == course_id)
+        select(Contribution.id).where(Contribution.course_id == course_id)
     )
-    for version in result.scalars().all():
-        version.is_deleted = True
-        db.add(version)
+    contribution_ids = [row[0] for row in result.all()]
 
-    course.is_deleted = True
-    db.add(course)
+    if contribution_ids:
+        # Get all document versions for these contributions
+        result = await db.execute(
+            select(DocumentVersion.id, DocumentVersion.storage_path)
+            .where(DocumentVersion.contribution_id.in_(contribution_ids))
+        )
+        version_rows = result.all()
+        version_ids = [row[0] for row in version_rows]
+        storage_paths = [row[1] for row in version_rows if row[1]]
+
+        if version_ids:
+            print(f"🗑️  Deleting {len(version_ids)} document versions and related data...")
+
+            # Delete from Qdrant (vector embeddings)
+            try:
+                qdrant = get_qdrant_manager()
+                for version_id in version_ids:
+                    qdrant.delete_document_embeddings(
+                        collection_name=COLLECTION_DOCUMENTS,
+                        document_version_id=str(version_id)
+                    )
+                print(f"✅ Deleted embeddings from Qdrant")
+            except Exception as e:
+                print(f"⚠️  Qdrant deletion warning: {e}")
+
+            # Delete from MinIO (files)
+            for path in storage_paths:
+                try:
+                    minio_client.delete_file(path)
+                except Exception as e:
+                    print(f"⚠️  MinIO deletion warning for {path}: {e}")
+            print(f"✅ Deleted {len(storage_paths)} files from MinIO")
+
+            # Delete related study tools (cascade handled by DB for their children)
+            await db.execute(delete(FlashcardDeck).where(FlashcardDeck.document_version_id.in_(version_ids)))
+            await db.execute(delete(QuizSession).where(QuizSession.document_version_id.in_(version_ids)))
+            await db.execute(delete(MindMap).where(MindMap.document_version_id.in_(version_ids)))
+            await db.execute(delete(Summary).where(Summary.document_version_id.in_(version_ids)))
+
+            # Delete RAG sessions (messages cascade via DB)
+            await db.execute(delete(RAGSession).where(RAGSession.document_version_id.in_(version_ids)))
+
+            # Delete annotations and reading progress
+            await db.execute(delete(DocumentAnnotation).where(DocumentAnnotation.document_version_id.in_(version_ids)))
+            await db.execute(delete(ReadingProgress).where(ReadingProgress.document_version_id.in_(version_ids)))
+
+            # Delete document embeddings from PostgreSQL
+            from app.models.embedding import DocumentEmbedding
+            await db.execute(delete(DocumentEmbedding).where(DocumentEmbedding.document_version_id.in_(version_ids)))
+
+            # Delete document versions
+            await db.execute(delete(DocumentVersion).where(DocumentVersion.id.in_(version_ids)))
+
+        # Delete contributor requests linked to these contributions
+        from app.models.contribution import ContributorRequest
+        await db.execute(delete(ContributorRequest).where(ContributorRequest.demo_contribution_id.in_(contribution_ids)))
+
+        # Delete contributions
+        await db.execute(delete(Contribution).where(Contribution.id.in_(contribution_ids)))
+
+    # Delete the course itself
+    await db.execute(delete(Course).where(Course.id == course_id))
 
     await db.commit()
-    print(f"✅ Course {course_id} marked as deleted")
+    print(f"✅ Course {course_id} and all related data permanently deleted")
     await invalidate_cache_patterns(redis_client, "course_meta:*", "search_autocomplete:*")
     return {"success": True}
 
@@ -480,13 +560,12 @@ async def get_course_download_url(
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    latest_version, contribution = await _get_latest_course_version(db, course_id)
+    latest_version, contribution = await _get_latest_accessible_course_version(db, course_id, current_user)
     if latest_version is None or contribution is None:
         raise atlas_error("COURSE_001", "Course not found.", status_code=404)
-    if not _can_access_course_contribution(current_user, contribution):
-        raise atlas_error("COURSE_003", "This file is not available yet.", status_code=403)
 
-    url = minio_client.get_file_url(latest_version.storage_path, expires_in_hours=0.25)
+    # Return proxy URL instead of direct MinIO URL to avoid CORS/issues
+    url = f"/api/files/proxy/{latest_version.storage_path}"
     expires_at = datetime.utcnow() + timedelta(minutes=15)
     return {"url": url, "expiresAt": expires_at.isoformat()}
 
@@ -497,13 +576,11 @@ async def get_course_preview(
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    latest_version, contribution = await _get_latest_course_version(db, course_id)
+    latest_version, contribution = await _get_latest_accessible_course_version(db, course_id, current_user)
     if latest_version is None or contribution is None:
         raise atlas_error("COURSE_001", "Course not found.", status_code=404)
-    if not _can_access_course_contribution(current_user, contribution):
-        raise atlas_error("COURSE_003", "This file is not available yet.", status_code=403)
 
-    preview_url = f"/api/v1/files/proxy/{latest_version.storage_path}"
+    preview_url = f"/api/files/proxy/{latest_version.storage_path}"
     return {
         "course_id": str(course_id),
         "preview": {

@@ -43,7 +43,12 @@ class MinioClient:
         except S3Error as e:
             raise Exception(f"Failed to upload to MinIO: {e}")
 
-    def get_file_url(self, object_name: str, expires_in_hours: int = 1) -> str:
+    def get_file_url(
+        self,
+        object_name: str,
+        expires_in_hours: float = 1,
+        response_headers: dict[str, str] | None = None,
+    ) -> str:
         """
         US-06 Requirement: URL signée 1h générée pour accès.
         Strictly limits the presigned URL validity to the specified hours (default 1).
@@ -51,12 +56,20 @@ class MinioClient:
         try:
             self.ensure_bucket_exists()
             return self.client.presigned_get_object(
-                self.bucket_name, 
+                self.bucket_name,
                 object_name,
-                expires=timedelta(hours=expires_in_hours)
+                expires=timedelta(hours=expires_in_hours),
+                response_headers=response_headers,
             )
         except S3Error as e:
             raise Exception(f"Failed to generate presigned URL for MinIO: {e}")
+
+    def delete_file(self, object_name: str) -> None:
+        """Deletes a file from MinIO storage."""
+        try:
+            self.client.remove_object(self.bucket_name, object_name)
+        except S3Error as e:
+            raise Exception(f"Failed to delete from MinIO: {e}")
 
 minio_client = MinioClient()
 

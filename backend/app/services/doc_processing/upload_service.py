@@ -1,10 +1,11 @@
+
 from __future__ import annotations
 
 import os
 import uuid
 from typing import Optional
 
-import magic
+import filetype
 import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,7 +38,8 @@ async def read_and_validate_upload(upload_file) -> tuple[bytes, str]:
         )
 
     header_bytes = await upload_file.read(2048)
-    actual_mime = magic.from_buffer(header_bytes, mime=True)
+    kind = filetype.guess(header_bytes)
+    actual_mime = kind.mime if kind else "application/octet-stream"
     if actual_mime not in ALLOWED_MIME_TYPES:
         await upload_file.seek(0)
         raise ValueError(f"Byte-level signature mismatch. Detected: {actual_mime}.")

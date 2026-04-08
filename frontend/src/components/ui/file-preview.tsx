@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Download, ExternalLink, FileText, Loader2, Presentation, FileImage } from "lucide-react";
-import { getAccessToken } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { filesApi } from "@/lib/api";
+import { authApi, filesApi, getAccessToken } from "@/lib/api";
+import { PdfViewer } from "@/components/ui/pdf-viewer";
 import { renderAsync } from "docx-preview";
 import { pptxToHtml } from "@jvmr/pptx-to-html";
 
@@ -79,29 +79,67 @@ export function FilePreview({
       setError(null);
 
       try {
-        const token = getAccessToken();
-        const url = `/api/files/proxy/${encodeStoragePath(storagePath)}`;
-        console.log("[FilePreview] Fetching from:", url);
-        
-        const response = await fetch(url, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          signal: controller.signal,
-        });
+        // Use same-origin proxy for inline preview (PDF uses react-pdf; needs blob URL).
+        const proxyUrl = `/api/files/proxy/${encodeStoragePath(storagePath)}`;
+        let token = getAccessToken();
+        if (!token && typeof window !== "undefined") {
+          token = localStorage.getItem("atlas_access_token");
+        }
 
-        console.log("[FilePreview] Response status:", response.status);
+        const doFetch = (bearer?: string | null) =>
+          fetch(proxyUrl, {
+            headers: bearer ? { Authorization: `Bearer ${bearer}` } : {},
+            credentials: "include",
+            signal: controller.signal,
+          });
+
+        let response = await doFetch(token);
+        if (response.status === 401) {
+          await authApi.refresh();
+          response = await doFetch(getAccessToken());
+        }
+
+                                                console.log("[FilePreview] Response status:", response.status);
+
+        if (response.status === 401) {
+          throw new Error("Session expired - please log in again (401)");
+        }
 
         if (!response.ok) {
-          throw new Error(`Unable to load preview (${response.status})`);
+          // Try to extract error detail from JSON response
+          let errorDetail = `Unable to load preview (${response.status})`;
+          try {
+            const errorBody = await response.json();
+            if (errorBody?.detail) {
+              errorDetail = errorBody.detail;
+            }
+          } catch {
+            // Response wasn't JSON, use default message
+          }
+          throw new Error(errorDetail);
         }
 
         const blob = await response.blob();
-        const buffer = await blob.arrayBuffer();
         
         console.log("[FilePreview] Got blob, size:", blob.size, "type:", blob.type);
         
         // Validate that we received actual data
-        if (!buffer || buffer.byteLength === 0) {
+        if (!blob || blob.size === 0) {
           throw new Error("File is empty or corrupted");
+        }
+
+        // Check if the request was aborted while we were downloading
+        if (controller.signal.aborted || !isMounted) {
+          console.log("[FilePreview] Aborted after blob download, skipping");
+          return;
+        }
+        
+        const buffer = await blob.arrayBuffer();
+
+        // Check again after async arrayBuffer() call
+        if (controller.signal.aborted || !isMounted) {
+          console.log("[FilePreview] Aborted after arrayBuffer, skipping");
+          return;
         }
         
         objectUrl = URL.createObjectURL(blob);
@@ -111,7 +149,14 @@ export function FilePreview({
           return;
         }
 
-        const detectedMimeType = response.headers.get("content-type") || blob.type || mimeType || null;
+        let detectedMimeType =
+          response.headers.get("content-type") || blob.type || mimeType || null;
+        if (
+          (!detectedMimeType || detectedMimeType === "application/octet-stream") &&
+          storagePath.toLowerCase().endsWith(".pdf")
+        ) {
+          detectedMimeType = "application/pdf";
+        }
         console.log("[FilePreview] Setting blobUrl, mimeType:", detectedMimeType);
         
         setBlobUrl(objectUrl);
@@ -283,37 +328,29 @@ export function FilePreview({
     let isMounted = true;
 
     const fetchUrls = async () => {
+      let resolvedUrl: string | null = null;
+
+      // Open/Download use plain <a href> navigation — the browser does NOT send
+      // Authorization headers. Proxy routes require Bearer JWT, so those links
+      // must use time-limited presigned storage URLs (same as PDF/image).
+      // Inline preview still uses fetch(proxy) with Bearer in loadFile above.
       try {
-        // Get view URL from API (presigned URL that allows viewing)
         const viewResponse = await filesApi.getPdfViewUrlByPath(storagePath);
         if (isMounted) {
-          console.log("[FilePreview] Got view URL from API:", viewResponse.url);
-
-          // Some presigned providers omit inline rendering hints; force inline for iframe preview.
-          let normalizedViewUrl = viewResponse.url;
-          if (category === "pdf" && !/[?&]response-content-type=/i.test(normalizedViewUrl)) {
-            const separator = normalizedViewUrl.includes("?") ? "&" : "?";
-            normalizedViewUrl = `${normalizedViewUrl}${separator}response-content-type=${encodeURIComponent("application/pdf")}`;
-          }
-          if (category === "pdf" && !/[?&]response-content-disposition=/i.test(normalizedViewUrl)) {
-            const separator = normalizedViewUrl.includes("?") ? "&" : "?";
-            normalizedViewUrl = `${normalizedViewUrl}${separator}response-content-disposition=${encodeURIComponent("inline")}`;
-          }
-
-          setViewUrl(normalizedViewUrl);
+          console.log("[FilePreview] Got signed URL for Open/Download:", viewResponse.url);
+          setViewUrl(viewResponse.url);
+          resolvedUrl = viewResponse.url;
         }
       } catch (err) {
-        // Fallback: use same-origin proxy URL if API fails
-        const fallbackUrl = `/api/files/proxy/${encodeStoragePath(storagePath)}`;
-        console.log("[FilePreview] API failed, using fallback URL:", fallbackUrl, err);
+        console.log("[FilePreview] Failed to fetch signed URL for actions:", err);
         if (isMounted) {
-          setViewUrl(fallbackUrl);
+          setViewUrl(null);
         }
       }
 
-      // Set download URL to the same proxy endpoint (browser will handle download)
       if (isMounted) {
-        setDownloadUrl(`/api/files/proxy/${encodeStoragePath(storagePath)}`);
+        // Do not fall back to proxy here: anchor navigation cannot send Bearer token.
+        setDownloadUrl(resolvedUrl);
       }
     };
 
@@ -380,23 +417,11 @@ export function FilePreview({
       ) : null}
 
       {category === "pdf" ? (
-        <div className="h-full min-h-[600px] rounded-lg border overflow-hidden bg-white">
+        <div className="h-full min-h-[600px] overflow-hidden rounded-lg">
           {blobUrl ? (
-            <iframe
-              src={blobUrl}
-              className="w-full h-full min-h-[600px]"
-              title={title || "PDF Preview"}
-              style={{ border: "none" }}
-            />
-          ) : viewUrl ? (
-            <iframe
-              src={viewUrl}
-              className="w-full h-full min-h-[600px]"
-              title={title || "PDF Preview"}
-              style={{ border: "none" }}
-            />
+            <PdfViewer file={blobUrl} title={title} />
           ) : (
-            <div className="flex h-full min-h-[600px] items-center justify-center">
+            <div className="flex h-full min-h-[600px] items-center justify-center rounded-lg border bg-muted/20">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           )}

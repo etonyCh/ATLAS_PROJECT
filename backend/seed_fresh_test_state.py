@@ -79,6 +79,7 @@ async def ensure_user(
 
     if existing:
         user_id = str(existing["id"])
+        is_contributor = role in ("TEACHER", "ADMIN", "SUPER_ADMIN")
         await conn.execute(
             """
             UPDATE "user"
@@ -94,7 +95,8 @@ async def ensure_user(
                 filiere = $8,
                 level = $9,
                 onboarding_completed = $10,
-                hashed_password = $11
+                is_contributor = $11,
+                hashed_password = $12
             WHERE email = $1
             """,
             email,
@@ -107,22 +109,24 @@ async def ensure_user(
             filiere,
             level,
             onboarding_completed,
+            is_contributor,
             hashed_password,
         )
         return user_id
 
     user_id = str(uuid.uuid4())
+    is_contributor = role in ("TEACHER", "ADMIN", "SUPER_ADMIN")
     await conn.execute(
         """
         INSERT INTO "user" (
             email, full_name, role, status, establishment_id, trust_score, profile_completeness,
             is_active, is_verified, verified_at, filiere, level, onboarding_completed,
-            id, hashed_password, created_at
+            is_contributor, id, hashed_password, created_at
         )
         VALUES (
             $1, $2, $3, 'ACTIVE', $4, $5, $6,
             true, true, $7, $8, $9, $10,
-            $11, $12, $13
+            $11, $12, $13, $14
         )
         """,
         email,
@@ -135,6 +139,7 @@ async def ensure_user(
         filiere,
         level,
         onboarding_completed,
+        is_contributor,
         user_id,
         hashed_password,
         now,

@@ -21,6 +21,12 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_session),
 ) -> User:
+    # Debug logging for auth issues
+    print(f"[Auth] credentials type: {type(credentials)}")
+    print(f"[Auth] credentials: {credentials}")
+    if credentials:
+        print(f"[Auth] token preview: {credentials.credentials[:50]}...")
+    
     if credentials is None:
         raise atlas_error("AUTH_007", "Authentication credentials are required.", status_code=401)
 
