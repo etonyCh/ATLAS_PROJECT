@@ -20,7 +20,7 @@ from app.models.contribution import Contribution, DocumentVersion
 from app.models.course import Course
 from app.models.gamification import XPTransaction
 from app.models.study_tools import FlashcardDeck, QuizSession
-from app.models.user import User
+from app.models.user import Department, User
 
 
 router = APIRouter(tags=["Dashboard"])
@@ -32,6 +32,7 @@ async def student_dashboard(
     current_user: User = Depends(require_role("STUDENT")),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
+    # Basic stats
     quiz_count = (
         await db.execute(select(func.count(QuizSession.id)).where(QuizSession.student_id == current_user.id))
     ).scalar_one()
@@ -41,6 +42,77 @@ async def student_dashboard(
     xp_total = (
         await db.execute(select(func.coalesce(func.sum(XPTransaction.amount), 0)).where(XPTransaction.user_id == current_user.id))
     ).scalar_one()
+
+    # Calculate streak (consecutive days with activity)
+    streak_result = await db.execute(
+        select(func.count(func.distinct(func.date(XPTransaction.created_at))))
+        .where(
+            XPTransaction.user_id == current_user.id,
+            XPTransaction.created_at >= datetime.now(timezone.utc) - timedelta(days=30)
+        )
+    )
+    active_streak_days = streak_result.scalar_one() or 0
+
+    # Get recent XP transactions for activity
+    recent_xp = await db.execute(
+        select(XPTransaction)
+        .where(XPTransaction.user_id == current_user.id)
+        .order_by(desc(XPTransaction.created_at))
+        .limit(10)
+    )
+    recent_activity = [
+        {
+            "id": str(xp.id),
+            "type": xp.transaction_type,
+            "amount": xp.amount,
+            "description": xp.description,
+            "created_at": xp.created_at.isoformat() if xp.created_at else None,
+        }
+        for xp in recent_xp.scalars().all()
+    ]
+
+    # Get recommended courses based on the user's level and, when possible,
+    # the department name stored in the student's filiere field.
+    recommended_courses_query = (
+        select(Course, Department.name.label("department_name"))
+        .outerjoin(Department, Department.id == Course.department_id)
+        .where(Course.level == current_user.level)
+    )
+    if current_user.filiere:
+        recommended_courses_query = recommended_courses_query.where(
+            Department.name == current_user.filiere
+        )
+
+    recommended_courses_result = await db.execute(
+        recommended_courses_query.order_by(desc(Course.created_at)).limit(4)
+    )
+    recommended_courses = [
+        {
+            "course_id": str(course.id),
+            "title": course.title,
+            "filiere": department_name,
+            "level": course.level.value if hasattr(course.level, "value") else course.level,
+            "description": course.description,
+        }
+        for course, department_name in recommended_courses_result.all()
+    ]
+
+    # Get user's flashcard decks with due cards
+    flashcard_decks_result = await db.execute(
+        select(FlashcardDeck)
+        .where(FlashcardDeck.student_id == current_user.id)
+        .order_by(desc(FlashcardDeck.created_at))
+        .limit(3)
+    )
+    suggested_flashcards = [
+        {
+            "deck_id": str(deck.id),
+            "title": deck.title,
+            "card_count": deck.card_count if hasattr(deck, 'card_count') else 0,
+        }
+        for deck in flashcard_decks_result.scalars().all()
+    ]
+
     return {
         "user": {
             "id": str(current_user.id),
@@ -52,6 +124,22 @@ async def student_dashboard(
             "quizzes_taken": int(quiz_count or 0),
             "flashcard_decks": int(deck_count or 0),
             "xp_total": int(xp_total or 0),
+        },
+        "overview": {
+            "greeting": f"Welcome back, {current_user.full_name or 'Student'}!",
+            "progress": {
+                "active_streak_days": min(active_streak_days, 30),  # Cap at 30 for display
+                "overall_completion_percentage": min(int(xp_total or 0) % 100, 100),
+            },
+            "daily_goals": [
+                {"label": "Study 30 min", "completed": active_streak_days > 0, "progress": min(active_streak_days * 10, 100)},
+                {"label": "Review flashcards", "completed": deck_count > 0, "progress": 50 if deck_count > 0 else 0},
+                {"label": "Take a quiz", "completed": quiz_count > 0, "progress": 30 if quiz_count > 0 else 0},
+            ],
+            "recent_activity": recent_activity,
+            "recommended_courses": recommended_courses,
+            "weak_topics": [],  # Placeholder - would need ML/analysis to populate
+            "suggested_flashcards": suggested_flashcards,
         },
     }
 

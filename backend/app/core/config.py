@@ -123,6 +123,12 @@ class Settings(BaseSettings):
         return "redis://localhost:6379/1"
 
     # ==========================================
+    # SEARCH (MeiliSearch)
+    # ==========================================
+    MEILI_URL: str = "http://localhost:7700"
+    MEILI_MASTER_KEY: str = "meili_master_key"
+
+    # ==========================================
     # OCR & DOCUMENT PROCESSING (US-07)
     # ==========================================
     OCR_QUALITY_ALERT_THRESHOLD: float = 50.0

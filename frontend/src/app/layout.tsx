@@ -1,32 +1,32 @@
 import { cookies } from "next/headers";
 import type { Metadata, Viewport } from "next";
 import {
+  Inter,
   IBM_Plex_Mono,
-  IBM_Plex_Sans,
   Noto_Naskh_Arabic,
 } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { ServiceWorkerRegistration } from "@/components/service-worker";
 
-const ibmPlexSans = IBM_Plex_Sans({
+const inter = Inter({
   subsets: ["latin", "latin-ext"],
   weight: ["400", "500", "600", "700"],
-  variable: "--font-ibm-plex-sans",
+  variable: "--font-sans",
   display: "swap",
 });
 
 const ibmPlexMono = IBM_Plex_Mono({
   subsets: ["latin"],
   weight: ["400", "500"],
-  variable: "--font-ibm-plex-mono",
+  variable: "--font-mono",
   display: "swap",
 });
 
 const notoNaskhArabic = Noto_Naskh_Arabic({
   subsets: ["arabic"],
   weight: ["400", "500", "600", "700"],
-  variable: "--font-noto-naskh-arabic",
+  variable: "--font-arabic",
   display: "swap",
 });
 
@@ -34,8 +34,8 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#1B3A6B" },
-    { media: "(prefers-color-scheme: dark)", color: "#0F172A" },
+    { media: "(prefers-color-scheme: light)", color: "#5e9bff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0842a0" },
   ],
 };
 
@@ -88,15 +88,10 @@ export default async function RootLayout({
   return (
     <html lang={lang} dir={dir} suppressHydrationWarning>
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
       <body
-        className={`${ibmPlexSans.variable} ${ibmPlexMono.variable} ${notoNaskhArabic.variable} min-h-screen flex flex-col bg-background text-foreground antialiased`}
+        className={`${inter.variable} ${ibmPlexMono.variable} ${notoNaskhArabic.variable} min-h-screen flex flex-col bg-background text-foreground antialiased`}
       >
         <Providers>{children}</Providers>
         <ServiceWorkerRegistration />

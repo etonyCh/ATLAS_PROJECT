@@ -134,6 +134,12 @@ async def execute_contribution_review(
     if status == ContributionStatus.APPROVED:
         c.rejection_reason = None  # Clear any previous rejection reasons
         c.status = ContributionStatus.APPROVED
+
+        if not c.course_id:
+            raise ValueError(
+                "Student contributions must target an administrator-managed course before approval."
+            )
+
         session.add(c)
 
         # DEFENSIVE ARCHITECTURE: Read-before-write to prevent duplicate XP exploitation

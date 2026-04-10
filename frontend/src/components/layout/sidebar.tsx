@@ -19,7 +19,6 @@ import {
   BarChart3,
   FileText,
   CheckCircle,
-  ShieldCheck,
   Building2,
   ShieldAlert,
 } from "lucide-react";
@@ -50,9 +49,9 @@ const teacherNavigation = [
 
 const adminNavigation = [
   { name: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
+  { name: "Academic Setup", href: "/admin/settings", icon: Building2 },
   { name: "Users", href: "/admin/users", icon: Users },
   { name: "Teacher Import", href: "/admin/teachers/import", icon: FileText },
-  { name: "Teacher Requests", href: "/admin/teacher-requests", icon: ShieldCheck },
   { name: "Moderation Hub", href: "/admin/moderation", icon: ShieldAlert },
 ];
 
@@ -124,7 +123,7 @@ export function Sidebar({ role }: { role: Role }) {
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 w-64 transform bg-sidebar-background transition-transform duration-200 ease-in-out lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-40 w-64 transform bg-sidebar-background border-r border-sidebar-border transition-transform duration-200 ease-in-out lg:translate-x-0",
           mobileMenuOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
@@ -138,8 +137,8 @@ export function Sidebar({ role }: { role: Role }) {
               }
               className="flex items-center gap-2"
             >
-              <GraduationCap className="h-8 w-8 text-white" />
-              <span className="text-xl font-bold text-white">ATLAS</span>
+              <GraduationCap className="h-8 w-8 text-primary" />
+              <span className="text-xl font-bold text-foreground">ATLAS</span>
             </Link>
           </div>
 
@@ -152,10 +151,10 @@ export function Sidebar({ role }: { role: Role }) {
                   key={item.name}
                   href={item.href}
                   className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    "flex items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium transition-all duration-200",
                     isActive
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent/50",
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent/30",
                   )}
                   onClick={() => setMobileMenuOpen(false)}
                 >
@@ -170,7 +169,7 @@ export function Sidebar({ role }: { role: Role }) {
                 <div className="py-4">
                   <div className="border-t border-sidebar-border" />
                 </div>
-                <p className="px-3 text-xs font-semibold uppercase text-sidebar-foreground/50">
+                <p className="px-4 text-xs font-semibold uppercase text-sidebar-foreground/50">
                   {sectionTitles[role]}
                 </p>
                 {studentSectionItems.map((item) => {
@@ -181,10 +180,10 @@ export function Sidebar({ role }: { role: Role }) {
                       key={item.name}
                       href={item.href}
                       className={cn(
-                        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                        "flex items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium transition-all duration-200",
                         isActive
-                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent/50",
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
+                          : "text-sidebar-foreground hover:bg-sidebar-accent/30",
                       )}
                       onClick={() => setMobileMenuOpen(false)}
                     >
@@ -201,7 +200,7 @@ export function Sidebar({ role }: { role: Role }) {
             <div className="space-y-2">
               <Link
                 href="/notifications"
-                className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent/50"
+                className="flex items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent/30 transition-all duration-200"
               >
                 <Bell className="h-5 w-5" />
                 Notifications
@@ -209,7 +208,7 @@ export function Sidebar({ role }: { role: Role }) {
               {(isTeacher || isAdmin) && (
                 <Link
                   href={`/${role.toLowerCase()}/settings`}
-                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent/50"
+                  className="flex items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent/30 transition-all duration-200"
                 >
                   <Settings className="h-5 w-5" />
                   Settings
@@ -218,7 +217,7 @@ export function Sidebar({ role }: { role: Role }) {
               {isStudent && (
                 <Link
                   href="/profile"
-                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent/50"
+                  className="flex items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent/30 transition-all duration-200"
                 >
                   <User className="h-5 w-5" />
                   Profile
@@ -226,7 +225,7 @@ export function Sidebar({ role }: { role: Role }) {
               )}
               <button
                 onClick={handleLogout}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent/50"
+                className="flex w-full items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent/30 transition-all duration-200"
               >
                 <LogOut className="h-5 w-5" />
                 Sign out

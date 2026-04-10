@@ -24,6 +24,7 @@ from app.models.contribution import (
     ContributorRequestStatus,
     DocumentVersion,
 )
+from app.models.course import Course
 from app.models.gamification import XPTransaction, XPTransactionType
 from app.models.user import User
 from app.schemas.pagination import build_paginated_response
@@ -147,6 +148,24 @@ def _serialize_report(notification: Notification) -> dict[str, Any]:
         "is_resolved": notification.is_read,
         "created_at": notification.created_at,
     }
+
+
+async def _teacher_can_manage_course(
+    db: AsyncSession,
+    teacher: User,
+    course_id: UUID | None,
+) -> bool:
+    if course_id is None:
+        return False
+    teacher_department_id = (
+        teacher.teacher_profile.department_id
+        if getattr(teacher, "teacher_profile", None)
+        else None
+    )
+    if teacher_department_id is None:
+        return False
+    course = await db.get(Course, course_id)
+    return bool(course and course.department_id == teacher_department_id)
 
 
 @router.post("/contributions")
@@ -342,18 +361,33 @@ async def list_contribution_queue(
     status: str | None = None,
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    current_user: User = Depends(require_role("ADMIN", "TEACHER")),
+    current_user: User = Depends(require_role("TEACHER")),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     filters = [Contribution.is_demo_submission.is_(False)]
     if status:
         filters.append(Contribution.status == status.upper())
 
+    teacher_department_id = (
+        current_user.teacher_profile.department_id
+        if getattr(current_user, "teacher_profile", None)
+        else None
+    )
+    if teacher_department_id is None:
+        raise atlas_error("AUTH_008", "Teacher department assignment is required.", status_code=403)
+    filters.append(Course.department_id == teacher_department_id)
+
     total = (
-        await db.execute(select(func.count()).select_from(Contribution).where(*filters))
+        await db.execute(
+            select(func.count())
+            .select_from(Contribution)
+            .join(Course, Course.id == Contribution.course_id)
+            .where(*filters)
+        )
     ).scalar_one()
     result = await db.execute(
         select(Contribution)
+        .join(Course, Course.id == Contribution.course_id)
         .options(selectinload(Contribution.document_versions))
         .where(*filters)
         .order_by(desc(Contribution.created_at))
@@ -374,7 +408,7 @@ async def list_contributor_requests(
     status: str | None = Query(default="PENDING"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    current_user: User = Depends(require_role("ADMIN")),
+    current_user: User = Depends(require_role("TEACHER")),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     filters = []
@@ -383,14 +417,22 @@ async def list_contributor_requests(
         if normalized in {"PENDING", "APPROVED", "REJECTED"}:
             filters.append(ContributorRequest.status == normalized)
 
-    if current_user.establishment_id:
-        filters.append(User.establishment_id == current_user.establishment_id)
+    teacher_department_id = (
+        current_user.teacher_profile.department_id
+        if getattr(current_user, "teacher_profile", None)
+        else None
+    )
+    if teacher_department_id is None:
+        raise atlas_error("AUTH_008", "Teacher department assignment is required.", status_code=403)
+    filters.append(Course.department_id == teacher_department_id)
 
     total = (
         await db.execute(
             select(func.count())
             .select_from(ContributorRequest)
             .join(User, User.id == ContributorRequest.student_id)
+            .join(Contribution, Contribution.id == ContributorRequest.demo_contribution_id)
+            .join(Course, Course.id == Contribution.course_id)
             .where(*filters)
         )
     ).scalar_one()
@@ -398,6 +440,7 @@ async def list_contributor_requests(
         select(ContributorRequest, User, Contribution)
         .join(User, User.id == ContributorRequest.student_id)
         .join(Contribution, Contribution.id == ContributorRequest.demo_contribution_id)
+        .join(Course, Course.id == Contribution.course_id)
         .options(selectinload(Contribution.document_versions))
         .where(*filters)
         .order_by(desc(ContributorRequest.created_at))
@@ -416,7 +459,7 @@ async def approve_contributor_request(
     request_id: UUID,
     background_tasks: BackgroundTasks,
     payload: ContributorRequestReviewRequest | None = None,
-    current_user: User = Depends(require_role("ADMIN")),
+    current_user: User = Depends(require_role("TEACHER")),
     db: AsyncSession = Depends(get_session),
     redis_client: Redis = Depends(get_redis_client),
 ) -> dict[str, Any]:
@@ -434,7 +477,7 @@ async def approve_contributor_request(
         raise atlas_error("CONTRIBUTOR_005", "Contributor request not found.", status_code=404)
 
     request, student, contribution = row
-    if current_user.establishment_id and student.establishment_id != current_user.establishment_id:
+    if not await _teacher_can_manage_course(db, current_user, contribution.course_id):
         raise atlas_error("AUTH_008", "You do not have permission to review this request.", status_code=403)
     if request.status != ContributorRequestStatus.PENDING:
         raise atlas_error("CONTRIBUTOR_006", "Contributor request is not pending.", status_code=400)
@@ -486,7 +529,7 @@ async def reject_contributor_request(
     request_id: UUID,
     background_tasks: BackgroundTasks,
     payload: ContributorRequestReviewRequest,
-    current_user: User = Depends(require_role("ADMIN")),
+    current_user: User = Depends(require_role("TEACHER")),
     db: AsyncSession = Depends(get_session),
     redis_client: Redis = Depends(get_redis_client),
 ) -> dict[str, Any]:
@@ -507,7 +550,7 @@ async def reject_contributor_request(
         raise atlas_error("CONTRIBUTOR_005", "Contributor request not found.", status_code=404)
 
     request, student, contribution = row
-    if current_user.establishment_id and student.establishment_id != current_user.establishment_id:
+    if not await _teacher_can_manage_course(db, current_user, contribution.course_id):
         raise atlas_error("AUTH_008", "You do not have permission to review this request.", status_code=403)
     if request.status != ContributorRequestStatus.PENDING:
         raise atlas_error("CONTRIBUTOR_006", "Contributor request is not pending.", status_code=400)
@@ -546,13 +589,19 @@ async def review_contribution(
     contribution_id: UUID,
     payload: ReviewContributionRequest,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(require_role("ADMIN", "TEACHER")),
+    current_user: User = Depends(require_role("TEACHER")),
     db: AsyncSession = Depends(get_session),
     redis_client: Redis = Depends(get_redis_client),
 ) -> Any:
     from app.services.doc_processing.moderation_service import execute_contribution_review
 
     try:
+        contribution = await db.get(Contribution, contribution_id)
+        if contribution is None:
+            raise atlas_error("CONTRIBUTION_404", "Contribution not found.", status_code=404)
+        if not await _teacher_can_manage_course(db, current_user, contribution.course_id):
+            raise atlas_error("AUTH_008", "You do not have permission to review this contribution.", status_code=403)
+
         raw_status = payload.status or payload.action
         normalized_status = (raw_status or "").upper()
         if normalized_status == "APPROVE":

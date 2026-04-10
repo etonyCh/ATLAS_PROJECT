@@ -132,11 +132,15 @@ app = FastAPI(
 install_exception_handlers(app)
 
 # CORS Configuration (Strict Environment Gating)
-allowed_origins = getattr(settings, "BACKEND_CORS_ORIGINS", ["http://localhost:3000"])
+allowed_origins = list(getattr(settings, "BACKEND_CORS_ORIGINS", []) or [])
+for local_origin in ("http://localhost:3000", "http://127.0.0.1:3000"):
+    if local_origin not in allowed_origins:
+        allowed_origins.append(local_origin)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:8000"],
+    allow_origins=allowed_origins,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

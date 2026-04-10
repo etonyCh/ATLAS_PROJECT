@@ -63,6 +63,20 @@ export function AdminDashboardPageClient() {
         </p>
       </div>
 
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
+          <div>
+            <CardTitle className="text-lg">Academic Structure</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Manage departments, the levels enabled inside each department, and the official course catalog.
+            </p>
+          </div>
+          <Button asChild>
+            <Link href="/admin/settings">Open Academic Setup</Link>
+          </Button>
+        </CardHeader>
+      </Card>
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {stats.map((stat) => (
           <Card key={stat.title}>

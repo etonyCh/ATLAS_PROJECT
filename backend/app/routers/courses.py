@@ -63,9 +63,10 @@ def _serialize_course(
         "course_type": course.course_type,
         "academic_year": course.academic_year,
         "language": course.language,
+        "department_id": str(course.department_id) if course.department_id else None,
         "tags": course.tags or [],
         "created_at": course.created_at,
-        "is_deleted": latest_version is None,
+        "is_deleted": course.is_deleted,
     }
     if latest_version is not None:
         payload["latestVersion"] = _serialize_version(latest_version)
@@ -127,15 +128,9 @@ def _can_access_course_contribution(current_user: User, contribution: Contributi
 
 @router.post("/courses/upload", status_code=status.HTTP_202_ACCEPTED)
 async def upload_course(
-    title: str = Form(...),
-    description: str | None = Form(default=None),
-    level: str = Form(...),
-    course_type: str = Form(...),
-    academic_year: str = Form(...),
-    language: str = Form(...),
-    department_id: UUID | None = Form(default=None),
+    course_id: UUID = Form(...),
     file: UploadFile = File(...),
-    current_user: User = Depends(require_role("TEACHER", "ADMIN")),
+    current_user: User = Depends(require_role("TEACHER")),
     db: AsyncSession = Depends(get_session),
     redis_client: Redis = Depends(get_redis_client),
 ) -> dict[str, Any]:
@@ -145,13 +140,7 @@ async def upload_course(
         contribution = await upload_official_course_document(
             session=db,
             current_user=current_user,
-            title=title,
-            description=description,
-            level=level,
-            course_type=course_type,
-            academic_year=academic_year,
-            language=language,
-            department_id=department_id,
+            course_id=course_id,
             file=file,
         )
     except ValueError as exc:
@@ -180,15 +169,55 @@ async def list_courses(
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
+    # Get regular courses
     result = await db.execute(
         select(Course)
         .where(Course.is_deleted.is_(False))
         .order_by(desc(Course.created_at))
         .limit(100)
     )
-    courses = result.scalars().all()
+    courses = list(result.scalars().all())
+
+    # Get courses from user's approved contributions
+    # First get course_ids from approved contributions by this user
+    from app.models.contribution import Contribution
+    contrib_ids_result = await db.execute(
+        select(Contribution.course_id)
+        .where(
+            Contribution.uploader_id == current_user.id,
+            Contribution.status == "approved",
+            Contribution.course_id.isnot(None)
+        )
+    )
+    contrib_course_ids = [row[0] for row in contrib_ids_result.all() if row[0]]
+
+    # Fetch those courses
+    contrib_courses = []
+    if contrib_course_ids:
+        contrib_result = await db.execute(
+            select(Course)
+            .where(
+                Course.id.in_(contrib_course_ids),
+                Course.is_deleted.is_(False)
+            )
+            .order_by(desc(Course.created_at))
+        )
+        contrib_courses = list(contrib_result.scalars().all())
+
+    # Combine and deduplicate courses
+    seen_ids = set()
+    all_courses = []
+
+    for course in courses + contrib_courses:
+        if course.id not in seen_ids:
+            seen_ids.add(course.id)
+            all_courses.append(course)
+
+    # Sort by creation date
+    all_courses.sort(key=lambda c: c.created_at, reverse=True)
+
     payload: list[dict[str, Any]] = []
-    for course in courses:
+    for course in all_courses[:100]:  # Limit to 100
         latest_version, _ = await _get_latest_accessible_course_version(db, course.id, current_user)
         payload.append(_serialize_course(course, latest_version))
     return payload
@@ -216,6 +245,34 @@ async def get_my_uploads(
         latest_version, _ = await _get_latest_course_version(db, course.id)
         payload.append(_serialize_course(course, latest_version))
     return payload
+
+
+@router.get("/courses/catalog")
+async def list_course_catalog(
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> list[dict[str, Any]]:
+    result = await db.execute(
+        select(Course)
+        .where(Course.is_deleted.is_(False))
+        .order_by(desc(Course.created_at))
+    )
+    courses = result.scalars().all()
+
+    role_value = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    filtered_courses: list[Course] = []
+    for course in courses:
+        if role_value == "TEACHER":
+            teacher_department_id = (
+                current_user.teacher_profile.department_id
+                if getattr(current_user, "teacher_profile", None)
+                else None
+            )
+            if teacher_department_id and course.department_id != teacher_department_id:
+                continue
+        filtered_courses.append(course)
+
+    return [_serialize_course(course) for course in filtered_courses]
 
 
 @router.get("/courses/{course_id}")
@@ -434,7 +491,7 @@ async def update_course(
     course_id: UUID,
     payload: CourseUpdateRequest,
     db: AsyncSession = Depends(get_session),
-    _current_user: User = Depends(require_role("TEACHER", "ADMIN")),
+    _current_user: User = Depends(require_role("ADMIN")),
     redis_client: Redis = Depends(get_redis_client),
 ) -> dict[str, Any]:
     course = await db.get(Course, course_id)
@@ -460,7 +517,7 @@ async def update_course(
 async def delete_course(
     course_id: UUID,
     db: AsyncSession = Depends(get_session),
-    _current_user: User = Depends(require_role("TEACHER", "ADMIN")),
+    _current_user: User = Depends(require_role("ADMIN")),
     redis_client: Redis = Depends(get_redis_client),
 ) -> dict[str, bool]:
     """

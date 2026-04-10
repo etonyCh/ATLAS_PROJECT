@@ -3,34 +3,72 @@
 @import "react-pdf/dist/Page/AnnotationLayer.css";
 
 @theme {
-  --font-sans: var(--font-ibm-plex-sans), system-ui, sans-serif;
-  --font-mono: var(--font-ibm-plex-mono), monospace;
-  --font-arabic: "Noto Naskh Arabic", system-ui, sans-serif;
+  --font-sans: "Inter", "Google Sans Text", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-mono), "IBM Plex Mono", "Roboto Mono", monospace;
+  --font-arabic: "Noto Naskh Arabic", "IBM Plex Sans Arabic", system-ui, sans-serif;
 }
 
 :root {
-  --background: #fafafa;
-  --foreground: #111827;
+  /* Stitch Design System - Surface Colors */
+  --ds-surface: #ffffff;
+  --ds-surface-dim: #d3dbe5;
+  --ds-surface-container: #f0f4f9;
+  --ds-surface-container-high: #e9eef6;
+  --ds-surface-container-highest: #e1e5eb;
 
-  --card: #ffffff;
-  --card-foreground: #111827;
+  /* Stitch Design System - Primary Colors */
+  --ds-primary: #5e9bff;
+  --ds-primary-container: #d3e3fd;
+  --ds-on-primary: #ffffff;
+  --ds-on-primary-container: #041e49;
 
-  --popover: #ffffff;
-  --popover-foreground: #111827;
+  /* Stitch Design System - Secondary Colors */
+  --ds-secondary: #616161;
+  --ds-secondary-container: #e0e2e7;
+  --ds-on-secondary: #ffffff;
+  --ds-on-secondary-container: #303030;
 
-  --primary: #1b3a6b;
-  --primary-foreground: #ffffff;
+  /* Stitch Design System - Tertiary Colors */
+  --ds-tertiary: #9c4dcc;
+  --ds-tertiary-container: #f3e5f5;
+  --ds-on-tertiary: #ffffff;
+  --ds-on-tertiary-container: #4a148c;
 
-  --secondary: #f4f8fc;
-  --secondary-foreground: #1b3a6b;
+  /* Stitch Design System - Text Colors */
+  --ds-on-surface: #1f1f1f;
+  --ds-on-surface-variant: #444746;
+  --ds-inverse-surface: #303030;
+  --ds-inverse-on-surface: #f2f2f2;
 
-  --muted: #f4f8fc;
-  --muted-foreground: #6b7280;
+  /* Stitch Design System - Outline & Error */
+  --ds-outline: #747775;
+  --ds-outline-variant: #c4c7c5;
+  --ds-error: #b3261e;
+  --ds-error-container: #f9dedc;
 
-  --accent: #2e86c1;
-  --accent-foreground: #ffffff;
+  /* Application Variables - mapped to Stitch */
+  --background: var(--ds-surface-container);
+  --foreground: var(--ds-on-surface);
 
-  --destructive: #dc2626;
+  --card: var(--ds-surface);
+  --card-foreground: var(--ds-on-surface);
+
+  --popover: var(--ds-surface);
+  --popover-foreground: var(--ds-on-surface);
+
+  --primary: var(--ds-primary);
+  --primary-foreground: var(--ds-on-primary);
+
+  --secondary: var(--ds-secondary-container);
+  --secondary-foreground: var(--ds-on-secondary-container);
+
+  --muted: var(--ds-surface-container-high);
+  --muted-foreground: var(--ds-on-surface-variant);
+
+  --accent: var(--ds-tertiary);
+  --accent-foreground: var(--ds-on-tertiary);
+
+  --destructive: var(--ds-error);
   --destructive-foreground: #ffffff;
 
   --success: #16a34a;
@@ -39,78 +77,174 @@
   --warning: #d97706;
   --warning-foreground: #ffffff;
 
-  --border: #e5e7eb;
-  --input: #e5e7eb;
-  --ring: #1b3a6b;
+  --border: var(--ds-outline-variant);
+  --input: var(--ds-outline-variant);
+  --ring: var(--ds-primary);
 
-  --radius: 0.5rem;
+  --sidebar-background: var(--ds-surface-container-highest);
+  --sidebar-foreground: var(--ds-on-surface);
+  --sidebar-primary: var(--ds-primary);
+  --sidebar-primary-foreground: var(--ds-on-primary);
+  --sidebar-accent: var(--ds-surface-container-high);
+  --sidebar-accent-foreground: var(--ds-on-surface);
+  --sidebar-border: var(--ds-outline-variant);
+  --sidebar-ring: var(--ds-primary);
 
-  --sidebar-background: #1b3a6b;
-  --sidebar-foreground: #ffffff;
-  --sidebar-primary: #ffffff;
-  --sidebar-primary-foreground: #1b3a6b;
-  --sidebar-accent: #2e86c1;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #2e4a8f;
-  --sidebar-ring: #2e86c1;
+  --radius: 1rem;
 
-  --atlas-blue-dark: #1b3a6b;
-  --atlas-blue-mid: #2e86c1;
-  --atlas-blue-light: #ebf5fb;
-  --atlas-blue-pale: #f4f8fc;
-  --atlas-gray-dark: #1a1a2e;
-  --atlas-gray-900: #111827;
-  --atlas-gray-800: #1f2937;
-  --atlas-gray-600: #4b5563;
-  --atlas-gray-400: #9ca3af;
-  --atlas-gray-200: #e5e7eb;
-  --atlas-gray-100: #f3f4f6;
-  --atlas-gray-50: #f9fafb;
+  /* Legacy Atlas variables - updated to Stitch palette */
+  --atlas-blue-dark: #041e49;
+  --atlas-blue-mid: #5e9bff;
+  --atlas-blue-light: #d3e3fd;
+  --atlas-blue-pale: #f0f4f9;
+  --atlas-gray-dark: #1f1f1f;
+  --atlas-gray-900: #1f1f1f;
+  --atlas-gray-800: #303030;
+  --atlas-gray-600: #444746;
+  --atlas-gray-400: #747775;
+  --atlas-gray-200: #c4c7c5;
+  --atlas-gray-100: #e1e5eb;
+  --atlas-gray-50: #f0f4f9;
+
+  --glass-background: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(116, 119, 117, 0.2);
+  --glass-blur: 12px;
+}
+
+.light {
+  --ds-surface: #ffffff;
+  --ds-surface-dim: #d3dbe5;
+  --ds-surface-container: #f0f4f9;
+  --ds-surface-container-high: #e9eef6;
+  --ds-surface-container-highest: #e1e5eb;
+
+  --background: var(--ds-surface-container);
+  --foreground: var(--ds-on-surface);
+
+  --card: var(--ds-surface);
+  --card-foreground: var(--ds-on-surface);
+
+  --popover: var(--ds-surface);
+  --popover-foreground: var(--ds-on-surface);
+
+  --primary: var(--ds-primary);
+  --primary-foreground: var(--ds-on-primary);
+
+  --secondary: var(--ds-secondary-container);
+  --secondary-foreground: var(--ds-on-secondary-container);
+
+  --muted: var(--ds-surface-container-high);
+  --muted-foreground: var(--ds-on-surface-variant);
+
+  --accent: var(--ds-tertiary);
+  --accent-foreground: var(--ds-on-tertiary);
+
+  --destructive: var(--ds-error);
+  --destructive-foreground: #ffffff;
+
+  --success: #16a34a;
+  --success-foreground: #ffffff;
+
+  --warning: #d97706;
+  --warning-foreground: #ffffff;
+
+  --border: var(--ds-outline-variant);
+  --input: var(--ds-outline-variant);
+  --ring: var(--ds-primary);
+
+  --sidebar-background: var(--ds-surface-container-highest);
+  --sidebar-foreground: var(--ds-on-surface);
+  --sidebar-primary: var(--ds-primary);
+  --sidebar-primary-foreground: var(--ds-on-primary);
+  --sidebar-accent: var(--ds-surface-container-high);
+  --sidebar-accent-foreground: var(--ds-on-surface);
+  --sidebar-border: var(--ds-outline-variant);
+  --sidebar-ring: var(--ds-primary);
+
+  --glass-background: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(116, 119, 117, 0.2);
 }
 
 .dark {
-  --background: #0f172a;
-  --foreground: #f8fafc;
+  /* Stitch Dark Mode - Surface Colors */
+  --ds-surface: #1f1f1f;
+  --ds-surface-dim: #141414;
+  --ds-surface-container: #2c2c2c;
+  --ds-surface-container-high: #363636;
+  --ds-surface-container-highest: #434343;
 
-  --card: #1e293b;
-  --card-foreground: #f8fafc;
+  /* Stitch Dark Mode - Primary Colors */
+  --ds-primary: #a8c7fa;
+  --ds-primary-container: #0842a0;
+  --ds-on-primary: #062e6f;
+  --ds-on-primary-container: #d3e3fd;
 
-  --popover: #1e293b;
-  --popover-foreground: #f8fafc;
+  /* Stitch Dark Mode - Secondary Colors */
+  --ds-secondary: #c2c7cf;
+  --ds-secondary-container: #43474e;
+  --ds-on-secondary: #1f1f1f;
+  --ds-on-secondary-container: #e0e2e7;
 
-  --primary: #3b82f6;
-  --primary-foreground: #ffffff;
+  /* Stitch Dark Mode - Tertiary Colors */
+  --ds-tertiary: #e1b3ee;
+  --ds-tertiary-container: #600f6f;
+  --ds-on-tertiary: #3b1250;
+  --ds-on-tertiary-container: #f3e5f5;
 
-  --secondary: #334155;
-  --secondary-foreground: #f8fafc;
+  /* Stitch Dark Mode - Text Colors */
+  --ds-on-surface: #e2e2e2;
+  --ds-on-surface-variant: #c4c7c5;
+  --ds-inverse-surface: #f2f2f2;
+  --ds-inverse-on-surface: #303030;
 
-  --muted: #334155;
-  --muted-foreground: #94a3b8;
+  /* Stitch Dark Mode - Outline & Error */
+  --ds-outline: #8e918f;
+  --ds-outline-variant: #444746;
+  --ds-error: #f2b8b5;
+  --ds-error-container: #8c1d18;
 
-  --accent: #2e86c1;
-  --accent-foreground: #ffffff;
+  --background: var(--ds-surface-container);
+  --foreground: var(--ds-on-surface);
 
-  --destructive: #ef4444;
-  --destructive-foreground: #ffffff;
+  --card: var(--ds-surface);
+  --card-foreground: var(--ds-on-surface);
+
+  --popover: var(--ds-surface);
+  --popover-foreground: var(--ds-on-surface);
+
+  --primary: var(--ds-primary);
+  --primary-foreground: var(--ds-on-primary);
+
+  --secondary: var(--ds-secondary-container);
+  --secondary-foreground: var(--ds-on-secondary-container);
+
+  --muted: var(--ds-surface-container-high);
+  --muted-foreground: var(--ds-on-surface-variant);
+
+  --accent: var(--ds-tertiary);
+  --accent-foreground: var(--ds-on-tertiary);
+
+  --destructive: var(--ds-error);
+  --destructive-foreground: #000000;
 
   --success: #22c55e;
-  --success-foreground: #ffffff;
+  --success-foreground: #000000;
 
   --warning: #f59e0b;
   --warning-foreground: #000000;
 
-  --border: #334155;
-  --input: #334155;
-  --ring: #3b82f6;
+  --border: var(--ds-outline-variant);
+  --input: var(--ds-outline-variant);
+  --ring: var(--ds-primary);
 
-  --sidebar-background: #0f172a;
-  --sidebar-foreground: #f8fafc;
-  --sidebar-primary: #3b82f6;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #334155;
-  --sidebar-accent-foreground: #f8fafc;
-  --sidebar-border: #1e293b;
-  --sidebar-ring: #3b82f6;
+  --sidebar-background: var(--ds-surface-container-highest);
+  --sidebar-foreground: var(--ds-on-surface);
+  --sidebar-primary: var(--ds-primary);
+  --sidebar-primary-foreground: var(--ds-on-primary);
+  --sidebar-accent: var(--ds-surface-container-high);
+  --sidebar-accent-foreground: var(--ds-on-surface);
+  --sidebar-border: var(--ds-outline-variant);
+  --sidebar-ring: var(--ds-primary);
 }
 
 [dir="rtl"] {
@@ -257,5 +391,49 @@ body {
 
   .flashcard-flipped .flashcard-back {
     transform: rotateY(0deg);
+  }
+
+  .glass {
+    background: var(--glass-background);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
+  }
+
+  .glass-light {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .glass-dark {
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .dot-grid {
+    background-image: radial-gradient(circle, var(--muted-foreground) 0.5px, transparent 0.5px);
+    background-size: 10px 10px;
+    background-position: 5px 5px;
+  }
+
+  .dot-grid-subtle {
+    background-image: radial-gradient(circle, var(--border) 0.5px, transparent 0.5px);
+    background-size: 20px 20px;
+    background-position: 10px 10px;
+  }
+
+  .editor-dark {
+    background-color: #000000;
+    color: #ffffff;
+  }
+
+  .editor-dark .dot-pattern {
+    background-image: radial-gradient(circle, rgb(102, 102, 102) 0.5px, transparent 0.5px);
+    background-size: 10px 10px;
+    background-position: 5px 5px;
   }
 }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 from uuid import UUID
 
@@ -8,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import atlas_error
 from app.db.session import get_session
 from app.dependencies import get_current_user
 from app.models.annotation import DocumentAnnotation
@@ -15,7 +17,7 @@ from app.models.collaboration import ForumPost, ForumReply
 from app.models.contribution import Contribution
 from app.models.gamification import Badge, UserBadge, UserStreak, XPTransaction
 from app.models.study_tools import FlashcardDeck, QuizSession
-from app.models.user import User
+from app.models.user import Department, Gender, StudentLevel, User
 
 
 router = APIRouter(tags=["Users"])
@@ -24,6 +26,16 @@ router = APIRouter(tags=["Users"])
 class UserUpdateRequest(BaseModel):
     full_name: str | None = None
     filiere: str | None = None
+    level: str | None = None
+    student_id: str | None = None
+    program: str | None = None
+    academic_year: str | None = None
+    date_of_birth: date | None = None
+    gender: str | None = None
+    phone_number: str | None = None
+    address: str | None = None
+    preferred_language: str | None = None
+    profile_picture_url: str | None = None
     onboarding_completed: bool | None = None
 
 
@@ -33,10 +45,50 @@ async def update_me(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
+    next_filiere = payload.filiere if payload.filiere is not None else current_user.filiere
+    next_level = payload.level if payload.level is not None else (
+        current_user.level.value if getattr(current_user, "level", None) else None
+    )
+
+    if next_filiere:
+        department_result = await db.execute(
+            select(Department).where(Department.name == next_filiere)
+        )
+        department = department_result.scalar_one_or_none()
+        if department is None:
+            raise atlas_error("DEPT_001", "Selected department was not found.", status_code=400)
+        if next_level and next_level not in (department.allowed_levels or []):
+            raise atlas_error(
+                "USER_003",
+                "Selected level is not enabled for this department.",
+                field="level",
+                status_code=400,
+            )
+
     if payload.full_name is not None:
         current_user.full_name = payload.full_name
     if payload.filiere is not None:
         current_user.filiere = payload.filiere
+    if payload.level is not None:
+        current_user.level = StudentLevel(payload.level)
+    if payload.student_id is not None:
+        current_user.student_id = payload.student_id
+    if payload.program is not None:
+        current_user.program = payload.program
+    if payload.academic_year is not None:
+        current_user.academic_year = payload.academic_year
+    if payload.date_of_birth is not None:
+        current_user.date_of_birth = payload.date_of_birth
+    if payload.gender is not None:
+        current_user.gender = Gender(payload.gender.upper())
+    if payload.phone_number is not None:
+        current_user.phone_number = payload.phone_number
+    if payload.address is not None:
+        current_user.address = payload.address
+    if payload.preferred_language is not None:
+        current_user.preferred_language = payload.preferred_language
+    if payload.profile_picture_url is not None:
+        current_user.profile_picture_url = payload.profile_picture_url
     if payload.onboarding_completed is not None:
         current_user.onboarding_completed = payload.onboarding_completed
 
@@ -49,6 +101,16 @@ async def update_me(
         "email": current_user.email,
         "full_name": current_user.full_name,
         "filiere": current_user.filiere,
+        "level": current_user.level,
+        "student_id": current_user.student_id,
+        "program": current_user.program,
+        "academic_year": current_user.academic_year,
+        "date_of_birth": current_user.date_of_birth,
+        "gender": current_user.gender,
+        "phone_number": current_user.phone_number,
+        "address": current_user.address,
+        "preferred_language": current_user.preferred_language,
+        "profile_picture_url": current_user.profile_picture_url,
         "role": current_user.role,
         "onboarding_completed": current_user.onboarding_completed,
     }

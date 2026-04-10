@@ -7,12 +7,11 @@ from typing import Optional
 
 import filetype
 import sqlalchemy as sa
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.models.contribution import Contribution, ContributionStatus, DocumentPipelineStatus, DocumentVersion
-from app.models.course import Course, CourseLanguage, CourseLevel, CourseType
+from app.models.course import Course
 from app.models.gamification import XPTransaction, XPTransactionType
 from app.models.user import User, UserRole
 from app.services.doc_processing.ocr_tasks import process_document_ocr
@@ -56,13 +55,7 @@ async def upload_official_course_document(
     *,
     session: AsyncSession,
     current_user: User,
-    title: str,
-    description: Optional[str],
-    level: str,
-    course_type: str,
-    academic_year: str,
-    language: str,
-    department_id,
+    course_id,
     file,
 ) -> Contribution:
     file_content, file_hash = await read_and_validate_upload(file)
@@ -73,38 +66,19 @@ async def upload_official_course_document(
     if existing_doc.scalars().first():
         raise ValueError("Duplicate detected: This specific file has already been uploaded.")
 
-    dept_filter = (Course.department_id == department_id) if department_id else sa.true()
-    existing_course_query = await session.execute(
-        select(Course).where(
-            Course.title == title,
-            Course.level == level.upper(),
-            Course.course_type == course_type.upper(),
-            Course.academic_year == academic_year,
-            Course.language == language.upper(),
-            dept_filter,
-        )
-    )
+    existing_course_query = await session.execute(select(Course).where(Course.id == course_id))
     course = existing_course_query.scalars().first()
 
-    if not course:
-        try:
-            course = Course(
-                title=title,
-                description=description,
-                level=CourseLevel(level.upper()),
-                course_type=CourseType(course_type.upper()),
-                academic_year=academic_year,
-                language=CourseLanguage(language.upper()),
-                department_id=department_id,
-            )
-            session.add(course)
-            await session.flush()
-        except ValueError as exc:
-            await session.rollback()
-            raise ValueError(f"Invalid taxonomy value provided: {str(exc)}") from exc
-        except IntegrityError as exc:
-            await session.rollback()
-            raise ValueError("Database integrity error while creating course.") from exc
+    if not course or course.is_deleted:
+        raise ValueError("Selected course does not exist in the administrator catalog.")
+
+    if (
+        current_user.role == UserRole.TEACHER
+        and current_user.teacher_profile
+        and current_user.teacher_profile.department_id
+        and course.department_id != current_user.teacher_profile.department_id
+    ):
+        raise ValueError("You can only upload content for courses in your assigned department.")
 
     existing_contrib_query = await session.execute(
         select(Contribution).where(
@@ -115,8 +89,8 @@ async def upload_official_course_document(
     contribution = existing_contrib_query.scalars().first()
     if not contribution:
         contribution = Contribution(
-            title=title,
-            description=description,
+            title=course.title,
+            description=course.description,
             uploader_id=current_user.id,
             course_id=course.id,
             status=ContributionStatus.APPROVED,  # Teachers bypass moderation (Spec §5.2)
@@ -143,7 +117,7 @@ async def upload_official_course_document(
         file_size_bytes=len(file_content),
         mime_type=file.content_type,
         sha256_hash=file_hash,
-        language=language.lower(),
+        language=(course.language.value if hasattr(course.language, "value") else str(course.language)).lower(),
         pipeline_status=DocumentPipelineStatus.QUEUED,
     )
     session.add(doc_version)
@@ -162,7 +136,7 @@ async def upload_official_course_document(
             amount=20,
             transaction_type=XPTransactionType.UPLOAD,
             reference_id=contribution.id,
-            description=f"Official course upload: {title}",
+            description=f"Official course upload: {course.title}",
         )
         session.add(xp)
 

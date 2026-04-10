@@ -46,7 +46,7 @@ class AutocompleteItem(BaseModel):
 @router.get("/search", response_model=SearchResponse, dependencies=[Depends(limiter(60, 60))])
 async def search(
     request: Request,
-    q: str = Query(..., min_length=1),
+    q: str | None = Query(None, min_length=1),
     filiere: str | None = None,
     niveau: str | None = None,
     type: str | None = None,
@@ -56,9 +56,19 @@ async def search(
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_session),
 ) -> SearchResponse:
-    if len(q.strip()) < 2:
+    # Require at least one search parameter (query or filters)
+    if not q and not filiere and not niveau and not type and not annee and not langue:
         raise atlas_error(
             "SEARCH_001",
+            "Please provide a search query or at least one filter.",
+            field="q",
+            status_code=400,
+        )
+
+    # Validate minimum query length if provided
+    if q and len(q.strip()) < 2:
+        raise atlas_error(
+            "SEARCH_002",
             "Search query must contain at least 2 characters.",
             field="q",
             status_code=400,

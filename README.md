@@ -56,8 +56,8 @@ docker compose up -d db redis minio meilisearch
 ```powershell
 cd backend
 py -3.12 -m venv env
-env\Scripts\activate
-pip install -r requirements.txt
+>env\Scripts\activate
+py -3.12 -m venv env
 alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 ```

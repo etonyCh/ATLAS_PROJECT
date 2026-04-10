@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Check, Eye, EyeOff, GraduationCap, Loader2, X } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
 import {
@@ -15,27 +16,6 @@ import {
 } from "@/components/ui/card";
 import { authApi } from "@/lib/api";
 import type { StudentLevel } from "@/types/api.types";
-
-const STUDENT_LEVELS: { value: StudentLevel; label: string }[] = [
-  { value: "L1", label: "Licence 1" },
-  { value: "L2", label: "Licence 2" },
-  { value: "L3", label: "Licence 3" },
-  { value: "M1", label: "Master 1" },
-  { value: "M2", label: "Master 2" },
-];
-
-const FILIERES = [
-  "Informatique",
-  "Mathematiques",
-  "Physique",
-  "Chimie",
-  "Biologie",
-  "Sciences de la Terre",
-  "Economie",
-  "Droit",
-  "Lettres",
-  "Langues",
-];
 
 const PASSWORD_REQUIREMENTS = [
   { id: "length", label: "At least 8 characters", test: (password: string) => password.length >= 8 },
@@ -55,6 +35,18 @@ export function RegisterPageClient() {
   const [level, setLevel] = useState<StudentLevel | "">("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const registrationOptionsQuery = useQuery({
+    queryKey: ["auth", "registration-options"],
+    queryFn: () => authApi.getRegistrationOptions(),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const departments = registrationOptionsQuery.data?.departments ?? [];
+  const selectedDepartment = departments.find((department) => department.name === filiere);
+  const availableLevels = useMemo(
+    () => (selectedDepartment?.levels ?? registrationOptionsQuery.data?.levels ?? []) as StudentLevel[],
+    [registrationOptionsQuery.data?.levels, selectedDepartment?.levels],
+  );
 
   const passwordsMatch = password === confirmPassword && confirmPassword !== "";
   const passwordStrong = PASSWORD_REQUIREMENTS.every((requirement) => requirement.test(password));
@@ -74,7 +66,7 @@ export function RegisterPageClient() {
     }
 
     if (!filiere || !level) {
-      setError("Please select your filiere and level");
+      setError("Please select your department and level");
       return;
     }
 
@@ -148,13 +140,22 @@ export function RegisterPageClient() {
 
             <div className="space-y-2">
               <label htmlFor="filiere" className="text-sm font-medium">
-                Filiere <span className="text-destructive">*</span>
+                Department <span className="text-destructive">*</span>
               </label>
-              <Select id="filiere" name="filiere" value={filiere} onChange={(event) => setFiliere(event.target.value)} required>
-                <option value="">Select your filiere</option>
-                {FILIERES.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
+              <Select
+                id="filiere"
+                name="filiere"
+                value={filiere}
+                onChange={(event) => {
+                  setFiliere(event.target.value);
+                  setLevel("");
+                }}
+                required
+              >
+                <option value="">Select your department</option>
+                {departments.map((option) => (
+                  <option key={option.id} value={option.name}>
+                    {option.name}
                   </option>
                 ))}
               </Select>
@@ -164,11 +165,11 @@ export function RegisterPageClient() {
               <label htmlFor="level" className="text-sm font-medium">
                 Level <span className="text-destructive">*</span>
               </label>
-              <Select id="level" name="level" value={level} onChange={(event) => setLevel(event.target.value as StudentLevel)} required>
+              <Select id="level" name="level" value={level} onChange={(event) => setLevel(event.target.value as StudentLevel)} required disabled={!filiere}>
                 <option value="">Select your level</option>
-                {STUDENT_LEVELS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
+                {availableLevels.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
                   </option>
                 ))}
               </Select>

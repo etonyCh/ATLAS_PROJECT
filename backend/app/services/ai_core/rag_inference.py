@@ -24,10 +24,13 @@ http_client = httpx.AsyncClient(
     limits=httpx.Limits(max_keepalive_connections=5, max_connections=50),
 )
 
-# Defensive Architecture: Initialize MeiliSearch Client securely
-MEILI_URL = os.getenv("MEILI_URL", "http://localhost:7700")
-MEILI_MASTER_KEY = os.getenv("MEILI_MASTER_KEY", "meili_master_key")
-meili_client = meilisearch.Client(MEILI_URL, MEILI_MASTER_KEY)
+# Defensive Architecture: Initialize MeiliSearch client from centralized settings.
+meili_client = meilisearch.Client(settings.MEILI_URL, settings.MEILI_MASTER_KEY)
+logger.info(
+    "[SEARCH] Meili client initialized with host=%s key_present=%s",
+    settings.MEILI_URL,
+    bool(settings.MEILI_MASTER_KEY),
+)
 
 # Lazy loading for the embedding model to save memory footprint during boot
 _embedder = None
@@ -117,11 +120,13 @@ def _meili_search_sync(
     if final_filters:
         search_params["filter"] = final_filters
 
-    return index.search(query, search_params)
+    # Use wildcard query for empty searches (filter-only mode)
+    effective_query = query if query.strip() else "*"
+    return index.search(effective_query, search_params)
 
 
 async def execute_hybrid_search(
-    query: str,
+    query: Optional[str],
     filiere: Optional[str],
     niveau: Optional[str],
     annee: Optional[str],
@@ -136,7 +141,11 @@ async def execute_hybrid_search(
     US-09: True Hybrid Search combining MeiliSearch (Lexical/Typo) + Qdrant (Semantic)
     - Utilizes Reciprocal Rank Fusion (RRF) on independently executed searches.
     - Applies strict backend-level facet filtering.
+    - Supports filter-only searches (query can be None or empty).
     """
+    # Normalize query - treat None as empty string
+    query = query or ""
+
     if not query.strip() and not filiere and not niveau and not is_official:
         raise ValueError(
             "At least one search parameter (query, filiere, niveau, is_official) must be provided."

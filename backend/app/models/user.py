@@ -1,8 +1,9 @@
 from enum import Enum
 from typing import Optional, List, TYPE_CHECKING
-from datetime import datetime
+from datetime import datetime, date
 import uuid
 from sqlmodel import SQLModel, Field, Relationship
+import sqlalchemy as sa
 
 # Defensive Forward Referencing to prevent Circular Imports
 if TYPE_CHECKING:
@@ -70,12 +71,24 @@ class Department(SQLModel, table=True):
     id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4, primary_key=True)
     name: str = Field(index=True)
     establishment_id: uuid.UUID = Field(foreign_key="establishment.id", ondelete="CASCADE")
+    allowed_levels: list[str] = Field(
+        default_factory=list,
+        sa_column=sa.Column(sa.JSON(), nullable=False),
+        description="Levels enabled by administrators for this department.",
+    )
     created_at: datetime = Field(default_factory=datetime.utcnow)
     
     establishment: Optional[Establishment] = Relationship(back_populates="departments")
     teacher_profiles: List["TeacherProfile"] = Relationship(back_populates="department")
     # US-06: Bidirectional relationship to Course added during consolidation
     courses: List["Course"] = Relationship(back_populates="department")
+
+
+class Gender(str, Enum):
+    MALE = "MALE"
+    FEMALE = "FEMALE"
+    OTHER = "OTHER"
+    PREFER_NOT_TO_SAY = "PREFER_NOT_TO_SAY"
 
 
 class UserBase(SQLModel):
@@ -104,6 +117,16 @@ class UserBase(SQLModel):
     # Student specific fields
     filiere: Optional[str] = None  # Major/Department
     level: Optional[StudentLevel] = None
+    student_id: Optional[str] = Field(default=None, index=True, description="Unique institutional identifier / roll number")
+    program: Optional[str] = Field(default=None, description="Program or course of study")
+    academic_year: Optional[str] = Field(default=None, description="Current academic year, e.g., 1, 2, 3, M1")
+    date_of_birth: Optional[date] = Field(default=None)
+    gender: Optional[Gender] = Field(default=None)
+    phone_number: Optional[str] = Field(default=None)
+    address: Optional[str] = Field(default=None)
+    preferred_language: Optional[str] = Field(default=None)
+    profile_picture_url: Optional[str] = Field(default=None)
+
     onboarding_completed: bool = Field(default=False, index=True)
 
 

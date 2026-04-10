@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import atlas_error
 from app.db.session import get_session
 from app.dependencies import require_role
+from app.models.course import Course, CourseLanguage, CourseLevel, CourseType
 from app.models.user import AccountStatus, Department, TeacherProfile, TeacherRequestStatus, TeacherVerificationRequest, User
 from app.schemas.pagination import build_paginated_response
 
@@ -27,6 +28,63 @@ class UserUpdateRequest(BaseModel):
 
 class TeacherRequestReviewRequest(BaseModel):
     review_note: str | None = None
+
+
+class DepartmentCreateRequest(BaseModel):
+    name: str
+    allowed_levels: list[str] = []
+
+
+class DepartmentUpdateRequest(BaseModel):
+    name: str | None = None
+    allowed_levels: list[str] | None = None
+
+
+class CatalogCourseCreateRequest(BaseModel):
+    title: str
+    description: str | None = None
+    department_id: UUID
+    level: str
+    course_type: str = "LECTURE"
+    academic_year: str
+    language: str = "FR"
+
+
+class CatalogCourseUpdateRequest(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    department_id: UUID | None = None
+    level: str | None = None
+    course_type: str | None = None
+    academic_year: str | None = None
+    language: str | None = None
+    is_deleted: bool | None = None
+
+
+def _serialize_department(department: Department) -> dict[str, Any]:
+    return {
+        "id": str(department.id),
+        "name": department.name,
+        "establishment_id": str(department.establishment_id),
+        "allowed_levels": list(department.allowed_levels or []),
+        "created_at": department.created_at,
+    }
+
+
+def _serialize_catalog_course(course: Course, department: Department | None = None) -> dict[str, Any]:
+    return {
+        "id": str(course.id),
+        "title": course.title,
+        "description": course.description,
+        "department_id": str(course.department_id) if course.department_id else None,
+        "department_name": department.name if department else None,
+        "level": course.level.value if hasattr(course.level, "value") else course.level,
+        "course_type": course.course_type.value if hasattr(course.course_type, "value") else course.course_type,
+        "academic_year": course.academic_year,
+        "language": course.language.value if hasattr(course.language, "value") else course.language,
+        "created_at": course.created_at,
+        "is_deleted": course.is_deleted,
+    }
 
 
 @router.post("/admin/teachers/import")
@@ -86,6 +144,8 @@ async def list_users(
             "email": user.email,
             "full_name": user.full_name,
             "role": user.role,
+            "filiere": user.filiere,
+            "level": user.level,
             "is_active": user.is_active,
             "is_verified": user.is_verified,
             "status": user.status,
@@ -313,3 +373,142 @@ async def approve_pending_user(
         "status": user.status,
         "trust_score": user.trust_score
     }
+
+
+@router.get("/admin/departments")
+async def list_departments(
+    _current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_session),
+) -> list[dict[str, Any]]:
+    filters = []
+    if _current_user.establishment_id:
+        filters.append(Department.establishment_id == _current_user.establishment_id)
+    result = await db.execute(select(Department).where(*filters).order_by(Department.name.asc()))
+    return [_serialize_department(item) for item in result.scalars().all()]
+
+
+@router.post("/admin/departments")
+async def create_department(
+    payload: DepartmentCreateRequest,
+    current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    if not current_user.establishment_id:
+        raise atlas_error("ADMIN_001", "Admin must belong to an establishment.", status_code=400)
+
+    department = Department(
+        name=payload.name.strip(),
+        establishment_id=current_user.establishment_id,
+        allowed_levels=payload.allowed_levels,
+    )
+    db.add(department)
+    await db.commit()
+    await db.refresh(department)
+    return _serialize_department(department)
+
+
+@router.patch("/admin/departments/{department_id}")
+async def update_department(
+    department_id: UUID,
+    payload: DepartmentUpdateRequest,
+    current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    department = await db.get(Department, department_id)
+    if department is None:
+        raise atlas_error("DEPT_001", "Department not found.", status_code=404)
+    if current_user.establishment_id and department.establishment_id != current_user.establishment_id:
+        raise atlas_error("AUTH_008", "You do not have access to this department.", status_code=403)
+
+    if payload.name is not None:
+        department.name = payload.name.strip()
+    if payload.allowed_levels is not None:
+        department.allowed_levels = payload.allowed_levels
+
+    db.add(department)
+    await db.commit()
+    await db.refresh(department)
+    return _serialize_department(department)
+
+
+@router.get("/admin/catalog/courses")
+async def list_catalog_courses(
+    _current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_session),
+) -> list[dict[str, Any]]:
+    query = select(Course, Department).outerjoin(Department, Department.id == Course.department_id)
+    if _current_user.establishment_id:
+        query = query.where(Department.establishment_id == _current_user.establishment_id)
+    result = await db.execute(query.order_by(desc(Course.created_at)))
+    rows = result.all()
+    return [_serialize_catalog_course(course, department) for course, department in rows]
+
+
+@router.post("/admin/catalog/courses")
+async def create_catalog_course(
+    payload: CatalogCourseCreateRequest,
+    current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    department = await db.get(Department, payload.department_id)
+    if department is None:
+        raise atlas_error("DEPT_001", "Department not found.", status_code=404)
+    if current_user.establishment_id and department.establishment_id != current_user.establishment_id:
+        raise atlas_error("AUTH_008", "You do not have access to this department.", status_code=403)
+    if payload.level not in (department.allowed_levels or []):
+        raise atlas_error("COURSE_003", "Selected level is not enabled for this department.", status_code=400)
+
+    course = Course(
+        title=payload.title.strip(),
+        description=payload.description,
+        department_id=payload.department_id,
+        level=CourseLevel(payload.level),
+        course_type=CourseType(payload.course_type),
+        academic_year=payload.academic_year,
+        language=CourseLanguage(payload.language),
+    )
+    db.add(course)
+    await db.commit()
+    await db.refresh(course)
+    return _serialize_catalog_course(course, department)
+
+
+@router.patch("/admin/catalog/courses/{course_id}")
+async def update_catalog_course(
+    course_id: UUID,
+    payload: CatalogCourseUpdateRequest,
+    current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    course = await db.get(Course, course_id)
+    if course is None:
+        raise atlas_error("COURSE_001", "Course not found.", status_code=404)
+
+    department = await db.get(Department, payload.department_id or course.department_id)
+    if department and current_user.establishment_id and department.establishment_id != current_user.establishment_id:
+        raise atlas_error("AUTH_008", "You do not have access to this department.", status_code=403)
+
+    if payload.title is not None:
+        course.title = payload.title.strip()
+    if payload.description is not None:
+        course.description = payload.description
+    if payload.department_id is not None:
+        course.department_id = payload.department_id
+    if payload.level is not None:
+        if department and payload.level not in (department.allowed_levels or []):
+            raise atlas_error("COURSE_003", "Selected level is not enabled for this department.", status_code=400)
+        course.level = CourseLevel(payload.level)
+    if payload.course_type is not None:
+        course.course_type = CourseType(payload.course_type)
+    if payload.academic_year is not None:
+        course.academic_year = payload.academic_year
+    if payload.language is not None:
+        course.language = CourseLanguage(payload.language)
+    if payload.is_deleted is not None:
+        course.is_deleted = payload.is_deleted
+
+    db.add(course)
+    await db.commit()
+    await db.refresh(course)
+    department = await db.get(Department, course.department_id) if course.department_id else None
+    return _serialize_catalog_course(course, department)

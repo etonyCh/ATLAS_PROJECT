@@ -23,6 +23,8 @@ export type CourseStatus = "PROCESSING" | "INDEXED" | "FAILED";
 
 export type ReviewRating = "AGAIN" | "HARD" | "GOOD" | "EASY";
 
+export type Gender = "MALE" | "FEMALE" | "OTHER" | "PREFER_NOT_TO_SAY";
+
 export interface User {
   id: string;
   email: string;
@@ -42,6 +44,15 @@ export interface User {
   filiere: string | null;
   niveau: StudentLevel | null;
   level?: StudentLevel | null;
+  student_id?: string | null;
+  program?: string | null;
+  academic_year?: string | null;
+  date_of_birth?: string | null;
+  gender?: Gender | null;
+  phone_number?: string | null;
+  address?: string | null;
+  preferred_language?: string | null;
+  profile_picture_url?: string | null;
   created_at: string;
   last_login_at?: string;
 }
@@ -60,7 +71,19 @@ export interface Department {
   id: string;
   name: string;
   establishment_id: string;
+  allowed_levels?: string[];
   created_at: string;
+}
+
+export interface RegistrationDepartmentOption {
+  id: string;
+  name: string;
+  levels: string[];
+}
+
+export interface RegistrationOptionsResponse {
+  departments: RegistrationDepartmentOption[];
+  levels: string[];
 }
 
 export interface Establishment {
@@ -86,7 +109,7 @@ export interface RegisterRequest {
   email: string;
   password: string;
   full_name?: string;
-  role: "STUDENT" | "TEACHER";
+  role: "STUDENT";
   filiere?: string;
   niveau?: StudentLevel;
   level?: StudentLevel; // Alias for niveau for backward compatibility
@@ -152,6 +175,7 @@ export interface Course {
   title: string;
   description: string | null;
   department_id?: string;
+  department_name?: string | null;
   filiere: string | null;
   niveau: StudentLevel | null;
   level?: StudentLevel | null; // Alias for niveau

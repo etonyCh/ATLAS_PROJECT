@@ -1,60 +1,143 @@
 """
-Quick seed script to create default admin and superadmin users directly.
+Quick seed script to create login-ready default admin and superadmin users.
 Run this after migrations are applied.
 """
 
 import asyncio
+import uuid
+from datetime import datetime
+
 import asyncpg
-import sys
-import hashlib
+
+from app.core.security import get_password_hash
+
+
+DB_URL = "postgresql://atlas_user:atlas_password@localhost:5433/atlas_db"
+ADMIN_EMAIL = "admin@atlas.tn"
+ADMIN_PASSWORD = "Admin123!"
+SUPERADMIN_EMAIL = "superadmin@atlas.tn"
+SUPERADMIN_PASSWORD = "SuperAdmin123!"
+ESTABLISHMENT_DOMAIN = "atlas.tn"
+ESTABLISHMENT_NAME = "ATLAS University"
+
+
+async def _ensure_establishment(conn: asyncpg.Connection) -> str:
+    existing = await conn.fetchrow(
+        "SELECT id FROM establishment WHERE domain = $1",
+        ESTABLISHMENT_DOMAIN,
+    )
+    if existing:
+        return str(existing["id"])
+
+    establishment_id = str(uuid.uuid4())
+    await conn.execute(
+        """
+        INSERT INTO establishment (id, name, domain, created_at)
+        VALUES ($1, $2, $3, $4)
+        """,
+        establishment_id,
+        ESTABLISHMENT_NAME,
+        ESTABLISHMENT_DOMAIN,
+        datetime.utcnow(),
+    )
+    return establishment_id
+
+
+async def _upsert_user(
+    conn: asyncpg.Connection,
+    *,
+    email: str,
+    password: str,
+    full_name: str,
+    role: str,
+    establishment_id: str | None = None,
+) -> None:
+    existing = await conn.fetchrow('SELECT id FROM "user" WHERE email = $1', email)
+    hashed_password = get_password_hash(password)
+    now = datetime.utcnow()
+
+    if existing:
+        await conn.execute(
+            """
+            UPDATE "user"
+            SET hashed_password = $2,
+                full_name = $3,
+                role = $4,
+                status = 'ACTIVE',
+                establishment_id = $5,
+                trust_score = 100,
+                profile_completeness = 100,
+                is_active = true,
+                is_verified = true,
+                verified_at = $6,
+                onboarding_completed = true,
+                is_contributor = true
+            WHERE email = $1
+            """,
+            email,
+            hashed_password,
+            full_name,
+            role,
+            establishment_id,
+            now,
+        )
+        print(f"Synchronized {email} with default credentials.")
+        return
+
+    await conn.execute(
+        """
+        INSERT INTO "user" (
+            id, email, hashed_password, full_name, role, status,
+            establishment_id, trust_score, profile_completeness,
+            is_active, is_verified, verified_at, onboarding_completed,
+            is_contributor, created_at
+        )
+        VALUES (
+            $1, $2, $3, $4, $5, 'ACTIVE',
+            $6, 100, 100,
+            true, true, $7, true,
+            true, $8
+        )
+        """,
+        str(uuid.uuid4()),
+        email,
+        hashed_password,
+        full_name,
+        role,
+        establishment_id,
+        now,
+        now,
+    )
+    print(f"Created {role} user: {email}")
 
 
 async def create_users():
-    conn = await asyncpg.connect("postgresql://atlas_user:atlas_password@localhost:5433/atlas_db")
+    conn = await asyncpg.connect(DB_URL)
+    try:
+        establishment_id = await _ensure_establishment(conn)
 
-    # Check if users already exist
-    existing = await conn.fetch('SELECT email, role FROM "user"')
-    existing_emails = {u["email"] for u in existing}
-
-    # Create admin user if not exists
-    if "admin@atlas.tn" not in existing_emails:
-        admin_id = await conn.fetchval("""
-            INSERT INTO "user" (email, hashed_password, full_name, role, is_active, is_verified, onboarding_completed)
-            VALUES ('admin@atlas.tn', 'fake_hash_for_dev', 'Atlas Admin', 'ADMIN', true, true, true)
-            RETURNING id
-        """)
-        print(f"Created admin user: admin@atlas.tn (ID: {admin_id})")
-    else:
-        # Update role to ADMIN if exists
-        await conn.execute("UPDATE \"user\" SET role = 'ADMIN' WHERE email = 'admin@atlas.tn'")
-        print("Updated admin@atlas.tn to ADMIN role")
-
-    # Create superadmin user if not exists
-    if "superadmin@atlas.tn" not in existing_emails:
-        superadmin_id = await conn.fetchval("""
-            INSERT INTO "user" (email, hashed_password, full_name, role, is_active, is_verified, onboarding_completed)
-            VALUES ('superadmin@atlas.tn', 'fake_hash_for_dev', 'Atlas Superadmin', 'SUPERADMIN', true, true, true)
-            RETURNING id
-        """)
-        print(f"Created superadmin user: superadmin@atlas.tn (ID: {superadmin_id})")
-    else:
-        # Update role to SUPERADMIN if exists
-        await conn.execute(
-            "UPDATE \"user\" SET role = 'SUPERADMIN' WHERE email = 'superadmin@atlas.tn'"
+        await _upsert_user(
+            conn,
+            email=ADMIN_EMAIL,
+            password=ADMIN_PASSWORD,
+            full_name="Atlas Admin",
+            role="ADMIN",
+            establishment_id=establishment_id,
         )
-        print("Updated superadmin@atlas.tn to SUPERADMIN role")
+        await _upsert_user(
+            conn,
+            email=SUPERADMIN_EMAIL,
+            password=SUPERADMIN_PASSWORD,
+            full_name="Atlas Superadmin",
+            role="SUPERADMIN",
+            establishment_id=establishment_id,
+        )
 
-    # Show all users
-    print("\nAll users in database:")
-    users = await conn.fetch('SELECT email, role FROM "user"')
-    for u in users:
-        print(f" - {u['email']} [{u['role']}]")
-
-    print("\nIMPORTANT: These are placeholder users!")
-    print("To actually log in, use the frontend to register with a real email,")
-    print("then use promote_admin.py or promote_superadmin.py to promote that account.")
-
-    await conn.close()
+        print("\nLogin-ready default accounts:")
+        print(f" - {ADMIN_EMAIL} / {ADMIN_PASSWORD}")
+        print(f" - {SUPERADMIN_EMAIL} / {SUPERADMIN_PASSWORD}")
+    finally:
+        await conn.close()
 
 
 if __name__ == "__main__":

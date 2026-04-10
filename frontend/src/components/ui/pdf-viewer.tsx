@@ -10,7 +10,12 @@ import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
 if (typeof window !== "undefined") {
-  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/legacy/build/pdf.worker.mjs`;
+  // CSP-safe local worker (served from /public)
+  const localWorkerSrc = "/pdf.worker.min.mjs";
+  // Guard against accidental external assignment in strict CSP environments.
+  if (!pdfjs.GlobalWorkerOptions.workerSrc || pdfjs.GlobalWorkerOptions.workerSrc.startsWith("http")) {
+    pdfjs.GlobalWorkerOptions.workerSrc = localWorkerSrc;
+  }
 }
 
 export type PdfViewerProps = {

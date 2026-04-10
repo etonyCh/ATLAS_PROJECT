@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request, Response, status
@@ -23,7 +23,6 @@ from app.models.user import (
     OTPPurpose,
     StudentLevel,
     TeacherProfile,
-    TeacherVerificationRequest,
     User,
     UserCreate,
     UserRole,
@@ -41,6 +40,15 @@ class AuthUserResponse(BaseModel):
     filiere: str | None = None
     level: str | None = None
     niveau: str | None = None
+    student_id: str | None = None
+    program: str | None = None
+    academic_year: str | None = None
+    date_of_birth: date | None = None
+    gender: str | None = None
+    phone_number: str | None = None
+    address: str | None = None
+    preferred_language: str | None = None
+    profile_picture_url: str | None = None
     onboarding_completed: bool = False
     is_active: bool
     is_verified: bool
@@ -88,6 +96,17 @@ class RegisterRequest(BaseModel):
         return data
 
 
+class RegistrationDepartmentOption(BaseModel):
+    id: str
+    name: str
+    levels: list[str]
+
+
+class RegistrationOptionsResponse(BaseModel):
+    departments: list[RegistrationDepartmentOption]
+    levels: list[str]
+
+
 class TeacherRequestCreate(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=8)
@@ -126,6 +145,15 @@ def _user_payload(user: User) -> AuthUserResponse:
         filiere=getattr(user, "filiere", None),
         level=level_val,
         niveau=level_val,
+        student_id=getattr(user, "student_id", None),
+        program=getattr(user, "program", None),
+        academic_year=getattr(user, "academic_year", None),
+        date_of_birth=getattr(user, "date_of_birth", None),
+        gender=(user.gender.value if getattr(user, "gender", None) else None),
+        phone_number=getattr(user, "phone_number", None),
+        address=getattr(user, "address", None),
+        preferred_language=getattr(user, "preferred_language", None),
+        profile_picture_url=getattr(user, "profile_picture_url", None),
         onboarding_completed=getattr(user, "onboarding_completed", False),
         is_active=user.is_active,
         is_verified=user.is_verified,
@@ -174,6 +202,26 @@ async def register(
             field="email",
             status_code=400,
         )
+
+    if payload.filiere:
+        department_result = await db.execute(
+            select(Department).where(Department.name == payload.filiere)
+        )
+        department = department_result.scalar_one_or_none()
+        if department is None:
+            raise atlas_error(
+                "DEPT_001",
+                "Selected department was not found.",
+                field="filiere",
+                status_code=400,
+            )
+        if payload.level and payload.level.value not in (department.allowed_levels or []):
+            raise atlas_error(
+                "AUTH_011",
+                "Selected level is not enabled for this department.",
+                field="level",
+                status_code=400,
+            )
 
     # Auto-link Teacher to Establishment by domain and set status
     status_val = AccountStatus.ACTIVE
@@ -226,71 +274,44 @@ async def register(
 
 @router.post("/teacher-request", status_code=status.HTTP_201_CREATED, dependencies=[Depends(limiter(3, 60))])
 async def create_teacher_request(
-    payload: TeacherRequestCreate,
-    db: AsyncSession = Depends(get_session),
+    _payload: TeacherRequestCreate,
+    _db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    from app.services.iam import otp_service
+    raise atlas_error(
+        "AUTH_010",
+        "Teacher accounts are created by administrators only.",
+        status_code=403,
+    )
 
-    existing = await db.execute(select(User).where(User.email == payload.email))
-    if existing.scalar_one_or_none() is not None:
-        raise atlas_error(
-            "AUTH_001",
-            "An account with this email already exists.",
-            field="email",
-            status_code=400,
+
+@router.get("/registration-options", response_model=RegistrationOptionsResponse)
+async def registration_options(
+    db: AsyncSession = Depends(get_session),
+) -> RegistrationOptionsResponse:
+    result = await db.execute(select(Department).order_by(Department.name.asc()))
+    departments = result.scalars().all()
+
+    department_payload = [
+        RegistrationDepartmentOption(
+            id=str(department.id),
+            name=department.name,
+            levels=list(department.allowed_levels or []),
         )
+        for department in departments
+    ]
 
-    domain = payload.email.split("@")[-1].lower()
-    est_result = await db.execute(select(Establishment).where(Establishment.domain == domain))
-    est = est_result.scalar_one_or_none()
-
-    user = User(
-        email=payload.email,
-        full_name=payload.full_name,
-        role=UserRole.TEACHER,
-        status=AccountStatus.PENDING_VERIFICATION,
-        establishment_id=est.id if est else None,
-        hashed_password=security.get_password_hash(payload.password),
-        is_active=False,
-        is_verified=False,
+    all_levels = sorted(
+        {
+            level
+            for department in departments
+            for level in (department.allowed_levels or [])
+        }
     )
-    db.add(user)
-    await db.flush()
 
-    request = TeacherVerificationRequest(
-        user_id=user.id,
-        requested_department=payload.department.strip(),
-        requested_domain=domain,
-        establishment_id=est.id if est else None,
+    return RegistrationOptionsResponse(
+        departments=department_payload,
+        levels=all_levels,
     )
-    db.add(request)
-
-    created = await otp_service.create_email_otp(
-        session=db,
-        user=user,
-        ttl_minutes=24 * 60,
-        purpose=OTPPurpose.ACCOUNT_ACTIVATION,
-    )
-    if not created:
-        await db.rollback()
-        raise atlas_error(
-            "GEN_002",
-            "Failed to send activation OTP.",
-            field="email",
-            status_code=500,
-        )
-
-    await db.commit()
-    await db.refresh(user)
-    return {
-        "user": _user_payload(user).model_dump(),
-        "request": {
-            "department": request.requested_department,
-            "domain": request.requested_domain,
-            "status": request.status,
-        },
-        "message": "Teacher verification request created. Please verify your OTP and wait for admin approval.",
-    }
 
 
 @router.post("/verify-otp")

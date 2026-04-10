@@ -138,7 +138,7 @@ export default function AdminUsersPage() {
             <div>
               <h2 className="text-lg font-semibold">Pending Teacher Requests</h2>
               <p className="text-sm text-muted-foreground">
-                Review educator verification requests before granting teacher access.
+                Teachers are primarily created by admins. Legacy verification requests, if any, appear here.
               </p>
             </div>
             <StatusChip status={pendingTeacherRequests.length ? "warning" : "active"} />
@@ -175,7 +175,7 @@ export default function AdminUsersPage() {
             <EmptyState
               type="no-results"
               title="No pending teacher requests"
-              description="New educator requests will appear here for approval."
+              description="Teachers can be onboarded directly through import and user management."
             />
           )}
         </CardContent>

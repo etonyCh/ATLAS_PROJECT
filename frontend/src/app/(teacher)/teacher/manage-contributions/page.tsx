@@ -139,9 +139,9 @@ export default function ManageContributions() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Manage Contributions</h1>
+          <h1 className="text-2xl font-bold">Review Student Contributions</h1>
           <p className="text-muted-foreground">
-            Review and approve student-submitted content
+            Review, preview, approve, or reject student submissions for your department.
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-lg bg-amber-100 px-4 py-2 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
@@ -284,7 +284,7 @@ export default function ManageContributions() {
       >
         <DialogContent className="max-w-5xl h-[85vh] overflow-hidden">
           <DialogHeader>
-            <DialogTitle>Review Contribution</DialogTitle>
+            <DialogTitle>Review Student Contribution</DialogTitle>
             <DialogDescription>
               Preview the uploaded file before you approve or reject it.
             </DialogDescription>

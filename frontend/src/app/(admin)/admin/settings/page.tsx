@@ -1,428 +1,486 @@
 "use client";
 
-import { useState } from "react";
-import {
-  Settings,
-  Bell,
-  Shield,
-  Database,
-  Globe,
-  Key,
-  Save,
-  AlertTriangle,
-} from "lucide-react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { useMemo, useState } from "react";
+import { BookOpen, Building2, Loader2, Plus, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input, Select } from "@/components/ui/input";
+import {
+  useAdminCatalogCoursesQuery,
+  useAdminDepartmentsQuery,
+  useCreateCatalogCourseMutation,
+  useCreateDepartmentMutation,
+  useUpdateCatalogCourseMutation,
+  useUpdateDepartmentMutation,
+} from "@/queries/admin.queries";
 
-export default function AdminSettings() {
-  const [isSaving, setIsSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState("general");
+const LEVEL_OPTIONS = ["L1", "L2", "L3", "M1", "M2", "Doctorat"];
+const COURSE_TYPES = ["LECTURE", "TD", "TP", "EXAM", "SUMMARY", "OTHER"];
+const LANGUAGE_OPTIONS = ["FR", "EN", "AR"];
 
-  const tabs = [
-    { id: "general", label: "General", icon: Settings },
-    { id: "notifications", label: "Notifications", icon: Bell },
-    { id: "security", label: "Security", icon: Shield },
-    { id: "system", label: "System", icon: Database },
-  ];
+type CourseFormState = {
+  title: string;
+  description: string;
+  department_id: string;
+  level: string;
+  course_type: string;
+  academic_year: string;
+  language: string;
+};
 
-  const [settings, setSettings] = useState({
-    siteName: "ATLAS",
-    siteUrl: "https://atlas.tn",
-    maintenanceMode: false,
-    allowRegistration: true,
-    requireEmailVerification: true,
-    maxUploadSize: 50,
-    allowedFileTypes: ".pdf,.doc,.docx,.txt",
-    emailNotifications: true,
-    pushNotifications: true,
-    twoFactorRequired: false,
-    sessionTimeout: 24,
-    passwordMinLength: 8,
-    backupEnabled: true,
-    backupFrequency: "daily",
-  });
+const EMPTY_COURSE_FORM: CourseFormState = {
+  title: "",
+  description: "",
+  department_id: "",
+  level: "L1",
+  course_type: "LECTURE",
+  academic_year: "2025-2026",
+  language: "FR",
+};
 
-  const handleSave = async () => {
-    setIsSaving(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    setIsSaving(false);
+export default function AdminSettingsPage() {
+  const departmentsQuery = useAdminDepartmentsQuery();
+  const coursesQuery = useAdminCatalogCoursesQuery();
+  const createDepartmentMutation = useCreateDepartmentMutation();
+  const updateDepartmentMutation = useUpdateDepartmentMutation();
+  const createCourseMutation = useCreateCatalogCourseMutation();
+  const updateCourseMutation = useUpdateCatalogCourseMutation();
+
+  const departments = departmentsQuery.data ?? [];
+  const courses = coursesQuery.data ?? [];
+
+  const [newDepartmentName, setNewDepartmentName] = useState("");
+  const [newDepartmentLevels, setNewDepartmentLevels] = useState<string[]>(["L1"]);
+  const [editingDepartmentId, setEditingDepartmentId] = useState<string | null>(null);
+  const [editingDepartmentName, setEditingDepartmentName] = useState("");
+  const [courseForm, setCourseForm] = useState<CourseFormState>(EMPTY_COURSE_FORM);
+  const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
+  const [editingCourseForm, setEditingCourseForm] = useState<CourseFormState>(EMPTY_COURSE_FORM);
+
+  const selectedDepartment = useMemo(
+    () => departments.find((department) => department.id === courseForm.department_id),
+    [courseForm.department_id, departments],
+  );
+
+  const editingCourseDepartment = useMemo(
+    () => departments.find((department) => department.id === editingCourseForm.department_id),
+    [departments, editingCourseForm.department_id],
+  );
+
+  const toggleLevel = (level: string, selectedLevels: string[], setter: (levels: string[]) => void) => {
+    setter(
+      selectedLevels.includes(level)
+        ? selectedLevels.filter((item) => item !== level)
+        : [...selectedLevels, level],
+    );
+  };
+
+  const handleCreateDepartment = async () => {
+    if (!newDepartmentName.trim()) return;
+    await createDepartmentMutation.mutateAsync({
+      name: newDepartmentName.trim(),
+      allowed_levels: newDepartmentLevels,
+    });
+    setNewDepartmentName("");
+    setNewDepartmentLevels(["L1"]);
+  };
+
+  const handleCreateCourse = async () => {
+    if (!courseForm.title.trim() || !courseForm.department_id) return;
+    await createCourseMutation.mutateAsync({
+      ...courseForm,
+      title: courseForm.title.trim(),
+      description: courseForm.description.trim() || null,
+    });
+    setCourseForm(EMPTY_COURSE_FORM);
+  };
+
+  const startEditingDepartment = (departmentId: string, name: string) => {
+    setEditingDepartmentId(departmentId);
+    setEditingDepartmentName(name);
+  };
+
+  const saveDepartmentName = async () => {
+    if (!editingDepartmentId || !editingDepartmentName.trim()) return;
+    await updateDepartmentMutation.mutateAsync({
+      departmentId: editingDepartmentId,
+      data: { name: editingDepartmentName.trim() },
+    });
+    setEditingDepartmentId(null);
+    setEditingDepartmentName("");
+  };
+
+  const startEditingCourse = (courseId: string) => {
+    const course = courses.find((item) => item.id === courseId);
+    if (!course) return;
+    setEditingCourseId(courseId);
+    setEditingCourseForm({
+      title: course.title,
+      description: course.description ?? "",
+      department_id: course.department_id ?? "",
+      level: course.level ?? "L1",
+      course_type: course.course_type ?? "LECTURE",
+      academic_year: course.academic_year ?? "2025-2026",
+      language: course.language ?? "FR",
+    });
+  };
+
+  const saveCourse = async () => {
+    if (!editingCourseId || !editingCourseForm.title.trim() || !editingCourseForm.department_id) return;
+    await updateCourseMutation.mutateAsync({
+      courseId: editingCourseId,
+      data: {
+        ...editingCourseForm,
+        title: editingCourseForm.title.trim(),
+        description: editingCourseForm.description.trim() || null,
+      },
+    });
+    setEditingCourseId(null);
+    setEditingCourseForm(EMPTY_COURSE_FORM);
   };
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">System Settings</h1>
+        <h1 className="text-2xl font-bold">Academic Configuration</h1>
         <p className="text-muted-foreground">
-          Configure platform-wide settings and preferences
+          Admins define departments, available levels, and the official course catalog teachers upload into.
         </p>
       </div>
 
-      <div className="flex flex-col gap-6 lg:flex-row">
-        <div className="lg:w-64">
-          <nav className="space-y-1">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  activeTab === tab.id
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                <tab.icon className="h-4 w-4" />
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        </div>
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Departments and Levels</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-3 rounded-lg border p-4">
+              <Input
+                label="New Department"
+                value={newDepartmentName}
+                onChange={(event) => setNewDepartmentName(event.target.value)}
+                placeholder="Computer Science"
+              />
+              <div className="flex flex-wrap gap-2">
+                {LEVEL_OPTIONS.map((level) => (
+                  <button
+                    key={level}
+                    type="button"
+                    onClick={() => toggleLevel(level, newDepartmentLevels, setNewDepartmentLevels)}
+                    className={`rounded-full border px-3 py-1 text-sm ${
+                      newDepartmentLevels.includes(level) ? "bg-primary text-primary-foreground" : "bg-background"
+                    }`}
+                  >
+                    {level}
+                  </button>
+                ))}
+              </div>
+              <Button onClick={handleCreateDepartment} disabled={createDepartmentMutation.isPending}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Department
+              </Button>
+            </div>
 
-        <div className="flex-1 space-y-6">
-          {activeTab === "general" && (
-            <>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Globe className="h-5 w-5" />
-                    General Settings
-                  </CardTitle>
-                  <CardDescription>
-                    Basic platform configuration
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium">Platform Name</label>
-                    <Input
-                      value={settings.siteName}
-                      onChange={(e) =>
-                        setSettings((s) => ({ ...s, siteName: e.target.value }))
-                      }
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">Platform URL</label>
-                    <Input
-                      value={settings.siteUrl}
-                      onChange={(e) =>
-                        setSettings((s) => ({ ...s, siteUrl: e.target.value }))
-                      }
-                      className="mt-1"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">Maintenance Mode</p>
-                      <p className="text-sm text-muted-foreground">
-                        Disable platform for non-admin users
-                      </p>
+            <div className="space-y-4">
+              {departmentsQuery.isLoading ? (
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              ) : (
+                departments.map((department) => {
+                  const selectedLevels = department.allowed_levels ?? [];
+                  return (
+                    <div key={department.id} className="rounded-lg border p-4">
+                      <div className="mb-3 flex items-center gap-2">
+                        <Building2 className="h-4 w-4 text-primary" />
+                        {editingDepartmentId === department.id ? (
+                          <div className="flex flex-1 items-center gap-2">
+                            <Input
+                              value={editingDepartmentName}
+                              onChange={(event) => setEditingDepartmentName(event.target.value)}
+                              placeholder="Department name"
+                            />
+                            <Button size="sm" onClick={saveDepartmentName} disabled={updateDepartmentMutation.isPending}>
+                              <Save className="mr-2 h-4 w-4" />
+                              Save
+                            </Button>
+                          </div>
+                        ) : (
+                          <>
+                            <p className="font-medium">{department.name}</p>
+                            <Button variant="ghost" size="sm" onClick={() => startEditingDepartment(department.id, department.name)}>
+                              Rename
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {LEVEL_OPTIONS.map((level) => (
+                          <button
+                            key={level}
+                            type="button"
+                            onClick={() =>
+                              updateDepartmentMutation.mutate({
+                                departmentId: department.id,
+                                data: {
+                                  allowed_levels: selectedLevels.includes(level)
+                                    ? selectedLevels.filter((item) => item !== level)
+                                    : [...selectedLevels, level],
+                                },
+                              })
+                            }
+                            className={`rounded-full border px-3 py-1 text-sm ${
+                              selectedLevels.includes(level) ? "bg-primary text-primary-foreground" : "bg-background"
+                            }`}
+                          >
+                            {level}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <Switch
-                      checked={settings.maintenanceMode}
-                      onCheckedChange={(checked) =>
-                        setSettings((s) => ({ ...s, maintenanceMode: checked }))
-                      }
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">Allow New Registrations</p>
-                      <p className="text-sm text-muted-foreground">
-                        Let new users create accounts
-                      </p>
-                    </div>
-                    <Switch
-                      checked={settings.allowRegistration}
-                      onCheckedChange={(checked) =>
-                        setSettings((s) => ({
-                          ...s,
-                          allowRegistration: checked,
-                        }))
-                      }
-                    />
-                  </div>
-                </CardContent>
-              </Card>
+                  );
+                })
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Database className="h-5 w-5" />
-                    File Upload Settings
-                  </CardTitle>
-                  <CardDescription>
-                    Configure file upload restrictions
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium">
-                      Max Upload Size (MB)
-                    </label>
-                    <Input
-                      type="number"
-                      value={settings.maxUploadSize}
-                      onChange={(e) =>
-                        setSettings((s) => ({
-                          ...s,
-                          maxUploadSize: parseInt(e.target.value),
-                        }))
-                      }
-                      className="mt-1 w-32"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">
-                      Allowed File Types
-                    </label>
-                    <Input
-                      value={settings.allowedFileTypes}
-                      onChange={(e) =>
-                        setSettings((s) => ({
-                          ...s,
-                          allowedFileTypes: e.target.value,
-                        }))
-                      }
-                      className="mt-1"
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            </>
-          )}
-
-          {activeTab === "notifications" && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Bell className="h-5 w-5" />
-                  Notification Settings
-                </CardTitle>
-                <CardDescription>
-                  Configure system-wide notifications
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Email Notifications</p>
-                    <p className="text-sm text-muted-foreground">
-                      Send email notifications to users
-                    </p>
-                  </div>
-                  <Switch
-                    checked={settings.emailNotifications}
-                    onCheckedChange={(checked) =>
-                      setSettings((s) => ({
-                        ...s,
-                        emailNotifications: checked,
+        <Card>
+          <CardHeader>
+            <CardTitle>Catalog Courses</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-3 rounded-lg border p-4">
+              <Input
+                label="Course Title"
+                value={courseForm.title}
+                onChange={(event) => setCourseForm((current) => ({ ...current, title: event.target.value }))}
+              />
+              <Input
+                label="Description"
+                value={courseForm.description}
+                onChange={(event) => setCourseForm((current) => ({ ...current, description: event.target.value }))}
+              />
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Department</label>
+                  <Select
+                    value={courseForm.department_id}
+                    onChange={(event) =>
+                      setCourseForm((current) => ({
+                        ...current,
+                        department_id: event.target.value,
+                        level: "L1",
                       }))
                     }
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Push Notifications</p>
-                    <p className="text-sm text-muted-foreground">
-                      Enable browser push notifications
-                    </p>
-                  </div>
-                  <Switch
-                    checked={settings.pushNotifications}
-                    onCheckedChange={(checked) =>
-                      setSettings((s) => ({ ...s, pushNotifications: checked }))
-                    }
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {activeTab === "security" && (
-            <>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Shield className="h-5 w-5" />
-                    Security Settings
-                  </CardTitle>
-                  <CardDescription>Configure security policies</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">Require 2FA for Admins</p>
-                      <p className="text-sm text-muted-foreground">
-                        Force two-factor authentication for admin accounts
-                      </p>
-                    </div>
-                    <Switch
-                      checked={settings.twoFactorRequired}
-                      onCheckedChange={(checked) =>
-                        setSettings((s) => ({
-                          ...s,
-                          twoFactorRequired: checked,
-                        }))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">
-                      Session Timeout (hours)
-                    </label>
-                    <Input
-                      type="number"
-                      value={settings.sessionTimeout}
-                      onChange={(e) =>
-                        setSettings((s) => ({
-                          ...s,
-                          sessionTimeout: parseInt(e.target.value),
-                        }))
-                      }
-                      className="mt-1 w-32"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">
-                      Minimum Password Length
-                    </label>
-                    <Input
-                      type="number"
-                      value={settings.passwordMinLength}
-                      onChange={(e) =>
-                        setSettings((s) => ({
-                          ...s,
-                          passwordMinLength: parseInt(e.target.value),
-                        }))
-                      }
-                      className="mt-1 w-32"
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Key className="h-5 w-5" />
-                    API Keys
-                  </CardTitle>
-                  <CardDescription>Manage API access keys</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="rounded-lg border border-dashed p-4 text-center">
-                    <p className="text-sm text-muted-foreground">
-                      No API keys configured
-                    </p>
-                    <Button variant="outline" className="mt-2" size="sm">
-                      Generate New Key
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </>
-          )}
-
-          {activeTab === "system" && (
-            <>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Database className="h-5 w-5" />
-                    Backup Settings
-                  </CardTitle>
-                  <CardDescription>Configure automated backups</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">Enable Automatic Backups</p>
-                      <p className="text-sm text-muted-foreground">
-                        Schedule automatic database backups
-                      </p>
-                    </div>
-                    <Switch
-                      checked={settings.backupEnabled}
-                      onCheckedChange={(checked) =>
-                        setSettings((s) => ({ ...s, backupEnabled: checked }))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium">
-                      Backup Frequency
-                    </label>
-                    <select
-                      value={settings.backupFrequency}
-                      onChange={(e) =>
-                        setSettings((s) => ({
-                          ...s,
-                          backupFrequency: e.target.value,
-                        }))
-                      }
-                      className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm sm:w-48"
-                    >
-                      <option value="hourly">Hourly</option>
-                      <option value="daily">Daily</option>
-                      <option value="weekly">Weekly</option>
-                    </select>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-destructive">
-                    <AlertTriangle className="h-5 w-5" />
-                    Danger Zone
-                  </CardTitle>
-                  <CardDescription>
-                    Irreversible actions - proceed with caution
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <Button variant="outline" className="w-full justify-start">
-                    Clear Cache
-                  </Button>
-                  <Button variant="outline" className="w-full justify-start">
-                    Reset All User Progress
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    className="w-full justify-start"
                   >
-                    Delete All Data
-                  </Button>
-                </CardContent>
-              </Card>
-            </>
-          )}
+                    <option value="">Select department</option>
+                    {departments.map((department) => (
+                      <option key={department.id} value={department.id}>
+                        {department.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Level</label>
+                  <Select
+                    value={courseForm.level}
+                    onChange={(event) => setCourseForm((current) => ({ ...current, level: event.target.value }))}
+                  >
+                    {(selectedDepartment?.allowed_levels ?? LEVEL_OPTIONS).map((level) => (
+                      <option key={level} value={level}>
+                        {level}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Course Type</label>
+                  <Select
+                    value={courseForm.course_type}
+                    onChange={(event) => setCourseForm((current) => ({ ...current, course_type: event.target.value }))}
+                  >
+                    {COURSE_TYPES.map((courseType) => (
+                      <option key={courseType} value={courseType}>
+                        {courseType}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <Input
+                  label="Academic Year"
+                  value={courseForm.academic_year}
+                  onChange={(event) => setCourseForm((current) => ({ ...current, academic_year: event.target.value }))}
+                />
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Language</label>
+                  <Select
+                    value={courseForm.language}
+                    onChange={(event) => setCourseForm((current) => ({ ...current, language: event.target.value }))}
+                  >
+                    {LANGUAGE_OPTIONS.map((language) => (
+                      <option key={language} value={language}>
+                        {language}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+              <Button onClick={handleCreateCourse} disabled={createCourseMutation.isPending}>
+                <Plus className="mr-2 h-4 w-4" />
+                Create Catalog Course
+              </Button>
+            </div>
 
-          <div className="flex justify-end">
-            <Button onClick={handleSave} disabled={isSaving}>
-              {isSaving ? (
-                <>
-                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  Saving...
-                </>
+            <div className="space-y-4">
+              {coursesQuery.isLoading ? (
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
               ) : (
-                <>
-                  <Save className="mr-2 h-4 w-4" />
-                  Save Changes
-                </>
+                courses.map((course) => (
+                  <div key={course.id} className="rounded-lg border p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="mt-1 rounded-full bg-primary/10 p-2 text-primary">
+                        <BookOpen className="h-4 w-4" />
+                      </div>
+                      <div className="flex-1 space-y-4">
+                        {editingCourseId === course.id ? (
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <Input
+                              label="Title"
+                              value={editingCourseForm.title}
+                              onChange={(event) =>
+                                setEditingCourseForm((current) => ({ ...current, title: event.target.value }))
+                              }
+                            />
+                            <Input
+                              label="Academic Year"
+                              value={editingCourseForm.academic_year}
+                              onChange={(event) =>
+                                setEditingCourseForm((current) => ({ ...current, academic_year: event.target.value }))
+                              }
+                            />
+                            <Input
+                              label="Description"
+                              value={editingCourseForm.description}
+                              onChange={(event) =>
+                                setEditingCourseForm((current) => ({ ...current, description: event.target.value }))
+                              }
+                            />
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium">Department</label>
+                              <Select
+                                value={editingCourseForm.department_id}
+                                onChange={(event) =>
+                                  setEditingCourseForm((current) => ({
+                                    ...current,
+                                    department_id: event.target.value,
+                                    level: "L1",
+                                  }))
+                                }
+                              >
+                                <option value="">Select department</option>
+                                {departments.map((department) => (
+                                  <option key={department.id} value={department.id}>
+                                    {department.name}
+                                  </option>
+                                ))}
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium">Level</label>
+                              <Select
+                                value={editingCourseForm.level}
+                                onChange={(event) =>
+                                  setEditingCourseForm((current) => ({ ...current, level: event.target.value }))
+                                }
+                              >
+                                {(editingCourseDepartment?.allowed_levels ?? LEVEL_OPTIONS).map((level) => (
+                                  <option key={level} value={level}>
+                                    {level}
+                                  </option>
+                                ))}
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium">Course Type</label>
+                              <Select
+                                value={editingCourseForm.course_type}
+                                onChange={(event) =>
+                                  setEditingCourseForm((current) => ({ ...current, course_type: event.target.value }))
+                                }
+                              >
+                                {COURSE_TYPES.map((courseType) => (
+                                  <option key={courseType} value={courseType}>
+                                    {courseType}
+                                  </option>
+                                ))}
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium">Language</label>
+                              <Select
+                                value={editingCourseForm.language}
+                                onChange={(event) =>
+                                  setEditingCourseForm((current) => ({ ...current, language: event.target.value }))
+                                }
+                              >
+                                {LANGUAGE_OPTIONS.map((language) => (
+                                  <option key={language} value={language}>
+                                    {language}
+                                  </option>
+                                ))}
+                              </Select>
+                            </div>
+                            <div className="flex items-end gap-2">
+                              <Button onClick={saveCourse} disabled={updateCourseMutation.isPending}>
+                                <Save className="mr-2 h-4 w-4" />
+                                Save Changes
+                              </Button>
+                              <Button variant="ghost" onClick={() => setEditingCourseId(null)}>
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="font-medium">{course.title}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {course.department_name ?? "Department"} | {course.level} | {course.academic_year}
+                              </p>
+                              {course.description ? (
+                                <p className="mt-1 text-sm text-muted-foreground">{course.description}</p>
+                              ) : null}
+                            </div>
+                            <div className="flex gap-2">
+                              <Button variant="outline" size="sm" onClick={() => startEditingCourse(course.id)}>
+                                Edit
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  updateCourseMutation.mutate({
+                                    courseId: course.id,
+                                    data: { is_deleted: !course.is_deleted },
+                                  })
+                                }
+                              >
+                                {course.is_deleted ? "Restore" : "Archive"}
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                        {course.is_deleted ? (
+                          <p className="text-sm font-medium text-amber-700">Archived from teacher and student selections.</p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ))
               )}
-            </Button>
-          </div>
-        </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

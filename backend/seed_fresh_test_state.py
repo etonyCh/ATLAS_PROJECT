@@ -1,4 +1,5 @@
 import asyncio
+import json
 import uuid
 from datetime import UTC, datetime
 
@@ -42,18 +43,31 @@ async def ensure_department(conn: asyncpg.Connection, establishment_id: str, nam
         establishment_id,
         name,
     )
+    default_levels = ["L1", "L2", "L3", "M1", "M2", "Doctorat"]
+    default_levels_json = json.dumps(default_levels)
     if existing:
+        await conn.execute(
+            """
+            UPDATE department
+            SET allowed_levels = $3
+            WHERE establishment_id = $1 AND name = $2
+            """,
+            establishment_id,
+            name,
+            default_levels_json,
+        )
         return str(existing["id"])
 
     department_id = str(uuid.uuid4())
     await conn.execute(
         """
-        INSERT INTO department (id, name, establishment_id, created_at)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO department (id, name, establishment_id, allowed_levels, created_at)
+        VALUES ($1, $2, $3, $4, $5)
         """,
         department_id,
         name,
         establishment_id,
+        default_levels_json,
         utc_now(),
     )
     return department_id

@@ -19,6 +19,14 @@ from app.services.doc_processing.storage import minio_client
 
 router = APIRouter(tags=["Files"])
 
+PREVIEWABLE_MIME_TYPES = {
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+}
+
 
 def _can_access_document(current_user: User, contribution: Contribution) -> bool:
     role_value = (
@@ -106,8 +114,9 @@ async def get_pdf_view_url(
 ):
     """
     Generates a time-limited presigned URL for secure, direct-from-storage
-    PDF viewing.  The frontend PDF previewer calls this instead of proxying
-    the entire file through the backend.
+    in-browser preview (PDF/image/DOCX/PPTX depending on frontend support).
+    The frontend previewer calls this instead of proxying the entire file
+    through the backend.
 
     Security guarantees:
       • JWT validated via ``get_current_user`` dependency.
@@ -149,18 +158,17 @@ async def get_pdf_view_url(
             detail="You do not have permission to view this document.",
         )
 
-    # 3. Validate the file is a viewable type (PDF primarily)
-    viewable_types = {
-        "application/pdf",
-        "image/png",
-        "image/jpeg",
-        "image/jpg",
-    }
-    mime = document_version.mime_type or ""
-    if mime not in viewable_types:
+    # 3. Validate the file is a viewable preview type
+    mime = (document_version.mime_type or "").lower()
+    if mime == "image/jpg":
+        mime = "image/jpeg"
+    if mime not in PREVIEWABLE_MIME_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"This file type ({mime}) is not supported for in-browser preview. Use the download endpoint instead.",
+            detail=(
+                f"This file type ({document_version.mime_type}) is not supported for in-browser preview. "
+                "Use the download endpoint instead."
+            ),
         )
 
     # 4. Return a freshly generated presigned URL for direct storage access.
@@ -196,7 +204,7 @@ async def get_pdf_view_url_by_path(
     db: AsyncSession = Depends(get_session),
 ):
     """
-    Generates a presigned URL for PDF viewing using the storage_path directly.
+    Generates a presigned URL for in-browser preview using the storage_path directly.
     This is used by the FilePreview component which already has the storage path.
 
     Security: Same JWT + access control as the contribution-based endpoint.
@@ -224,7 +232,20 @@ async def get_pdf_view_url_by_path(
             detail="You do not have permission to view this document.",
         )
 
-    # 3. Return a freshly generated presigned URL for direct storage access.
+    # 3. Validate the file is a viewable preview type.
+    mime = (document_version.mime_type or "").lower()
+    if mime == "image/jpg":
+        mime = "image/jpeg"
+    if mime not in PREVIEWABLE_MIME_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"This file type ({document_version.mime_type}) is not supported for in-browser preview. "
+                "Use the download endpoint instead."
+            ),
+        )
+
+    # 4. Return a freshly generated presigned URL for direct storage access.
     filename = (
         document_version.storage_path.split("/")[-1]
         if document_version.storage_path
@@ -264,6 +285,8 @@ def _get_content_type(path: str) -> str:
         return "application/msword"
     elif path_lower.endswith(".docx"):
         return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    elif path_lower.endswith(".pptx"):
+        return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
     elif path_lower.endswith(".txt"):
         return "text/plain"
     elif path_lower.endswith(".png"):

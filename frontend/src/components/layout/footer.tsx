@@ -83,7 +83,7 @@ export function Footer() {
   }, []);
 
   return (
-    <footer className="border-t bg-background">
+    <footer className="border-t bg-card">
       <div className="container mx-auto px-4 py-12">
         <div className="grid grid-cols-2 gap-8 md:grid-cols-5">
           <div className="col-span-2 md:col-span-1">
@@ -178,7 +178,7 @@ export function Footer() {
           </div>
         </div>
 
-        <div className="mt-8 flex flex-col items-center justify-between gap-4 border-t pt-8 md:flex-row">
+        <div className="mt-8 flex flex-col items-center justify-between gap-4 border-t border-border pt-8 md:flex-row">
           <p className="text-sm text-muted-foreground">
             Copyright 2026 ATLAS | Aggregated Tunisian Learning and Academic System
           </p>

@@ -54,7 +54,7 @@ export default function HistoryPage() {
                   {isDashboardLoading ? (
                     <Skeleton className="h-8 w-12" />
                   ) : (
-                    dashboard?.progress.active_streak_days || 0
+                    dashboard?.progress?.active_streak_days || 0
                   )}
                 </div>
                 <p className="text-sm text-muted-foreground">Day Streak</p>

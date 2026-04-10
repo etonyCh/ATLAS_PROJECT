@@ -48,6 +48,14 @@ export function useTeacherCourses() {
   });
 }
 
+export function useCourseCatalogQuery() {
+  return useQuery({
+    queryKey: ["courses", "catalog"],
+    queryFn: () => coursesApi.getCatalog(),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export function useDeleteCourseMutation() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -15,7 +15,7 @@ interface AuthState {
     email: string;
     password: string;
     full_name?: string;
-    role: "STUDENT" | "TEACHER";
+    role: "STUDENT";
     filiere?: string;
     level?: StudentLevel;
   }) => Promise<void>;
@@ -143,7 +143,7 @@ export const useUIStore = create<UIState>()(
     (set) => ({
       sidebarOpen: true,
       isRTL: false,
-      theme: "system",
+      theme: "light",
       toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       setSidebarOpen: (open: boolean) => set({ sidebarOpen: open }),
       toggleRTL: () => set((state) => ({ isRTL: !state.isRTL })),

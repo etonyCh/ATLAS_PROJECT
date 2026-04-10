@@ -335,7 +335,7 @@ export function FilePreview({
       // must use time-limited presigned storage URLs (same as PDF/image).
       // Inline preview still uses fetch(proxy) with Bearer in loadFile above.
       try {
-        const viewResponse = await filesApi.getPdfViewUrlByPath(storagePath);
+        const viewResponse = await filesApi.getPreviewUrlByPath(storagePath);
         if (isMounted) {
           console.log("[FilePreview] Got signed URL for Open/Download:", viewResponse.url);
           setViewUrl(viewResponse.url);

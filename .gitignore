@@ -24,6 +24,7 @@ wheels/
 venv/
 env/
 ENV/
+backend/env/
 
 # IDE
 .idea/
@@ -38,16 +39,24 @@ htmlcov/
 
 # Ruff
 .ruff_cache/
+**/.ruff_cache/
+**/.pytest_cache/
+**/__pycache__/
 
 # Environment files
 .env
 .env.local
+frontend/.env.local
 
 # Logs
 *.log
+console.txt
+frontend/report*.log
+frontend/report*.txt
 
 # Node (root level - already covered in frontend/.gitignore but added for safety)
 node_modules/
+frontend/node_modules/
 
 # OS
 .DS_Store
@@ -61,3 +70,6 @@ Thumbs.db
 backend/alembic_output*.txt
 frontend/tsc_output*.txt
 backend/dockcall
+frontend/.next/
+frontend/playwright-report/
+frontend/test-results/

@@ -129,6 +129,7 @@ qdrant-client==1.12.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
 python-jose==3.5.0
+python-multipart==0.0.20
 filetype==1.2.0
 PyYAML==6.0.3
 redis==4.6.0
@@ -186,3 +187,4 @@ yarl==1.23.0
 zipp==3.23.0
 zopfli==0.4.1
 zstandard==0.25.0
+docling
