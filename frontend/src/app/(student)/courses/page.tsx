@@ -11,20 +11,21 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select } from "@/components/ui/input";
+import { MaterialSelectionDialog } from "@/components/course/material-selection-dialog";
+import { useCoursesQuery } from "@/queries/courses";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
-import { useCoursesQuery } from "@/queries";
 
 const FILIERES = [
   "All",
   "Informatique",
-  "Mathematiques",
+  "Mathématiques",
   "Physique",
   "Chimie",
   "Biologie",
-  "Economie",
+  "Économie",
   "Droit",
+  "Médecine",
 ];
 
 const LEVELS = ["All", "L1", "L2", "L3", "M1", "M2"];
@@ -33,6 +34,7 @@ export default function CoursesPage() {
   const [search, setSearch] = useState("");
   const [filiere, setFiliere] = useState("All");
   const [level, setLevel] = useState("All");
+  const [selectedCourse, setSelectedCourse] = useState<{id: string, title: string} | null>(null);
 
   const { data: courses, isLoading } = useCoursesQuery();
 
@@ -64,28 +66,28 @@ export default function CoursesPage() {
             className="pl-10"
           />
         </div>
-        <Select
+        <select
           value={filiere}
           onChange={(e) => setFiliere(e.target.value)}
-          className="w-full sm:w-40"
+          className="w-full sm:w-40 border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         >
           {FILIERES.map((f) => (
             <option key={f} value={f}>
               {f}
             </option>
           ))}
-        </Select>
-        <Select
+        </select>
+        <select
           value={level}
           onChange={(e) => setLevel(e.target.value)}
-          className="w-full sm:w-32"
+          className="w-full sm:w-32 border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         >
           {LEVELS.map((l) => (
             <option key={l} value={l}>
               {l}
             </option>
           ))}
-        </Select>
+        </select>
       </div>
 
       {isLoading ? (
@@ -111,8 +113,12 @@ export default function CoursesPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filteredCourses?.map((course) => (
-            <Link key={course.id} href={`/courses/${course.id}`}>
-              <Card className="h-full transition-colors hover:border-primary/50">
+            <div 
+              key={course.id} 
+              className="cursor-pointer"
+              onClick={() => setSelectedCourse({ id: course.id, title: course.title })}
+            >
+              <Card className="h-full transition-all hover:border-primary/50 hover:shadow-lg active:scale-[0.98]">
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
@@ -156,10 +162,17 @@ export default function CoursesPage() {
                   </div>
                 </CardContent>
               </Card>
-            </Link>
+            </div>
           ))}
         </div>
       )}
+
+      <MaterialSelectionDialog
+        isOpen={!!selectedCourse}
+        courseId={selectedCourse?.id || null}
+        courseTitle={selectedCourse?.title}
+        onClose={() => setSelectedCourse(null)}
+      />
     </div>
   );
 }

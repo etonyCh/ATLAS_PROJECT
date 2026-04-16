@@ -12,23 +12,17 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StatusChip } from "@/components/ui/status-chip";
 import { useAuthStore } from "@/store/auth.store";
+import { useSuperadminDashboardStatsQuery, useSuperadminEstablishmentsQuery } from "@/queries/admin.queries";
 
 export function SuperadminDashboardPageClient() {
   const { user } = useAuthStore();
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setIsLoading(false), 1000);
-    return () => window.clearTimeout(timer);
-  }, []);
-
-  const establishments = [
-    { id: 1, name: "ISET Nabeul", region: "Nabeul", users: 12340, status: "active", health: 98 },
-    { id: 2, name: "ISET Sfax", region: "Sfax", users: 8920, status: "active", health: 95 },
-    { id: 3, name: "ISET Kairouan", region: "Kairouan", users: 4560, status: "active", health: 92 },
-  ];
+  const statsQuery = useSuperadminDashboardStatsQuery();
+  const establishmentsQuery = useSuperadminEstablishmentsQuery();
+  
+  const isLoading = statsQuery.isLoading;
+  const establishmentsLoading = establishmentsQuery.isLoading;
+  const establishments = establishmentsQuery.data?.slice(0, 3) || [];
 
   return (
     <div className="space-y-6">
@@ -41,10 +35,10 @@ export function SuperadminDashboardPageClient() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { title: "Total Establishments", value: "8", icon: Building2, color: "text-blue-500" },
-          { title: "Total Users", value: "45,678", icon: Users, color: "text-green-500" },
-          { title: "Active Sessions", value: "2,456", icon: Activity, color: "text-purple-500" },
-          { title: "System Health", value: "99.9%", icon: Server, color: "text-emerald-500" },
+          { title: "Total Establishments", value: statsQuery.data?.total_establishments || 0, icon: Building2, color: "text-blue-500" },
+          { title: "Total Users", value: statsQuery.data?.total_users.toLocaleString() || "0", icon: Users, color: "text-green-500" },
+          { title: "Active Sessions", value: statsQuery.data?.active_sessions_estimated.toLocaleString() || "0", icon: Activity, color: "text-purple-500" },
+          { title: "System Health", value: `${statsQuery.data?.system_health || 100}%`, icon: Server, color: "text-emerald-500" },
         ].map((stat) => (
           <Card key={stat.title}>
             <CardContent className="p-4">
@@ -75,7 +69,7 @@ export function SuperadminDashboardPageClient() {
           </Button>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {establishmentsLoading ? (
             <div className="space-y-3">
               {[1, 2, 3].map((key) => (
                 <Skeleton key={key} className="h-16 w-full" />
@@ -94,16 +88,14 @@ export function SuperadminDashboardPageClient() {
                     </div>
                     <div>
                       <p className="font-medium">{establishment.name}</p>
-                      <p className="text-xs text-muted-foreground">{establishment.region}</p>
+                      <p className="text-xs text-muted-foreground">{establishment.domain}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-6">
                     <div className="text-right">
-                      <p className="font-medium">{establishment.users.toLocaleString()}</p>
+                      <p className="font-medium">{(establishment.users || 0).toLocaleString()}</p>
                       <p className="text-xs text-muted-foreground">users</p>
                     </div>
-                    <div className="w-24 text-right text-sm">{establishment.health}% health</div>
-                    <StatusChip status={establishment.status} />
                   </div>
                 </div>
               ))}

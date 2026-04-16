@@ -86,7 +86,7 @@ def _dev_mode_fallback(to_email: str, subject: str, html_content: str):
     
     if match_token:
         print(f"MAGIC LINK TOKEN: >>> {match_token.group(1)} <<<")
-        print(f"FULL URL: http://localhost:3000/activate/teacher?token={match_token.group(1)}")
+        print(f"FULL URL: http://localhost:3000/auth/activate/teacher?token={match_token.group(1)}")
     elif match_otp:
         print(f"OTP CODE: >>> {match_otp.group(0)} <<< (Copy this into the React UI)")
     else:
@@ -139,7 +139,7 @@ def send_teacher_invitation_email(to_email: str, otp_code: str, teacher_name: st
     subject = "Invitation to join ATLAS - Teacher Onboarding"
     invite_token = otp_code
     frontend_url = getattr(settings, "BACKEND_CORS_ORIGINS", ["http://localhost:3000"])[0]
-    activation_link = f"{frontend_url}/activate/teacher?token={invite_token}"
+    activation_link = f"{frontend_url}/auth/activate/teacher?token={invite_token}"
     
     try:
         template = template_env.get_template("teacher_invitation.html")

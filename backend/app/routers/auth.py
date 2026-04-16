@@ -114,6 +114,11 @@ class TeacherRequestCreate(BaseModel):
     department: str = Field(..., min_length=2, max_length=120)
 
 
+class TeacherActivationRequest(BaseModel):
+    token: str = Field(..., min_length=32)
+    password: str = Field(..., min_length=8)
+
+
 class VerifyOtpRequest(BaseModel):
     email: EmailStr
     otp_code: str = Field(..., min_length=6, max_length=6)
@@ -364,6 +369,55 @@ async def verify_otp(
     return {
         "message": "OTP verified successfully.",
         "user": _user_payload(user).model_dump(),
+    }
+
+
+@router.post("/activate-teacher")
+async def activate_teacher(
+    payload: TeacherActivationRequest,
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """
+    US-05: Finalizes teacher onboarding via secure token verification.
+    Sets the permanent password and activates the account atomically.
+    """
+    # 1. Lookup the profile by token
+    result = await db.execute(
+        select(TeacherProfile).where(TeacherProfile.invite_token == payload.token)
+    )
+    profile = result.scalar_one_or_none()
+    
+    if not profile:
+        raise atlas_error("AUTH_012", "Invalid or expired invitation token.", status_code=400)
+        
+    # 2. Check Expiration
+    if profile.invite_expires_at and profile.invite_expires_at < datetime.utcnow():
+        raise atlas_error("AUTH_012", "This invitation token has expired. Please contact your admin for a new link.", status_code=400)
+        
+    # 3. Fetch and Update User
+    result = await db.execute(select(User).where(User.id == profile.user_id))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise atlas_error("USER_001", "Associated teacher account not found.", status_code=404)
+        
+    user.hashed_password = security.get_password_hash(payload.password)
+    user.is_active = True
+    user.is_verified = True
+    user.status = AccountStatus.ACTIVE
+    
+    # 4. Burn the token
+    profile.invite_token = None
+    profile.invite_expires_at = None
+    
+    db.add(user)
+    db.add(profile)
+    await db.commit()
+    await db.refresh(user)
+    
+    return {
+        "message": "Teacher account activated successfully.",
+        "user": _user_payload(user).model_dump()
     }
 
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import {
   GraduationCap,
   BookOpen,
@@ -24,6 +24,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useCourseQuery } from "@/queries";
 import { useCourseStatsQuery } from "@/queries/courses";
+import { MaterialSelectionDialog } from "@/components/course/material-selection-dialog";
+import { useState } from "react";
 
 const STUDY_TOOLS = [
   {
@@ -66,9 +68,12 @@ const STUDY_TOOLS = [
 
 export default function CourseDetailPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const courseId = params.id as string;
+  const versionId = searchParams.get("version");
   const { data: course, isLoading } = useCourseQuery(courseId);
   const { data: stats, isLoading: statsLoading } = useCourseStatsQuery(courseId);
+  const [isSelectionModalOpen, setIsSelectionModalOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -137,18 +142,24 @@ export default function CourseDetailPage() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-                {STUDY_TOOLS.map((tool) => (
-                  <Link
-                    key={tool.id}
-                    href={`/courses/${courseId}/${tool.id}`}
-                    className="flex min-h-28 flex-col items-center justify-center gap-2 rounded-lg border p-4 text-center transition-colors hover:bg-muted/50"
-                  >
-                    <div className={`rounded-lg p-3 ${tool.color}`}>
-                      <tool.icon className="h-6 w-6" />
-                    </div>
-                    <span className="text-sm font-medium">{tool.label}</span>
-                  </Link>
-                ))}
+                {STUDY_TOOLS.map((tool) => {
+                  const href = versionId 
+                    ? `/courses/${courseId}/${tool.id}?version=${versionId}`
+                    : `/courses/${courseId}/${tool.id}`;
+                  
+                  return (
+                    <Link
+                      key={tool.id}
+                      href={href}
+                      className="flex min-h-28 flex-col items-center justify-center gap-2 rounded-lg border p-4 text-center transition-colors hover:bg-muted/50"
+                    >
+                      <div className={`rounded-lg p-3 ${tool.color}`}>
+                        <tool.icon className="h-6 w-6" />
+                      </div>
+                      <span className="text-sm font-medium">{tool.label}</span>
+                    </Link>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
@@ -201,15 +212,23 @@ export default function CourseDetailPage() {
                 <p className="mt-1 text-sm text-muted-foreground">
                   {courseMeta}
                 </p>
-                <Button className="mt-4 min-h-11 w-full" asChild>
-                  <Link href={`/courses/${courseId}/read`}>
-                    <Play className="mr-2 h-4 w-4" />
-                    Start Learning
-                  </Link>
+                <Button 
+                    className="mt-4 min-h-11 w-full" 
+                    onClick={() => setIsSelectionModalOpen(true)}
+                >
+                  <Play className="mr-2 h-4 w-4" />
+                  Start Learning
                 </Button>
               </div>
             </CardContent>
           </Card>
+
+          <MaterialSelectionDialog
+            isOpen={isSelectionModalOpen}
+            courseId={courseId}
+            courseTitle={course.title}
+            onClose={() => setIsSelectionModalOpen(false)}
+          />
 
           <Card>
             <CardHeader className="pb-2">

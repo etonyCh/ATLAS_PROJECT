@@ -1,18 +1,25 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { BookOpen, Download } from "lucide-react";
 import { FilePreview } from "@/components/ui/file-preview";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useCourseQuery } from "@/queries";
+import { useCourseQuery, useVersionQuery } from "@/queries";
 
 export default function ReadPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const courseId = params.id as string;
-  const { data: course, isLoading } = useCourseQuery(courseId);
+  const versionId = searchParams.get("version");
+  
+  const { data: course, isLoading: courseLoading } = useCourseQuery(courseId);
+  const { data: specificVersion, isLoading: versionLoading } = useVersionQuery(versionId);
+
+  const isLoading = courseLoading || (!!versionId && versionLoading);
+  const activeVersion = versionId ? specificVersion : course?.current_version;
 
   if (isLoading) {
     return (
@@ -29,7 +36,7 @@ export default function ReadPage() {
         <div>
           <h1 className="text-2xl font-bold">Document Reader</h1>
           <p className="text-muted-foreground">
-            Read and study the course material
+            {versionId ? `Reading: ${activeVersion?.title || "Specific Material"}` : "Read and study the course material"}
           </p>
         </div>
         <div className="flex gap-2">
@@ -45,14 +52,19 @@ export default function ReadPage() {
           <CardTitle className="flex items-center gap-2">
             <BookOpen className="h-5 w-5" />
             {course?.title || "Course material"}
+            {versionId && activeVersion && (
+               <span className="text-xs font-normal text-muted-foreground ml-2"> 
+                 (v{activeVersion.version_number}) 
+               </span>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {course?.current_version?.storage_path ? (
+          {activeVersion?.storage_path ? (
             <FilePreview
-              storagePath={course.current_version.storage_path}
-              mimeType={course.current_version.mime_type}
-              title={course.title}
+              storagePath={activeVersion.storage_path}
+              mimeType={activeVersion.mime_type}
+              title={course?.title || activeVersion.title || "Document"}
             />
           ) : (
             <EmptyState

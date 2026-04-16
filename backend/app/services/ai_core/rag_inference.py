@@ -101,12 +101,17 @@ def _meili_search_sync(
         "attributesToRetrieve": [
             "id",
             "document_version_id",
+            "course_id",
             "title",
             "teacher_name",
             "is_official",
             "quality_score",
             "tags",
             "filiere",
+            "level",
+            "academic_year",
+            "course_type",
+            "language",
         ],
     }
 

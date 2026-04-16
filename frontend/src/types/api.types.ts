@@ -90,6 +90,7 @@ export interface Establishment {
   id: string;
   name: string;
   domain: string;
+  is_authorized: boolean;
   status?: string;
   created_at: string;
 }

@@ -16,7 +16,8 @@ from app.core.exceptions import atlas_error
 from app.core.redis import get_redis_client
 from app.db.session import get_session
 from app.dependencies import get_current_user, require_role
-from app.models.all_models import Notification
+from app.models.gamification import XPTransaction, XPTransactionType
+from app.models.user import User, UserRole
 from app.models.contribution import (
     Contribution,
     ContributionStatus,
@@ -26,9 +27,11 @@ from app.models.contribution import (
 )
 from app.models.course import Course
 from app.models.gamification import XPTransaction, XPTransactionType
-from app.models.user import User
-from app.schemas.pagination import build_paginated_response
-from app.services.study_engine import gamification_service
+from app.models.user import User, UserRole
+from app.models.rag import RAGSession
+from app.models.study_tools import FlashcardDeck, QuizSession, MindMap, Summary
+from app.models.annotation import DocumentAnnotation
+from app.models.all_models import Notification, ReadingProgress
 
 
 router = APIRouter(tags=["Contributions"])
@@ -361,35 +364,45 @@ async def list_contribution_queue(
     status: str | None = None,
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    current_user: User = Depends(require_role("TEACHER")),
+    current_user: User = Depends(require_role("TEACHER", "ADMIN")),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
+    from app.models.user import User as DBUser, UserRole
     filters = [Contribution.is_demo_submission.is_(False)]
     if status:
         filters.append(Contribution.status == status.upper())
 
-    teacher_department_id = (
-        current_user.teacher_profile.department_id
-        if getattr(current_user, "teacher_profile", None)
-        else None
+    # ADMIN users see all contributions; TEACHER users see only their department's student uploads
+    user_role_str = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    
+    # Filter to only show STUDENT uploads (User Request: "only files student uploaded not what i have uploaded")
+    filters.append(DBUser.role == UserRole.STUDENT)
+    
+    needs_course_join = False
+    if user_role_str == "TEACHER":
+        profile = getattr(current_user, "teacher_profile", None)
+        teacher_department_id = profile.department_id if profile else None
+        
+        if teacher_department_id is None:
+            raise atlas_error("AUTH_008", "Teacher department assignment is required to moderate contributions.", status_code=403)
+        filters.append(Course.department_id == teacher_department_id)
+        needs_course_join = True
+
+    count_query = select(func.count()).select_from(Contribution).join(DBUser, Contribution.uploader_id == DBUser.id)
+    data_query = (
+        select(Contribution)
+        .join(DBUser, Contribution.uploader_id == DBUser.id)
+        .options(selectinload(Contribution.document_versions))
     )
-    if teacher_department_id is None:
-        raise atlas_error("AUTH_008", "Teacher department assignment is required.", status_code=403)
-    filters.append(Course.department_id == teacher_department_id)
+    if needs_course_join:
+        count_query = count_query.join(Course, Course.id == Contribution.course_id)
+        data_query = data_query.join(Course, Course.id == Contribution.course_id)
 
     total = (
-        await db.execute(
-            select(func.count())
-            .select_from(Contribution)
-            .join(Course, Course.id == Contribution.course_id)
-            .where(*filters)
-        )
+        await db.execute(count_query.where(*filters))
     ).scalar_one()
     result = await db.execute(
-        select(Contribution)
-        .join(Course, Course.id == Contribution.course_id)
-        .options(selectinload(Contribution.document_versions))
-        .where(*filters)
+        data_query.where(*filters)
         .order_by(desc(Contribution.created_at))
         .offset(offset)
         .limit(limit)
@@ -417,13 +430,11 @@ async def list_contributor_requests(
         if normalized in {"PENDING", "APPROVED", "REJECTED"}:
             filters.append(ContributorRequest.status == normalized)
 
-    teacher_department_id = (
-        current_user.teacher_profile.department_id
-        if getattr(current_user, "teacher_profile", None)
-        else None
-    )
+    profile = getattr(current_user, "teacher_profile", None)
+    teacher_department_id = profile.department_id if profile else None
+    
     if teacher_department_id is None:
-        raise atlas_error("AUTH_008", "Teacher department assignment is required.", status_code=403)
+        raise atlas_error("AUTH_008", "Teacher department assignment is required to review contributor requests.", status_code=403)
     filters.append(Course.department_id == teacher_department_id)
 
     total = (
@@ -701,3 +712,89 @@ async def resolve_report(
         "id": str(report.id),
         "resolved": True,
     }
+
+
+@router.delete("/contributions/{contribution_id}")
+async def delete_contribution(
+    contribution_id: UUID,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+    redis_client: Redis = Depends(get_redis_client),
+) -> dict[str, bool]:
+    """
+    Granular hard delete: removes a single contribution and its related data permanently.
+    Teachers can use this to 'un-upload' a subject.
+    """
+    from sqlalchemy import delete
+    from app.core.qdrant_client import get_qdrant_manager, COLLECTION_DOCUMENTS
+    from app.services.doc_processing.storage import minio_client
+
+    print(f"🗑️  DELETE request received for contribution: {contribution_id}")
+    
+    # 1. Fetch contribution
+    contribution = await db.get(Contribution, contribution_id)
+    if contribution is None:
+        raise atlas_error("CONTRIBUTION_001", "Contribution not found.", status_code=404)
+
+    # 2. Security: Only uploader or ADMIN can delete
+    user_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    if contribution.uploader_id != current_user.id and user_role not in ("ADMIN", "SUPERADMIN"):
+        raise atlas_error("AUTH_008", "You do not have permission to delete this contribution.", status_code=403)
+
+    # 3. Get all related document versions
+    result = await db.execute(
+        select(DocumentVersion).where(DocumentVersion.contribution_id == contribution_id)
+    )
+    versions = result.scalars().all()
+    version_ids = [v.id for v in versions]
+    storage_paths = [v.storage_path for v in versions if v.storage_path]
+
+    if version_ids:
+        print(f"🗑️  Cleaning up {len(version_ids)} versions for contribution...")
+
+        # Delete from Qdrant (semantic embeddings)
+        try:
+            qdrant = get_qdrant_manager()
+            for v_id in version_ids:
+                qdrant.delete_document_embeddings(
+                    collection_name=COLLECTION_DOCUMENTS,
+                    document_version_id=str(v_id)
+                )
+            print("✅ Purged Qdrant embeddings")
+        except Exception as e:
+            print(f"⚠️  Qdrant cleanup warning: {e}")
+
+        # Purge from MeiliSearch (lexical index)
+        for v_id in version_ids:
+            background_tasks.add_task(_remove_from_meilisearch, str(v_id))
+        print("✅ Queued MeiliSearch purge")
+
+        # Delete from MinIO (physical files)
+        for path in storage_paths:
+            try:
+                minio_client.delete_file(path)
+            except Exception as e:
+                print(f"⚠️  MinIO cleanup warning for {path}: {e}")
+        print(f"✅ Deleted {len(storage_paths)} files from MinIO")
+
+        # Delete related study tools/progress/annotations
+        await db.execute(delete(FlashcardDeck).where(FlashcardDeck.document_version_id.in_(version_ids)))
+        await db.execute(delete(QuizSession).where(QuizSession.document_version_id.in_(version_ids)))
+        await db.execute(delete(MindMap).where(MindMap.document_version_id.in_(version_ids)))
+        await db.execute(delete(Summary).where(Summary.document_version_id.in_(version_ids)))
+        await db.execute(delete(RAGSession).where(RAGSession.document_version_id.in_(version_ids)))
+        await db.execute(delete(DocumentAnnotation).where(DocumentAnnotation.document_version_id.in_(version_ids)))
+        await db.execute(delete(ReadingProgress).where(ReadingProgress.document_version_id.in_(version_ids)))
+        
+        from app.models.embedding import DocumentEmbedding
+        await db.execute(delete(DocumentEmbedding).where(DocumentEmbedding.document_version_id.in_(version_ids)))
+
+    # 4. Final DB removal
+    await db.execute(delete(Contribution).where(Contribution.id == contribution_id))
+    await db.commit()
+    
+    await invalidate_cache_patterns(redis_client, "admin_dashboard:*", "course_meta:*")
+    print(f"✅ Contribution {contribution_id} fully deleted")
+    
+    return {"success": True}

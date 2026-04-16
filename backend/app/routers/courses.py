@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from pydantic import BaseModel
 from redis.asyncio import Redis
+import sqlalchemy as sa
 from sqlalchemy import desc, func, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,9 +17,9 @@ from app.core.redis import get_redis_client
 from app.db.session import get_session
 from app.dependencies import get_current_user, require_role
 from app.models.contribution import Contribution, DocumentVersion
-from app.models.course import Course
+from app.models.course import Course, CourseType, CourseLanguage
 from app.models.study_tools import FlashcardDeck, MindMap, QuizSession, Summary
-from app.models.user import User
+from app.models.user import User, Department, TeacherProfile, UserRole
 from app.services.doc_processing.storage import minio_client
 
 
@@ -59,11 +60,10 @@ def _serialize_course(
         "id": str(course.id),
         "title": course.title,
         "description": course.description,
-        "level": course.level,
-        "course_type": course.course_type,
+        "level": (course.level.value if hasattr(course.level, "value") else str(course.level)) if course.level else None,
         "academic_year": course.academic_year,
-        "language": course.language,
         "department_id": str(course.department_id) if course.department_id else None,
+        "department_name": course.department.name if getattr(course, "department", None) else None,
         "tags": course.tags or [],
         "created_at": course.created_at,
         "is_deleted": course.is_deleted,
@@ -129,6 +129,8 @@ def _can_access_course_contribution(current_user: User, contribution: Contributi
 @router.post("/courses/upload", status_code=status.HTTP_202_ACCEPTED)
 async def upload_course(
     course_id: UUID = Form(...),
+    course_type: str = Form("LECTURE"),
+    language: str = Form("FR"),
     file: UploadFile = File(...),
     current_user: User = Depends(require_role("TEACHER")),
     db: AsyncSession = Depends(get_session),
@@ -142,6 +144,8 @@ async def upload_course(
             current_user=current_user,
             course_id=course_id,
             file=file,
+            course_type=CourseType(course_type),
+            language=CourseLanguage(language),
         )
     except ValueError as exc:
         raise atlas_error("COURSE_002", str(exc), status_code=400) from exc
@@ -169,10 +173,18 @@ async def list_courses(
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
+    from app.models.user import Department
+    # Base query for courses
+    course_query = select(Course).where(Course.is_deleted.is_(False))
+
+    # US-XX: Filter by student's level if user is a student
+    role_value = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    if role_value == "STUDENT" and current_user.level:
+        course_query = course_query.where(Course.level == current_user.level)
+
     # Get regular courses
     result = await db.execute(
-        select(Course)
-        .where(Course.is_deleted.is_(False))
+        course_query.options(sa.orm.selectinload(Course.department))
         .order_by(desc(Course.created_at))
         .limit(100)
     )
@@ -180,12 +192,12 @@ async def list_courses(
 
     # Get courses from user's approved contributions
     # First get course_ids from approved contributions by this user
-    from app.models.contribution import Contribution
+    from app.models.contribution import Contribution, ContributionStatus
     contrib_ids_result = await db.execute(
         select(Contribution.course_id)
         .where(
             Contribution.uploader_id == current_user.id,
-            Contribution.status == "approved",
+            Contribution.status == ContributionStatus.APPROVED,
             Contribution.course_id.isnot(None)
         )
     )
@@ -228,9 +240,12 @@ async def get_my_uploads(
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(require_role("TEACHER", "ADMIN")),
 ) -> list[dict[str, Any]]:
+    from app.models.user import Department
     result = await db.execute(
         select(Course, Contribution)
         .join(Contribution, Contribution.course_id == Course.id)
+        .outerjoin(Department, Department.id == Course.department_id)
+        .options(sa.orm.selectinload(Course.department))
         .where(Contribution.uploader_id == current_user.id, Course.is_deleted.is_(False))
         .order_by(desc(Course.created_at))
     )
@@ -241,9 +256,11 @@ async def get_my_uploads(
     for course, contribution in result.all():
         if course.id in seen_courses:
             continue
-        seen_courses.add(course.id)
         latest_version, _ = await _get_latest_course_version(db, course.id)
-        payload.append(_serialize_course(course, latest_version))
+        course_data = _serialize_course(course, latest_version)
+        # TEACHER REQUEST: Include contribution_id so they can delete the specific upload
+        course_data["contribution_id"] = str(contribution.id)
+        payload.append(course_data)
     return payload
 
 
@@ -252,27 +269,44 @@ async def list_course_catalog(
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
-    result = await db.execute(
+    """
+    US-06: Catalog discovery gated by multi-tenancy and department affinity.
+    Teachers only see their own department's courses. 
+    Students (later) see their establishment's courses.
+    """
+    # 1. Base query with strict multi-tenancy join
+    query = (
         select(Course)
-        .where(Course.is_deleted.is_(False))
-        .order_by(desc(Course.created_at))
+        .options(sa.orm.selectinload(Course.department))
+        .join(Department, Course.department_id == Department.id)
+        .where(
+            Course.is_deleted.is_(False),
+            Department.establishment_id == current_user.establishment_id
+        )
     )
+
+    # 2. Role-based granular filtering
+    role_value = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    
+    if role_value == "TEACHER":
+        # Fetch the teacher profile to get department affiliation
+        profile_res = await db.execute(
+            select(TeacherProfile).where(TeacherProfile.user_id == current_user.id)
+        )
+        profile = profile_res.scalar_one_or_none()
+        
+        # PROPOSED RELAXATION (US-06 FIX): 
+        # If the teacher is assigned to a department, strictly filter by it (User Request).
+        # If NOT yet assigned, show all courses in the establishment as a fallback.
+        if profile and profile.department_id:
+            query = query.where(Course.department_id == profile.department_id)
+        # Else: proceed with the base query which includes all courses in the establishment.
+    
+    # 3. Final execution
+    result = await db.execute(query.order_by(desc(Course.created_at)))
     courses = result.scalars().all()
 
-    role_value = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
-    filtered_courses: list[Course] = []
-    for course in courses:
-        if role_value == "TEACHER":
-            teacher_department_id = (
-                current_user.teacher_profile.department_id
-                if getattr(current_user, "teacher_profile", None)
-                else None
-            )
-            if teacher_department_id and course.department_id != teacher_department_id:
-                continue
-        filtered_courses.append(course)
-
-    return [_serialize_course(course) for course in filtered_courses]
+    return [_serialize_course(course) for course in courses]
 
 
 @router.get("/courses/{course_id}")
@@ -281,12 +315,57 @@ async def get_course(
     db: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    course = await db.get(Course, course_id)
-    if course is None or course.is_deleted:
+    result = await db.execute(
+        select(Course)
+        .options(sa.orm.selectinload(Course.department))
+        .where(Course.id == course_id, Course.is_deleted.is_(False))
+    )
+    course = result.scalar_one_or_none()
+    if course is None:
         raise atlas_error("COURSE_001", "Course not found.", status_code=404)
 
     latest_version, _ = await _get_latest_accessible_course_version(db, course_id, current_user)
     return _serialize_course(course, latest_version)
+
+
+@router.get("/courses/{course_id}/versions")
+async def get_course_versions(
+    course_id: UUID,
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> list[dict[str, Any]]:
+    """
+    US-06: Retrieve all accessible document versions for a specific course.
+    Includes uploader metadata and contribution type for the Selection Modal.
+    """
+    query = (
+        select(DocumentVersion, Contribution, User)
+        .join(Contribution, Contribution.id == DocumentVersion.contribution_id)
+        .join(User, User.id == Contribution.uploader_id)
+        .where(
+            Contribution.course_id == course_id,
+            DocumentVersion.is_deleted.is_(False),
+        )
+        .order_by(desc(DocumentVersion.uploaded_at))
+    )
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    versions = []
+    for version, contribution, uploader in rows:
+        if _can_access_course_contribution(current_user, contribution):
+            v_data = _serialize_version(version, contribution)
+            # Enrich with uploader and contribution metadata for the frontend selection UI
+            v_data.update({
+                "uploader_name": uploader.full_name or uploader.email,
+                "course_type": contribution.course_type.value if hasattr(contribution.course_type, "value") else str(contribution.course_type),
+                "language": contribution.language.value if hasattr(contribution.language, "value") else str(contribution.language),
+                "title": contribution.title
+            })
+            versions.append(v_data)
+
+    return versions
 
 
 @router.get("/courses/{course_id}/stats")
@@ -536,6 +615,17 @@ async def delete_course(
     if course is None:
         raise atlas_error("COURSE_001", "Course not found.", status_code=404)
 
+    # TEACHER Permission Check: Must belong to the same department
+    user_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    if user_role == "TEACHER":
+        teacher_department_id = (
+            current_user.teacher_profile.department_id
+            if getattr(current_user, "teacher_profile", None)
+            else None
+        )
+        if teacher_department_id != course.department_id:
+            raise atlas_error("AUTH_008", "You can only delete courses within your assigned department.", status_code=403)
+
     # Get all contributions for this course
     result = await db.execute(
         select(Contribution.id).where(Contribution.course_id == course_id)
@@ -646,3 +736,30 @@ async def get_course_preview(
             "mime_type": latest_version.mime_type,
         },
     }
+
+
+@router.get("/courses/versions/{version_id}")
+async def get_version(
+    version_id: UUID,
+    db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """
+    Retrieve metadata for a specific document version.
+    """
+    result = await db.execute(
+        select(DocumentVersion, Contribution)
+        .join(Contribution, Contribution.id == DocumentVersion.contribution_id)
+        .where(DocumentVersion.id == version_id, DocumentVersion.is_deleted.is_(False))
+    )
+    row = result.first()
+    if row is None:
+        raise atlas_error("VERSION_001", "Version not found.", status_code=404)
+    
+    version, contribution = row
+    if not _can_access_course_contribution(current_user, contribution):
+        raise atlas_error("VERSION_002", "Access denied.", status_code=403)
+        
+    v_data = _serialize_version(version, contribution)
+    v_data["title"] = contribution.title
+    return v_data

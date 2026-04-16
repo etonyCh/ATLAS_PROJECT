@@ -6,6 +6,7 @@ from sqlmodel import SQLModel, Field, Relationship
 
 if TYPE_CHECKING:
     from .user import User
+from .course import CourseType, CourseLanguage
 
 
 class ContributionStatus(str, Enum):
@@ -89,6 +90,8 @@ class Contribution(SQLModel, table=True):
         index=True,
         description="True when this upload is the demo document backing a contributor request.",
     )
+    course_type: CourseType = Field(default=CourseType.OTHER, index=True)
+    language: CourseLanguage = Field(default=CourseLanguage.FR, index=True)
 
     # ARCHITECTURAL FIX: Temporal field required for FIFO/LIFO Queue sorting
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)

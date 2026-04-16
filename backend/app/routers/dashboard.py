@@ -48,7 +48,7 @@ async def student_dashboard(
         select(func.count(func.distinct(func.date(XPTransaction.created_at))))
         .where(
             XPTransaction.user_id == current_user.id,
-            XPTransaction.created_at >= datetime.now(timezone.utc) - timedelta(days=30)
+            XPTransaction.created_at >= datetime.now() - timedelta(days=30)
         )
     )
     active_streak_days = streak_result.scalar_one() or 0

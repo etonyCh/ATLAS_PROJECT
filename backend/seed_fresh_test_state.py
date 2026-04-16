@@ -161,7 +161,9 @@ async def ensure_user(
     return user_id
 
 
-async def ensure_teacher_profile(conn: asyncpg.Connection, user_id: str, department_id: str, specialization: str) -> None:
+async def ensure_teacher_profile(
+    conn: asyncpg.Connection, user_id: str, department_id: str, specialization: str
+) -> None:
     existing = await conn.fetchrow(
         "SELECT id FROM teacherprofile WHERE user_id = $1",
         user_id,
@@ -196,15 +198,6 @@ async def main() -> None:
     conn = await asyncpg.connect(DB_URL)
     async with conn.transaction():
         atlas_id = await ensure_establishment(conn, "ATLAS University", "atlas.tn")
-        fss_id = await ensure_establishment(conn, "Faculty of Sciences", "fss.tn")
-        enit_id = await ensure_establishment(conn, "ENIT", "enit.tn")
-
-        atlas_cs_id = await ensure_department(conn, atlas_id, "Computer Science")
-        await ensure_department(conn, atlas_id, "Mathematics")
-        await ensure_department(conn, atlas_id, "Physics")
-        await ensure_department(conn, fss_id, "Computer Science")
-        await ensure_department(conn, fss_id, "Biology")
-        await ensure_department(conn, enit_id, "Engineering")
 
         await ensure_user(
             conn,
@@ -223,44 +216,13 @@ async def main() -> None:
             role="SUPERADMIN",
             trust_score=100,
         )
-        await ensure_user(
-            conn,
-            email="student@atlas.tn",
-            password="Student123!",
-            full_name="Atlas Student",
-            role="STUDENT",
-            establishment_id=atlas_id,
-            filiere="Informatique",
-            level="L3",
-            onboarding_completed=False,
-            trust_score=10,
-            profile_completeness=65,
-        )
-        teacher_id = await ensure_user(
-            conn,
-            email="teacher@atlas.tn",
-            password="Teacher123!",
-            full_name="Atlas Teacher",
-            role="TEACHER",
-            establishment_id=atlas_id,
-            trust_score=75,
-        )
-        await ensure_teacher_profile(conn, teacher_id, atlas_cs_id, "Computer Science")
 
-    print("Fresh test state created.")
+    print("Fresh test state created (Only Admins).")
     print("")
     print("Login-ready accounts:")
     print("  admin@atlas.tn / Admin123!")
     print("  superadmin@atlas.tn / SuperAdmin123!")
-    print("  student@atlas.tn / Student123!")
-    print("  teacher@atlas.tn / Teacher123!")
     print("")
-    print("Teacher request testing:")
-    print("  Use any unused @atlas.tn email on /auth/teacher-request")
-    print("  Example: newteacher@atlas.tn")
-    print("")
-    print("Admin organization domain:")
-    print("  atlas.tn")
 
     await conn.close()
 

@@ -41,6 +41,56 @@ export function useSuperadminEstablishmentsQuery() {
   });
 }
 
+export function useAdminEstablishmentsQuery() {
+  return useQuery({
+    queryKey: ["admin", "establishments"],
+    queryFn: () => adminApi.getEstablishments(),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useCreateEstablishmentMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { name: string; domain: string }) =>
+      superadminApi.createEstablishment(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["superadmin", "establishments"] });
+    },
+  });
+}
+
+export function useToggleEstablishmentAuthorizationMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (establishmentId: string) =>
+      superadminApi.toggleEstablishmentAuthorization(establishmentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["superadmin", "establishments"] });
+    },
+  });
+}
+
+export function useCreateAdminMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { full_name: string; email: string; password: string; establishment_id: string }) =>
+      superadminApi.createAdmin(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["superadmin", "establishments"] });
+      queryClient.invalidateQueries({ queryKey: ["superadmin", "dashboard", "stats"] });
+    },
+  });
+}
+
+export function useSuperadminDashboardStatsQuery() {
+  return useQuery({
+    queryKey: ["superadmin", "dashboard", "stats"],
+    queryFn: () => superadminApi.getDashboardStats(),
+    staleTime: 60 * 1000,
+  });
+}
+
 export function useUpdateUserMutation() {
   const queryClient = useQueryClient();
 
@@ -108,6 +158,16 @@ export function useUpdateDepartmentMutation() {
   });
 }
 
+export function useDeleteDepartmentMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (departmentId: string) => adminApi.deleteDepartment(departmentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "departments"] });
+    },
+  });
+}
+
 export function useCreateCatalogCourseMutation() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -149,6 +209,86 @@ export function useUpdateCatalogCourseMutation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "catalog", "courses"] });
       queryClient.invalidateQueries({ queryKey: ["courses"] });
+    },
+  });
+}
+
+export function useDeleteCatalogCourseMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (courseId: string) => adminApi.deleteCatalogCourse(courseId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "catalog", "courses"] });
+      queryClient.invalidateQueries({ queryKey: ["courses"] });
+    },
+  });
+}
+
+export function useSuperadminUsersQuery(params?: {
+  role?: string;
+  establishment_id?: string;
+  is_active?: boolean;
+  limit?: number;
+  offset?: number;
+}) {
+  return useQuery({
+    queryKey: ["superadmin", "users", params],
+    queryFn: () => superadminApi.listUsers(params),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useSuperadminEstablishmentDetailsQuery(establishmentId: string) {
+  return useQuery({
+    queryKey: ["superadmin", "establishments", establishmentId],
+    queryFn: () => superadminApi.getEstablishment(establishmentId),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useUpdateSuperadminEstablishmentMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ establishmentId, data }: { establishmentId: string; data: { name?: string; domain?: string } }) =>
+      superadminApi.updateEstablishment(establishmentId, data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["superadmin", "establishments"] });
+      queryClient.invalidateQueries({ queryKey: ["superadmin", "establishments", variables.establishmentId] });
+    },
+  });
+}
+
+export function useDeleteSuperadminEstablishmentMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (establishmentId: string) => superadminApi.deleteEstablishment(establishmentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["superadmin", "establishments"] });
+      queryClient.invalidateQueries({ queryKey: ["superadmin", "dashboard", "stats"] });
+    },
+  });
+}
+
+export function useUpdateSuperadminUserMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, data }: { userId: string; data: { is_active?: boolean; role?: string; full_name?: string } }) =>
+      superadminApi.updateUser(userId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["superadmin", "users"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard", "admin"] });
+      queryClient.invalidateQueries({ queryKey: ["superadmin", "dashboard", "stats"] });
+    },
+  });
+}
+
+export function useDeleteSuperadminUserMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => superadminApi.deleteUser(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["superadmin", "users"] });
+      queryClient.invalidateQueries({ queryKey: ["superadmin", "dashboard", "stats"] });
     },
   });
 }

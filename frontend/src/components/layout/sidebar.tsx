@@ -62,6 +62,7 @@ const superadminNavigation = [
     href: "/superadmin/establishments",
     icon: Building2,
   },
+  { name: "Admins", href: "/superadmin/admins", icon: Users },
 ];
 
 const baseNavigation: Record<

@@ -1,18 +1,34 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Building2, ChevronLeft, ChevronRight, Download, Loader2, Search, Users } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import Link from "next/link";
+import { Building2, ChevronLeft, ChevronRight, Download, Loader2, Search, Users, Plus, Shield, ShieldCheck, ShieldX, UserPlus } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/ui/empty-state";
-import { useSuperadminEstablishmentsQuery } from "@/queries/admin.queries";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  useSuperadminEstablishmentsQuery,
+  useCreateEstablishmentMutation,
+  useToggleEstablishmentAuthorizationMutation,
+  useCreateAdminMutation,
+  useDeleteSuperadminEstablishmentMutation,
+} from "@/queries/admin.queries";
 
 type EstablishmentRow = {
   id: string;
   name: string;
   domain: string;
   created_at: string;
+  is_authorized: boolean;
   users?: number;
   students?: number;
   teachers?: number;
@@ -21,9 +37,48 @@ type EstablishmentRow = {
 
 export default function SuperadminEstablishmentsPage() {
   const { data, isLoading, isError } = useSuperadminEstablishmentsQuery();
+  const createEstablishmentMutation = useCreateEstablishmentMutation();
+  const toggleAuthorizationMutation = useToggleEstablishmentAuthorizationMutation();
+  const createAdminMutation = useCreateAdminMutation();
+  const deleteEstablishmentMutation = useDeleteSuperadminEstablishmentMutation();
+
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+
+  const [newEstablishmentName, setNewEstablishmentName] = useState("");
+  const [newEstablishmentDomain, setNewEstablishmentDomain] = useState("");
+
+  const [newAdminForm, setNewAdminForm] = useState({
+    full_name: "",
+    email: "",
+    password: "",
+    establishment_id: "",
+  });
+
+  const [establishmentToDelete, setEstablishmentToDelete] = useState<{ id: string; name: string } | null>(null);
+
+  const handleCreateEstablishment = async () => {
+    if (!newEstablishmentName.trim() || !newEstablishmentDomain.trim()) return;
+    await createEstablishmentMutation.mutateAsync({
+      name: newEstablishmentName.trim(),
+      domain: newEstablishmentDomain.trim(),
+    });
+    setNewEstablishmentName("");
+    setNewEstablishmentDomain("");
+  };
+
+  const handleCreateAdmin = async () => {
+    if (!newAdminForm.full_name || !newAdminForm.email || !newAdminForm.password || !newAdminForm.establishment_id) return;
+    await createAdminMutation.mutateAsync(newAdminForm);
+    setNewAdminForm({ full_name: "", email: "", password: "", establishment_id: "" });
+  };
+
+  const confirmDeleteEstablishment = async () => {
+    if (!establishmentToDelete) return;
+    await deleteEstablishmentMutation.mutateAsync(establishmentToDelete.id);
+    setEstablishmentToDelete(null);
+  };
 
   const establishments = useMemo(
     () => (data ?? []) as EstablishmentRow[],
@@ -94,6 +149,86 @@ export default function SuperadminEstablishmentsPage() {
           <Download className="mr-2 h-4 w-4" />
           Export
         </Button>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="h-5 w-5" />
+              Domain Authorization
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-3 rounded-lg border p-4">
+              <Input
+                label="Establishment Name"
+                value={newEstablishmentName}
+                onChange={(event) => setNewEstablishmentName(event.target.value)}
+                placeholder="University of Science"
+              />
+              <Input
+                label="Domain"
+                value={newEstablishmentDomain}
+                onChange={(event) => setNewEstablishmentDomain(event.target.value)}
+                placeholder="@university.edu"
+              />
+              <Button onClick={handleCreateEstablishment} disabled={createEstablishmentMutation.isPending}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Establishment
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <UserPlus className="h-5 w-5" />
+              Provision Admin Account
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-3 rounded-lg border p-4">
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                value={newAdminForm.establishment_id}
+                onChange={(e) => setNewAdminForm({ ...newAdminForm, establishment_id: e.target.value })}
+              >
+                <option value="">Select Establishment</option>
+                {establishments.map((est) => (
+                  <option key={est.id} value={est.id}>
+                    {est.name} ({est.domain})
+                  </option>
+                ))}
+              </select>
+              <Input
+                label="Full Name"
+                value={newAdminForm.full_name}
+                onChange={(event) => setNewAdminForm({ ...newAdminForm, full_name: event.target.value })}
+                placeholder="John Doe"
+              />
+              <Input
+                label="Email"
+                type="email"
+                value={newAdminForm.email}
+                onChange={(event) => setNewAdminForm({ ...newAdminForm, email: event.target.value })}
+                placeholder="john.doe@university.edu"
+              />
+               <Input
+                label="Temporary Password"
+                type="password"
+                value={newAdminForm.password}
+                onChange={(event) => setNewAdminForm({ ...newAdminForm, password: event.target.value })}
+                placeholder="Secure password"
+              />
+              <Button onClick={handleCreateAdmin} disabled={createAdminMutation.isPending}>
+                <UserPlus className="mr-2 h-4 w-4" />
+                Create Admin
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -189,10 +324,12 @@ export default function SuperadminEstablishmentsPage() {
                       Establishment
                     </th>
                     <th className="px-4 py-3 text-left text-sm font-medium">Domain</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium">Authorization</th>
                     <th className="px-4 py-3 text-left text-sm font-medium">Users</th>
                     <th className="px-4 py-3 text-left text-sm font-medium">Students</th>
                     <th className="px-4 py-3 text-left text-sm font-medium">Teachers</th>
                     <th className="px-4 py-3 text-left text-sm font-medium">Created</th>
+                    <th className="px-4 py-3 text-right text-sm font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -210,6 +347,16 @@ export default function SuperadminEstablishmentsPage() {
                         {establishment.domain}
                       </td>
                       <td className="px-4 py-3 text-sm">
+                        <Button
+                          variant={establishment.is_authorized ? "outline" : "default"}
+                          size="sm"
+                          onClick={() => toggleAuthorizationMutation.mutate(establishment.id)}
+                          disabled={toggleAuthorizationMutation.isPending}
+                        >
+                          {establishment.is_authorized ? "Revoke" : "Authorize"}
+                        </Button>
+                      </td>
+                      <td className="px-4 py-3 text-sm">
                         <span className="inline-flex items-center gap-2">
                           <Users className="h-4 w-4 text-muted-foreground" />
                           {(establishment.users || 0).toLocaleString()}
@@ -223,6 +370,23 @@ export default function SuperadminEstablishmentsPage() {
                       </td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">
                         {new Date(establishment.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button variant="outline" size="sm" asChild>
+                            <Link href={`/superadmin/establishments/${establishment.id}`}>
+                              Manage
+                            </Link>
+                          </Button>
+                          <Button 
+                            variant="destructive" 
+                            size="sm" 
+                            onClick={() => setEstablishmentToDelete({ id: establishment.id, name: establishment.name })}
+                            disabled={deleteEstablishmentMutation.isPending}
+                          >
+                            Delete
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -272,6 +436,40 @@ export default function SuperadminEstablishmentsPage() {
           </div>
         </div>
       ) : null}
+
+      <Dialog open={!!establishmentToDelete} onOpenChange={(open) => !open && setEstablishmentToDelete(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <ShieldX className="h-5 w-5" />
+              Confirm Deletion
+            </DialogTitle>
+            <DialogDescription className="pt-2">
+              Are you sure you want to delete <span className="font-semibold text-foreground">"{establishmentToDelete?.name}"</span>? 
+              This action is permanent and will remove all associated users, departments, and course data.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4 gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setEstablishmentToDelete(null)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={confirmDeleteEstablishment}
+              disabled={deleteEstablishmentMutation.isPending}
+            >
+              {deleteEstablishmentMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete Establishment"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

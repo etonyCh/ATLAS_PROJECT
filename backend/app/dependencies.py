@@ -6,6 +6,7 @@ from uuid import UUID
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import security
@@ -39,7 +40,11 @@ async def get_current_user(
             status_code=401,
         )
 
-    result = await db.execute(select(User).where(User.id == UUID(subject)))
+    result = await db.execute(
+        select(User)
+        .where(User.id == UUID(subject))
+        .options(selectinload(User.teacher_profile))
+    )
     user = result.scalar_one_or_none()
     if user is None:
         raise atlas_error(

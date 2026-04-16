@@ -1,17 +1,21 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BookOpen, Building2, Loader2, Plus, Save } from "lucide-react";
+import { BookOpen, Building2, Loader2, Plus, Save, Shield, ShieldCheck, ShieldX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/input";
 import {
   useAdminCatalogCoursesQuery,
   useAdminDepartmentsQuery,
+  useAdminEstablishmentsQuery,
   useCreateCatalogCourseMutation,
   useCreateDepartmentMutation,
+  useCreateEstablishmentMutation,
   useUpdateCatalogCourseMutation,
   useUpdateDepartmentMutation,
+  useDeleteDepartmentMutation,
+  useDeleteCatalogCourseMutation,
 } from "@/queries/admin.queries";
 
 const LEVEL_OPTIONS = ["L1", "L2", "L3", "M1", "M2", "Doctorat"];
@@ -23,9 +27,7 @@ type CourseFormState = {
   description: string;
   department_id: string;
   level: string;
-  course_type: string;
-  academic_year: string;
-  language: string;
+  administrative_year: string;
 };
 
 const EMPTY_COURSE_FORM: CourseFormState = {
@@ -33,9 +35,7 @@ const EMPTY_COURSE_FORM: CourseFormState = {
   description: "",
   department_id: "",
   level: "L1",
-  course_type: "LECTURE",
   academic_year: "2025-2026",
-  language: "FR",
 };
 
 export default function AdminSettingsPage() {
@@ -43,8 +43,10 @@ export default function AdminSettingsPage() {
   const coursesQuery = useAdminCatalogCoursesQuery();
   const createDepartmentMutation = useCreateDepartmentMutation();
   const updateDepartmentMutation = useUpdateDepartmentMutation();
+  const deleteDepartmentMutation = useDeleteDepartmentMutation();
   const createCourseMutation = useCreateCatalogCourseMutation();
   const updateCourseMutation = useUpdateCatalogCourseMutation();
+  const deleteCourseMutation = useDeleteCatalogCourseMutation();
 
   const departments = departmentsQuery.data ?? [];
   const courses = coursesQuery.data ?? [];
@@ -119,9 +121,7 @@ export default function AdminSettingsPage() {
       description: course.description ?? "",
       department_id: course.department_id ?? "",
       level: course.level ?? "L1",
-      course_type: course.course_type ?? "LECTURE",
       academic_year: course.academic_year ?? "2025-2026",
-      language: course.language ?? "FR",
     });
   };
 
@@ -142,9 +142,9 @@ export default function AdminSettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Academic Configuration</h1>
+        <h1 className="text-2xl font-bold">Admin Settings</h1>
         <p className="text-muted-foreground">
-          Admins define departments, available levels, and the official course catalog teachers upload into.
+          Departments, Levels, and Course Catalog configuration.
         </p>
       </div>
 
@@ -208,6 +208,9 @@ export default function AdminSettingsPage() {
                             <p className="font-medium">{department.name}</p>
                             <Button variant="ghost" size="sm" onClick={() => startEditingDepartment(department.id, department.name)}>
                               Rename
+                            </Button>
+                            <Button variant="destructive" size="sm" onClick={() => deleteDepartmentMutation.mutate(department.id)} disabled={deleteDepartmentMutation.isPending}>
+                              Delete
                             </Button>
                           </>
                         )}
@@ -293,37 +296,11 @@ export default function AdminSettingsPage() {
                     ))}
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Course Type</label>
-                  <Select
-                    value={courseForm.course_type}
-                    onChange={(event) => setCourseForm((current) => ({ ...current, course_type: event.target.value }))}
-                  >
-                    {COURSE_TYPES.map((courseType) => (
-                      <option key={courseType} value={courseType}>
-                        {courseType}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
                 <Input
                   label="Academic Year"
                   value={courseForm.academic_year}
                   onChange={(event) => setCourseForm((current) => ({ ...current, academic_year: event.target.value }))}
                 />
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Language</label>
-                  <Select
-                    value={courseForm.language}
-                    onChange={(event) => setCourseForm((current) => ({ ...current, language: event.target.value }))}
-                  >
-                    {LANGUAGE_OPTIONS.map((language) => (
-                      <option key={language} value={language}>
-                        {language}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
               </div>
               <Button onClick={handleCreateCourse} disabled={createCourseMutation.isPending}>
                 <Plus className="mr-2 h-4 w-4" />
@@ -400,36 +377,13 @@ export default function AdminSettingsPage() {
                                 ))}
                               </Select>
                             </div>
-                            <div className="space-y-2">
-                              <label className="text-sm font-medium">Course Type</label>
-                              <Select
-                                value={editingCourseForm.course_type}
-                                onChange={(event) =>
-                                  setEditingCourseForm((current) => ({ ...current, course_type: event.target.value }))
-                                }
-                              >
-                                {COURSE_TYPES.map((courseType) => (
-                                  <option key={courseType} value={courseType}>
-                                    {courseType}
-                                  </option>
-                                ))}
-                              </Select>
-                            </div>
-                            <div className="space-y-2">
-                              <label className="text-sm font-medium">Language</label>
-                              <Select
-                                value={editingCourseForm.language}
-                                onChange={(event) =>
-                                  setEditingCourseForm((current) => ({ ...current, language: event.target.value }))
-                                }
-                              >
-                                {LANGUAGE_OPTIONS.map((language) => (
-                                  <option key={language} value={language}>
-                                    {language}
-                                  </option>
-                                ))}
-                              </Select>
-                            </div>
+                            <Input
+                              label="Academic Year"
+                              value={editingCourseForm.academic_year}
+                              onChange={(event) =>
+                                setEditingCourseForm((current) => ({ ...current, academic_year: event.target.value }))
+                              }
+                            />
                             <div className="flex items-end gap-2">
                               <Button onClick={saveCourse} disabled={updateCourseMutation.isPending}>
                                 <Save className="mr-2 h-4 w-4" />
@@ -466,6 +420,14 @@ export default function AdminSettingsPage() {
                                 }
                               >
                                 {course.is_deleted ? "Restore" : "Archive"}
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => deleteCourseMutation.mutate(course.id)}
+                                disabled={deleteCourseMutation.isPending}
+                              >
+                                Delete
                               </Button>
                             </div>
                           </div>

@@ -53,12 +53,21 @@ def _sync_to_meilisearch(doc_payload: dict):
         )
         index = client.index("documents")
         
-        # Enforce Typo Tolerance for Arabic/French (US-09)
+        # Enforce Typo Tolerance and Filterable Attributes (US-09)
         index.update_settings({
             "typoTolerance": {
                 "enabled": True,
                 "minWordSizeForTypos": {"oneTypo": 4, "twoTypos": 8}
-            }
+            },
+            "filterableAttributes": [
+                "level", 
+                "filiere", 
+                "academic_year", 
+                "course_type", 
+                "language", 
+                "is_official",
+                "document_version_id"
+            ]
         })
         
         index.add_documents([doc_payload], primary_key="id")

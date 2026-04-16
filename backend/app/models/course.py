@@ -3,6 +3,7 @@ from datetime import datetime
 import uuid
 import enum
 from sqlmodel import SQLModel, Field, Relationship
+import sqlalchemy as sa
 from sqlalchemy import Column, String
 from sqlalchemy.dialects.postgresql import ARRAY
 
@@ -50,11 +51,9 @@ class Course(SQLModel, table=True):
 
     # US-06 Complete Taxonomy: niveau, type, année, langue
     level: CourseLevel = Field(default=CourseLevel.OTHER, index=True)
-    course_type: CourseType = Field(default=CourseType.OTHER, index=True)
     academic_year: str = Field(
         index=True, description="Strict format expectation: YYYY-YYYY, e.g., 2025-2026"
     )
-    language: CourseLanguage = Field(default=CourseLanguage.FR, index=True)
 
     # US-08: Auto-tagging output from KeyBERT
     # FIX: Moved 'description' to Field() instead of Column()
@@ -70,11 +69,12 @@ class Course(SQLModel, table=True):
     )
 
     # US-06 Taxonomy: département
-    department_id: Optional[uuid.UUID] = Field(foreign_key="department.id", index=True)
+    department_id: Optional[uuid.UUID] = Field(
+        sa_column=sa.Column(sa.ForeignKey("department.id", ondelete="CASCADE"), index=True)
+    )
     department: Optional["Department"] = Relationship(back_populates="courses")
 
     # US-12: Bidirectional relationship with cascade delete to remove all data when course is deleted
     contributions: List["Contribution"] = Relationship(
-        back_populates="course",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+        back_populates="course", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
     )

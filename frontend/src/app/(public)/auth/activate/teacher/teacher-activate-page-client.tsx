@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowRight, Building2, GraduationCap, Loader2, Mail } from "lucide-react";
+import { ArrowRight, Building2, GraduationCap, Loader2, Mail, Lock, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { OTPInput } from "@/components/ui/otp-input";
 import {
   Card,
@@ -13,7 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { useRequestOtpMutation, useVerifyOtpMutation } from "@/queries";
+import { useRequestOtpMutation, useVerifyOtpMutation, useActivateTeacherMutation } from "@/queries";
 import { useAuthStore } from "@/store/auth.store";
 
 export function TeacherActivatePageClient() {
@@ -24,11 +25,13 @@ export function TeacherActivatePageClient() {
   const { user } = useAuthStore();
   const [email] = useState(emailFromParams || user?.email || "");
   const [otp, setOtp] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [resendCooldown, setResendCooldown] = useState(0);
   const [step, setStep] = useState<"verify" | "success">("verify");
   const verifyMutation = useVerifyOtpMutation();
   const requestMutation = useRequestOtpMutation();
+  const activateMutation = useActivateTeacherMutation();
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -39,16 +42,24 @@ export function TeacherActivatePageClient() {
   const handleVerify = async (event: React.FormEvent) => {
     event.preventDefault();
     setError("");
-    if (otp.length !== 6) {
-      setError("Please enter the complete 6-digit code");
-      return;
-    }
 
     try {
-      await verifyMutation.mutateAsync({ email, code: otp, purpose: "TEACHER_ONBOARDING" });
+      if (token) {
+        if (password.length < 8) {
+          setError("Password must be at least 8 characters long");
+          return;
+        }
+        await activateMutation.mutateAsync({ token, password });
+      } else {
+        if (otp.length !== 6) {
+          setError("Please enter the complete 6-digit code");
+          return;
+        }
+        await verifyMutation.mutateAsync({ email, code: otp, purpose: "TEACHER_ONBOARDING" });
+      }
       setStep("success");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Invalid code");
+      setError(err instanceof Error ? err.message : "Activation failed");
     }
   };
 
@@ -109,25 +120,63 @@ export function TeacherActivatePageClient() {
               </div>
             ) : null}
             {token ? (
-              <div className="rounded-lg bg-primary/10 p-3 text-sm text-primary">
-                Invite token detected. Complete activation to join your department.
+              <div className="space-y-4">
+                <div className="rounded-lg bg-emerald-500/10 p-3 text-sm text-emerald-500 flex items-center gap-2">
+                  <ShieldCheck className="h-4 w-4" />
+                  Secure activation token detected
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Create Permanent Password</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      type="password"
+                      placeholder="Enter a secure password"
+                      className="pl-10"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    This password will be used for your subsequent logins.
+                  </p>
+                </div>
               </div>
-            ) : null}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Verification Code</label>
-              <div className="flex justify-center">
-                <OTPInput length={6} value={otp} onChange={setOtp} error={!!error} />
-              </div>
-              <p className="text-center text-xs text-muted-foreground">
-                Enter the code sent to <span className="font-medium">{email}</span>
-              </p>
-            </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Verification Code</label>
+                  <div className="flex justify-center">
+                    <OTPInput length={6} value={otp} onChange={setOtp} error={!!error} />
+                  </div>
+                  <p className="text-center text-xs text-muted-foreground">
+                    Enter the code sent to <span className="font-medium">{email}</span>
+                  </p>
+                </div>
+                <div className="text-center text-sm">
+                  <span className="text-muted-foreground">Didn&apos;t receive a code? </span>
+                  <button
+                    type="button"
+                    onClick={handleResend}
+                    disabled={resendCooldown > 0 || requestMutation.isPending}
+                    className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
+                  >
+                    {requestMutation.isPending
+                      ? "Sending..."
+                      : resendCooldown > 0
+                        ? `Resend in ${resendCooldown}s`
+                        : "Resend code"}
+                  </button>
+                </div>
+              </>
+            )}
             <Button
               type="submit"
               className="w-full"
-              disabled={otp.length !== 6 || verifyMutation.isPending}
+              disabled={(token ? password.length < 8 : otp.length !== 6) || verifyMutation.isPending || activateMutation.isPending}
             >
-              {verifyMutation.isPending ? (
+              {verifyMutation.isPending || activateMutation.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Activating...
@@ -136,21 +185,6 @@ export function TeacherActivatePageClient() {
                 "Activate Account"
               )}
             </Button>
-            <div className="text-center text-sm">
-              <span className="text-muted-foreground">Didn&apos;t receive a code? </span>
-              <button
-                type="button"
-                onClick={handleResend}
-                disabled={resendCooldown > 0 || requestMutation.isPending}
-                className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
-              >
-                {requestMutation.isPending
-                  ? "Sending..."
-                  : resendCooldown > 0
-                    ? `Resend in ${resendCooldown}s`
-                    : "Resend code"}
-              </button>
-            </div>
           </form>
           <div className="mt-6 flex items-center justify-center gap-2 text-sm text-muted-foreground">
             <Mail className="h-4 w-4" />

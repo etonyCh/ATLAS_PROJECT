@@ -12,6 +12,8 @@ from app.core.limits import limiter
 from app.db.session import get_session
 from app.services.ai_core.rag_inference import execute_hybrid_search, meili_client
 from app.models.contribution import Contribution, DocumentVersion
+from app.models.user import User
+from app.dependencies import get_current_user
 
 
 router = APIRouter(tags=["Search"])
@@ -27,6 +29,10 @@ class SearchResultItem(BaseModel):
     snippet: str
     tags: list[str] = Field(default_factory=list)
     filiere: str | None = None
+    level: str | None = None
+    academic_year: str | None = None
+    course_type: str | None = None
+    language: str | None = None
     rrf_score: float
 
 
@@ -55,6 +61,7 @@ async def search(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
 ) -> SearchResponse:
     # Require at least one search parameter (query or filters)
     if not q and not filiere and not niveau and not type and not annee and not langue:
@@ -73,6 +80,14 @@ async def search(
             field="q",
             status_code=400,
         )
+
+    # US-XX: Auto-filter by student level if not provided
+    if not niveau:
+        role_value = (
+            current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+        )
+        if role_value == "STUDENT" and current_user.level:
+            niveau = current_user.level if not hasattr(current_user.level, "value") else current_user.level.value
 
     items = await execute_hybrid_search(
         query=q,

@@ -7,13 +7,23 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import desc, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import atlas_error
 from app.db.session import get_session
 from app.dependencies import require_role
 from app.models.course import Course, CourseLanguage, CourseLevel, CourseType
-from app.models.user import AccountStatus, Department, TeacherProfile, TeacherRequestStatus, TeacherVerificationRequest, User
+from app.models.user import (
+    AccountStatus,
+    Department,
+    Establishment,
+    TeacherProfile,
+    TeacherRequestStatus,
+    TeacherVerificationRequest,
+    User,
+    UserRole,
+)
 from app.schemas.pagination import build_paginated_response
 
 
@@ -45,9 +55,7 @@ class CatalogCourseCreateRequest(BaseModel):
     description: str | None = None
     department_id: UUID
     level: str
-    course_type: str = "LECTURE"
     academic_year: str
-    language: str = "FR"
 
 
 class CatalogCourseUpdateRequest(BaseModel):
@@ -55,9 +63,20 @@ class CatalogCourseUpdateRequest(BaseModel):
     description: str | None = None
     department_id: UUID | None = None
     level: str | None = None
-    course_type: str | None = None
     academic_year: str | None = None
-    language: str | None = None
+    is_deleted: bool | None = None
+
+
+
+class UserUpdateRequest(BaseModel):
+    full_name: str | None = None
+    filiere: str | None = None
+    level: str | None = None
+    date_of_birth: str | None = None
+    gender: str | None = None
+    phone_number: str | None = None
+    address: str | None = None
+    preferred_language: str | None = None
     is_deleted: bool | None = None
 
 
@@ -71,7 +90,9 @@ def _serialize_department(department: Department) -> dict[str, Any]:
     }
 
 
-def _serialize_catalog_course(course: Course, department: Department | None = None) -> dict[str, Any]:
+def _serialize_catalog_course(
+    course: Course, department: Department | None = None
+) -> dict[str, Any]:
     return {
         "id": str(course.id),
         "title": course.title,
@@ -79,9 +100,7 @@ def _serialize_catalog_course(course: Course, department: Department | None = No
         "department_id": str(course.department_id) if course.department_id else None,
         "department_name": department.name if department else None,
         "level": course.level.value if hasattr(course.level, "value") else course.level,
-        "course_type": course.course_type.value if hasattr(course.course_type, "value") else course.course_type,
         "academic_year": course.academic_year,
-        "language": course.language.value if hasattr(course.language, "value") else course.language,
         "created_at": course.created_at,
         "is_deleted": course.is_deleted,
     }
@@ -125,17 +144,13 @@ async def list_users(
         filters.append(User.filiere == filiere)
     if is_active is not None:
         filters.append(User.is_active.is_(is_active))
-        
-    if _current_user.establishment_id:
-        filters.append(User.establishment_id == _current_user.establishment_id)
+
+    # Strict multi-tenancy: ADMIN must be scoped to an establishment
+    filters.append(User.establishment_id == _current_user.establishment_id)
 
     total = await db.execute(select(func.count()).select_from(User).where(*filters))
     result = await db.execute(
-        select(User)
-        .where(*filters)
-        .order_by(desc(User.created_at))
-        .offset(offset)
-        .limit(limit)
+        select(User).where(*filters).order_by(desc(User.created_at)).offset(offset).limit(limit)
     )
     users = result.scalars().all()
     items = [
@@ -172,6 +187,12 @@ async def update_user(
     if user is None:
         raise atlas_error("USER_001", "User not found.", status_code=404)
 
+    # Strict multi-tenancy: Verify target user belongs to the same establishment
+    if user.establishment_id != _current_user.establishment_id:
+        raise atlas_error(
+            "AUTH_008", "You do not have permission to manage this user.", status_code=403
+        )
+
     if payload.full_name is not None:
         user.full_name = payload.full_name
     if payload.is_active is not None:
@@ -200,17 +221,14 @@ async def list_pending_users(
     _current_user: User = Depends(require_role("ADMIN")),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    filters = [User.status == AccountStatus.PENDING_VERIFICATION]
-    if _current_user.establishment_id:
-        filters.append(User.establishment_id == _current_user.establishment_id)
+    filters = [
+        User.status == AccountStatus.PENDING_VERIFICATION,
+        User.establishment_id == _current_user.establishment_id,
+    ]
 
     total = await db.execute(select(func.count()).select_from(User).where(*filters))
     result = await db.execute(
-        select(User)
-        .where(*filters)
-        .order_by(desc(User.created_at))
-        .offset(offset)
-        .limit(limit)
+        select(User).where(*filters).order_by(desc(User.created_at)).offset(offset).limit(limit)
     )
     users = result.scalars().all()
     items = [
@@ -239,11 +257,14 @@ async def list_teacher_requests(
     _current_user: User = Depends(require_role("ADMIN")),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    filters = [TeacherVerificationRequest.status == TeacherRequestStatus.PENDING]
-    if _current_user.establishment_id:
-        filters.append(TeacherVerificationRequest.establishment_id == _current_user.establishment_id)
+    filters = [
+        TeacherVerificationRequest.status == TeacherRequestStatus.PENDING,
+        TeacherVerificationRequest.establishment_id == _current_user.establishment_id,
+    ]
 
-    total = await db.execute(select(func.count()).select_from(TeacherVerificationRequest).where(*filters))
+    total = await db.execute(
+        select(func.count()).select_from(TeacherVerificationRequest).where(*filters)
+    )
     result = await db.execute(
         select(TeacherVerificationRequest, User)
         .join(User, User.id == TeacherVerificationRequest.user_id)
@@ -286,7 +307,9 @@ async def approve_teacher_request(
 
     request, user = row
     if current_user.establishment_id and request.establishment_id != current_user.establishment_id:
-        raise atlas_error("AUTH_008", "You do not have permission to approve this request.", status_code=403)
+        raise atlas_error(
+            "AUTH_008", "You do not have permission to approve this request.", status_code=403
+        )
     if request.status != TeacherRequestStatus.PENDING:
         raise atlas_error("USER_002", "Teacher request is not pending.", status_code=400)
 
@@ -309,7 +332,9 @@ async def approve_teacher_request(
     )
     department = dept_result.scalar_one_or_none()
 
-    profile_result = await db.execute(select(TeacherProfile).where(TeacherProfile.user_id == user.id))
+    profile_result = await db.execute(
+        select(TeacherProfile).where(TeacherProfile.user_id == user.id)
+    )
     teacher_profile = profile_result.scalar_one_or_none()
     if teacher_profile is None:
         teacher_profile = TeacherProfile(
@@ -318,8 +343,12 @@ async def approve_teacher_request(
             specialization=request.requested_department,
         )
     else:
-        teacher_profile.department_id = department.id if department else teacher_profile.department_id
-        teacher_profile.specialization = teacher_profile.specialization or request.requested_department
+        teacher_profile.department_id = (
+            department.id if department else teacher_profile.department_id
+        )
+        teacher_profile.specialization = (
+            teacher_profile.specialization or request.requested_department
+        )
 
     db.add(request)
     db.add(user)
@@ -352,26 +381,28 @@ async def approve_pending_user(
     user = await db.get(User, user_id)
     if user is None:
         raise atlas_error("USER_001", "User not found.", status_code=404)
-        
+
     if _current_user.establishment_id and user.establishment_id != _current_user.establishment_id:
-        raise atlas_error("AUTH_008", "You do not have permission to approve this user.", status_code=403)
-        
+        raise atlas_error(
+            "AUTH_008", "You do not have permission to approve this user.", status_code=403
+        )
+
     if user.status != AccountStatus.PENDING_VERIFICATION:
         raise atlas_error("USER_002", "User is not in pending status.", status_code=400)
 
     user.status = AccountStatus.ACTIVE
     user.trust_score = 50  # Initial trust score for verified educators
     user.is_verified = True
-    
+
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    
+
     return {
         "message": "User approved successfully.",
         "id": str(user.id),
         "status": user.status,
-        "trust_score": user.trust_score
+        "trust_score": user.trust_score,
     }
 
 
@@ -380,9 +411,8 @@ async def list_departments(
     _current_user: User = Depends(require_role("ADMIN")),
     db: AsyncSession = Depends(get_session),
 ) -> list[dict[str, Any]]:
-    filters = []
-    if _current_user.establishment_id:
-        filters.append(Department.establishment_id == _current_user.establishment_id)
+    # Strict multi-tenancy filter
+    filters = [Department.establishment_id == _current_user.establishment_id]
     result = await db.execute(select(Department).where(*filters).order_by(Department.name.asc()))
     return [_serialize_department(item) for item in result.scalars().all()]
 
@@ -417,7 +447,10 @@ async def update_department(
     department = await db.get(Department, department_id)
     if department is None:
         raise atlas_error("DEPT_001", "Department not found.", status_code=404)
-    if current_user.establishment_id and department.establishment_id != current_user.establishment_id:
+    if (
+        current_user.establishment_id
+        and department.establishment_id != current_user.establishment_id
+    ):
         raise atlas_error("AUTH_008", "You do not have access to this department.", status_code=403)
 
     if payload.name is not None:
@@ -436,9 +469,11 @@ async def list_catalog_courses(
     _current_user: User = Depends(require_role("ADMIN")),
     db: AsyncSession = Depends(get_session),
 ) -> list[dict[str, Any]]:
-    query = select(Course, Department).outerjoin(Department, Department.id == Course.department_id)
-    if _current_user.establishment_id:
-        query = query.where(Department.establishment_id == _current_user.establishment_id)
+    query = (
+        select(Course, Department)
+        .outerjoin(Department, Department.id == Course.department_id)
+        .where(Department.establishment_id == _current_user.establishment_id)
+    )
     result = await db.execute(query.order_by(desc(Course.created_at)))
     rows = result.all()
     return [_serialize_catalog_course(course, department) for course, department in rows]
@@ -453,19 +488,22 @@ async def create_catalog_course(
     department = await db.get(Department, payload.department_id)
     if department is None:
         raise atlas_error("DEPT_001", "Department not found.", status_code=404)
-    if current_user.establishment_id and department.establishment_id != current_user.establishment_id:
+    if (
+        current_user.establishment_id
+        and department.establishment_id != current_user.establishment_id
+    ):
         raise atlas_error("AUTH_008", "You do not have access to this department.", status_code=403)
     if payload.level not in (department.allowed_levels or []):
-        raise atlas_error("COURSE_003", "Selected level is not enabled for this department.", status_code=400)
+        raise atlas_error(
+            "COURSE_003", "Selected level is not enabled for this department.", status_code=400
+        )
 
     course = Course(
         title=payload.title.strip(),
         description=payload.description,
         department_id=payload.department_id,
         level=CourseLevel(payload.level),
-        course_type=CourseType(payload.course_type),
         academic_year=payload.academic_year,
-        language=CourseLanguage(payload.language),
     )
     db.add(course)
     await db.commit()
@@ -480,35 +518,113 @@ async def update_catalog_course(
     current_user: User = Depends(require_role("ADMIN")),
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
+    # 1. Fetch the course
     course = await db.get(Course, course_id)
     if course is None:
         raise atlas_error("COURSE_001", "Course not found.", status_code=404)
 
-    department = await db.get(Department, payload.department_id or course.department_id)
-    if department and current_user.establishment_id and department.establishment_id != current_user.establishment_id:
-        raise atlas_error("AUTH_008", "You do not have access to this department.", status_code=403)
+    # 2. Fetch current department for ownership check
+    current_dept = await db.get(Department, course.department_id)
+    if (
+        current_dept is None 
+        or (current_user.establishment_id and current_dept.establishment_id != current_user.establishment_id)
+    ):
+        raise atlas_error("AUTH_008", "You do not have access to this course.", status_code=403)
 
+    # 3. If department_id is being changed, validate the new one
+    target_dept = current_dept
+    if payload.department_id and payload.department_id != course.department_id:
+        target_dept = await db.get(Department, payload.department_id)
+        if target_dept is None:
+            raise atlas_error("DEPT_001", "New department not found.", status_code=404)
+        if (
+            current_user.establishment_id 
+            and target_dept.establishment_id != current_user.establishment_id
+        ):
+            raise atlas_error("AUTH_008", "You cannot move courses to another establishment.", status_code=403)
+        course.department_id = payload.department_id
+
+    # 4. If level is changed, validate against department allowed levels
+    new_level = payload.level or course.level
+    if hasattr(new_level, "value"):
+        new_level = new_level.value
+        
+    if payload.level:
+         if new_level not in (target_dept.allowed_levels or []):
+            raise atlas_error("COURSE_003", f"Level {new_level} is not enabled for department {target_dept.name}.", status_code=400)
+         course.level = CourseLevel(new_level)
+
+    # 5. Update other fields
     if payload.title is not None:
         course.title = payload.title.strip()
     if payload.description is not None:
-        course.description = payload.description
-    if payload.department_id is not None:
-        course.department_id = payload.department_id
-    if payload.level is not None:
-        if department and payload.level not in (department.allowed_levels or []):
-            raise atlas_error("COURSE_003", "Selected level is not enabled for this department.", status_code=400)
-        course.level = CourseLevel(payload.level)
-    if payload.course_type is not None:
-        course.course_type = CourseType(payload.course_type)
+        course.description = payload.description.strip() or None
     if payload.academic_year is not None:
         course.academic_year = payload.academic_year
-    if payload.language is not None:
-        course.language = CourseLanguage(payload.language)
     if payload.is_deleted is not None:
         course.is_deleted = payload.is_deleted
 
     db.add(course)
     await db.commit()
     await db.refresh(course)
-    department = await db.get(Department, course.department_id) if course.department_id else None
-    return _serialize_catalog_course(course, department)
+    return _serialize_catalog_course(course, target_dept)
+
+
+@router.delete("/admin/catalog/courses/{course_id}")
+async def delete_catalog_course(
+    course_id: UUID,
+    current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    course = await db.get(Course, course_id)
+    if course is None:
+        raise atlas_error("COURSE_001", "Course not found.", status_code=404)
+
+    # Ownership Check
+    dept = await db.get(Department, course.department_id)
+    if (
+        dept is None 
+        or (current_user.establishment_id and dept.establishment_id != current_user.establishment_id)
+    ):
+        raise atlas_error("AUTH_008", "You do not have access to this course.", status_code=403)
+
+    await db.delete(course)
+    await db.commit()
+    return {"message": "Catalog course deleted successfully."}
+
+
+@router.delete("/admin/departments/{department_id}")
+async def delete_department(
+    department_id: UUID,
+    current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    department = await db.get(Department, department_id)
+    if department is None:
+        raise atlas_error("DEPT_001", "Department not found.", status_code=404)
+    if (
+        current_user.establishment_id
+        and department.establishment_id != current_user.establishment_id
+    ):
+        raise atlas_error("AUTH_008", "You do not have access to this department.", status_code=403)
+
+    await db.delete(department)
+    await db.commit()
+    return {"message": "Department and all associated courses deleted successfully."}
+
+
+@router.get("/admin/establishments")
+async def list_establishments(
+    _current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_session),
+) -> list[dict[str, Any]]:
+    # Multi-tenant: ADMIN remains strictly scoped to their assigned establishment
+    query = select(Establishment).where(Establishment.id == _current_user.establishment_id)
+
+    result = await db.execute(query.order_by(Establishment.name.asc()))
+    establishments = result.scalars().all()
+    return [
+        {"id": str(e.id), "name": e.name, "domain": e.domain, "is_authorized": e.is_authorized}
+        for e in establishments
+    ]
+

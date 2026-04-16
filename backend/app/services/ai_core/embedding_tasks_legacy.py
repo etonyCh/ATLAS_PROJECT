@@ -143,7 +143,16 @@ def _auto_index_to_meilisearch(session: Session, dv: DocumentVersion, contributi
             "typoTolerance": {
                 "enabled": True,
                 "minWordSizeForTypos": {"oneTypo": 4, "twoTypos": 8},
-            }
+            },
+            "filterableAttributes": [
+                "level", 
+                "filiere", 
+                "academic_year", 
+                "course_type", 
+                "language", 
+                "is_official",
+                "document_version_id"
+            ]
         })
         index.add_documents([doc_payload], primary_key="id")
         log.info("auto_indexed_teacher_document", doc_id=str(dv.id))

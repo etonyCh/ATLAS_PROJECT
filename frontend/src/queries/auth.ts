@@ -43,6 +43,12 @@ export function useVerifyOtpMutation() {
   });
 }
 
+export function useActivateTeacherMutation() {
+  return useMutation({
+    mutationFn: (data: { token: string; password: string }) => authApi.activateTeacher(data),
+  });
+}
+
 export function useRequestOtpMutation() {
   return useMutation({
     mutationFn: ({

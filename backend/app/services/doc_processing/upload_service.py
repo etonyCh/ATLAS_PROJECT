@@ -57,6 +57,8 @@ async def upload_official_course_document(
     current_user: User,
     course_id,
     file,
+    course_type: CourseType,
+    language: CourseLanguage,
 ) -> Contribution:
     file_content, file_hash = await read_and_validate_upload(file)
 
@@ -93,6 +95,8 @@ async def upload_official_course_document(
             description=course.description,
             uploader_id=current_user.id,
             course_id=course.id,
+            course_type=course_type,
+            language=language,
             status=ContributionStatus.APPROVED,  # Teachers bypass moderation (Spec §5.2)
         )
         session.add(contribution)
@@ -117,7 +121,7 @@ async def upload_official_course_document(
         file_size_bytes=len(file_content),
         mime_type=file.content_type,
         sha256_hash=file_hash,
-        language=(course.language.value if hasattr(course.language, "value") else str(course.language)).lower(),
+        language=(language.value if hasattr(language, "value") else str(language)).lower(),
         pipeline_status=DocumentPipelineStatus.QUEUED,
     )
     session.add(doc_version)

@@ -19,6 +19,8 @@ export default function TeacherCourseUploadPage() {
 
   const [file, setFile] = useState<File | null>(null);
   const [selectedCourseId, setSelectedCourseId] = useState("");
+  const [courseType, setCourseType] = useState("LECTURE");
+  const [language, setLanguage] = useState("FR");
   const [error, setError] = useState("");
 
   const selectedCourse = useMemo(
@@ -45,6 +47,8 @@ export default function TeacherCourseUploadPage() {
 
     const formData = new FormData();
     formData.append("course_id", selectedCourseId);
+    formData.append("course_type", courseType);
+    formData.append("language", language);
     formData.append("file", file);
 
     try {
@@ -106,6 +110,36 @@ export default function TeacherCourseUploadPage() {
                     {selectedCourse.description ? <p className="mt-2 text-muted-foreground">{selectedCourse.description}</p> : null}
                   </div>
                 ) : null}
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Document Type</label>
+                    <select
+                      className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                      value={courseType}
+                      onChange={(event) => setCourseType(event.target.value)}
+                    >
+                      <option value="LECTURE">Lecture Notes (Cours)</option>
+                      <option value="TD">Worksheet (TD)</option>
+                      <option value="TP">Lab (TP)</option>
+                      <option value="EXAM">Exam/Quiz</option>
+                      <option value="SUMMARY">Summary/Revision</option>
+                      <option value="OTHER">Other</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Language</label>
+                    <select
+                      className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                      value={language}
+                      onChange={(event) => setLanguage(event.target.value)}
+                    >
+                      <option value="FR">French (Français)</option>
+                      <option value="EN">English (Anglais)</option>
+                      <option value="AR">Arabic (العربية)</option>
+                    </select>
+                  </div>
+                </div>
               </CardContent>
             </Card>
 

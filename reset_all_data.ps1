@@ -26,7 +26,10 @@ if ($confirm -ne "yes") {
 }
 
 # Remove volumes
-docker volume rm atlas_postgres_data atlas_minio_data atlas_redis_data atlas_meili_data 2>$null
+$volumes = docker volume ls --format "{{.Name}}" | Select-String "atlas"
+foreach ($vol in $volumes) {
+    docker volume rm $vol
+}
 Write-Host "Volumes deleted." -ForegroundColor Green
 Write-Host ""
 
@@ -163,11 +166,10 @@ Write-Host ""
 Write-Host "=== RESET COMPLETE ===" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Your system is now clean with fresh test data:" -ForegroundColor Green
-Write-Host "  - admin@atlas.tn / Admin123!" -ForegroundColor White
-Write-Host "  - superadmin@atlas.tn / SuperAdmin123!" -ForegroundColor White
-Write-Host "  - student@atlas.tn / Student123!" -ForegroundColor White
-Write-Host "  - teacher@atlas.tn / Teacher123!" -ForegroundColor White
-Write-Host ""
+    Write-Host "  - admin@atlas.tn / Admin123!" -ForegroundColor White
+    Write-Host "  - superadmin@atlas.tn / SuperAdmin123!" -ForegroundColor White
+    Write-Host ""
+
 Write-Host "Next steps:" -ForegroundColor Yellow
 Write-Host "  Docker mode (recommended):" -ForegroundColor Cyan
 Write-Host "    1. Start all services: docker compose up -d" -ForegroundColor White

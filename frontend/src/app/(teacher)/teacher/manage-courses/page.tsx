@@ -2,10 +2,13 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { BookOpen, ChevronLeft, ChevronRight, Eye, Loader2, Plus, Search, Users } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, Eye, Loader2, Plus, Search, Trash2, Users } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { contributionsApi, filesApi } from "@/lib/api";
+import { PDFPreviewer } from "@/components/ui/pdf-previewer";
 import {
   Dialog,
   DialogContent,
@@ -16,12 +19,25 @@ import {
 } from "@/components/ui/dialog";
 import { StatusChip } from "@/components/ui/status-chip";
 import { useTeacherCourses } from "@/queries/courses";
+import { MaterialSelectionDialog } from "@/components/course/material-selection-dialog";
 
 export default function ManageCourses() {
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedCourse, setSelectedCourse] = useState<any>(null);
+  const [courseToDelete, setCourseToDelete] = useState<any>(null);
+  const [previewContributionId, setPreviewContributionId] = useState<string | null>(null);
+  const [materialSelectionCourse, setMaterialSelectionCourse] = useState<{id: string, title: string} | null>(null);
   const itemsPerPage = 6;
+  
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => contributionsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["courses", "my-uploads"] });
+      setCourseToDelete(null);
+    },
+  });
 
   const { data: courses = [], isLoading } = useTeacherCourses();
 
@@ -29,6 +45,7 @@ export default function ManageCourses() {
     () =>
       courses.map((course) => ({
         id: course.id,
+        contributionId: (course as any).contribution_id,
         title: course.title,
         description: course.description,
         filiere: course.filiere || course.department_name || "Department",
@@ -102,15 +119,21 @@ export default function ManageCourses() {
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <div className="flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground hidden lg:flex">
                     <Users className="h-4 w-4" />
                     Catalog course
                   </div>
                   <StatusChip status={course.status} />
-                  <Button variant="outline" size="sm" onClick={() => setSelectedCourse(course)}>
+                  <Button variant="outline" size="sm" onClick={() => setMaterialSelectionCourse({ id: course.id, title: course.title })}>
                     <Eye className="mr-2 h-4 w-4" />
-                    View
+                    Manage Materials
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setSelectedCourse(course)}>
+                    Details
+                  </Button>
+                  <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => setCourseToDelete(course)}>
+                    <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
@@ -118,6 +141,23 @@ export default function ManageCourses() {
           </Card>
         ))}
       </div>
+
+      <Dialog open={!!courseToDelete} onOpenChange={(open) => !open && setCourseToDelete(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Uploaded Material?</DialogTitle>
+            <DialogDescription>
+              This will permanently delete your uploaded material for <strong>{courseToDelete?.title}</strong>. This action cannot be undone, and the material will be removed from search and storage.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCourseToDelete(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => deleteMutation.mutate(courseToDelete.contributionId)} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? "Deleting..." : "Permanently Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {filteredCourses.length > itemsPerPage ? (
         <div className="flex items-center justify-between">
@@ -158,6 +198,34 @@ export default function ManageCourses() {
               </DialogFooter>
             </>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <MaterialSelectionDialog
+        isOpen={!!materialSelectionCourse}
+        courseId={materialSelectionCourse?.id || null}
+        courseTitle={materialSelectionCourse?.title}
+        onClose={() => setMaterialSelectionCourse(null)}
+      />
+
+      <Dialog open={!!previewContributionId} onOpenChange={(open) => !open && setPreviewContributionId(null)}>
+        <DialogContent className="max-w-[95vw] lg:max-w-[85vw] h-[90vh] p-0 overflow-hidden border-none shadow-2xl">
+          {previewContributionId && (
+            <div className="flex h-full flex-col overflow-hidden rounded-lg">
+              <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-2">
+                <h3 className="font-semibold text-sm">Document Preview</h3>
+                <Button variant="ghost" size="sm" onClick={() => setPreviewContributionId(null)}>Close</Button>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <PDFPreviewer
+                  storagePath={previewContributionId}
+                  onRequestPresignedUrl={(id) => filesApi.getPreviewUrl(id).then(r => r.url)}
+                  title="Course Material"
+                  className="rounded-none border-none"
+                />
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
