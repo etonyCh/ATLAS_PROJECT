@@ -152,7 +152,14 @@ export default function ManageCourses() {
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCourseToDelete(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={() => deleteMutation.mutate(courseToDelete.contributionId)} disabled={deleteMutation.isPending}>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (!courseToDelete?.contributionId) return;
+                deleteMutation.mutate(courseToDelete.contributionId);
+              }}
+              disabled={deleteMutation.isPending || !courseToDelete?.contributionId}
+            >
               {deleteMutation.isPending ? "Deleting..." : "Permanently Delete"}
             </Button>
           </DialogFooter>

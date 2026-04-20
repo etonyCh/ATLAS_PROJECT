@@ -20,6 +20,13 @@ class SummaryFormat(str, Enum):
     STRUCTURED = "STRUCTURED" # Hierarchical plan
     COMPARATIVE = "COMPARATIVE" # Diff between 2 versions
 
+
+class AcademicAssetType(str, Enum):
+    FLASHCARDS = "FLASHCARDS"
+    QUIZ = "QUIZ"
+    SUMMARY = "SUMMARY"
+    MINDMAP = "MINDMAP"
+
 class FlashcardDeck(SQLModel, table=True):
     """
     Groups flashcards generated from a specific document.
@@ -139,3 +146,30 @@ class Summary(SQLModel, table=True):
     content: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
     
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AcademicAssetCache(SQLModel, table=True):
+    """
+    Document-scoped cache for generated academic assets.
+
+    This becomes the stable generation layer underneath user-specific study
+    sessions so repeated requests for the same document do not hit the LLM
+    unnecessarily.
+    """
+
+    id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4, primary_key=True)
+    document_version_id: uuid.UUID = Field(
+        foreign_key="documentversion.id",
+        index=True,
+        ondelete="CASCADE",
+    )
+    asset_type: AcademicAssetType = Field(index=True)
+    target_lang: str = Field(default="fr", index=True)
+    profile: str = Field(default="default", index=True)
+    content: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
+    chunk_count: int = Field(default=0)
+    source_pipeline_version: str = Field(default="atlas-v1")
+    model_version: Optional[str] = None
+    is_stale: bool = Field(default=False, index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)

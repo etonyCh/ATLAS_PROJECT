@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime
+import logging
+import os
 from typing import Any
 from uuid import UUID
 
@@ -18,6 +20,7 @@ from app.db.session import get_session
 from app.dependencies import get_current_user, require_role
 from app.models.gamification import XPTransaction, XPTransactionType
 from app.models.user import User, UserRole
+from app.schemas.pagination import build_paginated_response
 from app.models.contribution import (
     Contribution,
     ContributionStatus,
@@ -32,6 +35,7 @@ from app.models.rag import RAGSession
 from app.models.study_tools import FlashcardDeck, QuizSession, MindMap, Summary
 from app.models.annotation import DocumentAnnotation
 from app.models.all_models import Notification, ReadingProgress
+from app.services.study_engine import gamification_service
 
 
 router = APIRouter(tags=["Contributions"])
@@ -62,6 +66,21 @@ class ContributorRequestReviewRequest(BaseModel):
 
 
 REPORT_TITLE_PREFIX = "Feedback received: "
+logger = logging.getLogger(__name__)
+
+
+def _remove_from_meilisearch(doc_id: str) -> None:
+    """Best-effort purge of a document from MeiliSearch."""
+    try:
+        import meilisearch
+
+        client = meilisearch.Client(
+            os.getenv("MEILI_URL", "http://localhost:7700"),
+            os.getenv("MEILI_MASTER_KEY", "meili_master_key"),
+        )
+        client.index("documents").delete_document(doc_id)
+    except Exception as exc:
+        logger.warning("meilisearch_purge_failed doc_id=%s error=%s", doc_id, exc)
 
 
 def _serialize_contribution(item: Contribution) -> dict[str, Any]:
@@ -418,7 +437,7 @@ async def list_contribution_queue(
 
 @router.get("/admin/contributor-requests")
 async def list_contributor_requests(
-    status: str | None = Query(default="PENDING"),
+    status: str | None = Query(default=None),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(require_role("TEACHER")),
@@ -726,20 +745,24 @@ async def delete_contribution(
     Granular hard delete: removes a single contribution and its related data permanently.
     Teachers can use this to 'un-upload' a subject.
     """
+    import structlog
     from sqlalchemy import delete
     from app.core.qdrant_client import get_qdrant_manager, COLLECTION_DOCUMENTS
     from app.services.doc_processing.storage import minio_client
 
-    print(f"🗑️  DELETE request received for contribution: {contribution_id}")
+    log = structlog.get_logger().bind(action="delete_contribution", contribution_id=str(contribution_id))
+    log.info("delete_request_received")
     
     # 1. Fetch contribution
     contribution = await db.get(Contribution, contribution_id)
     if contribution is None:
+        log.warning("contribution_not_found")
         raise atlas_error("CONTRIBUTION_001", "Contribution not found.", status_code=404)
 
     # 2. Security: Only uploader or ADMIN can delete
     user_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
     if contribution.uploader_id != current_user.id and user_role not in ("ADMIN", "SUPERADMIN"):
+        log.warning("permission_denied", user_id=str(current_user.id))
         raise atlas_error("AUTH_008", "You do not have permission to delete this contribution.", status_code=403)
 
     # 3. Get all related document versions
@@ -751,7 +774,7 @@ async def delete_contribution(
     storage_paths = [v.storage_path for v in versions if v.storage_path]
 
     if version_ids:
-        print(f"🗑️  Cleaning up {len(version_ids)} versions for contribution...")
+        log.info("cleaning_up_versions", version_count=len(version_ids))
 
         # Delete from Qdrant (semantic embeddings)
         try:
@@ -761,22 +784,22 @@ async def delete_contribution(
                     collection_name=COLLECTION_DOCUMENTS,
                     document_version_id=str(v_id)
                 )
-            print("✅ Purged Qdrant embeddings")
+            log.info("qdrant_embeddings_purged")
         except Exception as e:
-            print(f"⚠️  Qdrant cleanup warning: {e}")
+            log.error("qdrant_cleanup_failed", error=str(e))
 
         # Purge from MeiliSearch (lexical index)
         for v_id in version_ids:
             background_tasks.add_task(_remove_from_meilisearch, str(v_id))
-        print("✅ Queued MeiliSearch purge")
+        log.info("meilisearch_purge_queued")
 
         # Delete from MinIO (physical files)
         for path in storage_paths:
             try:
                 minio_client.delete_file(path)
             except Exception as e:
-                print(f"⚠️  MinIO cleanup warning for {path}: {e}")
-        print(f"✅ Deleted {len(storage_paths)} files from MinIO")
+                log.error("minio_cleanup_failed", file_path=path, error=str(e))
+        log.info("minio_files_deleted", count=len(storage_paths))
 
         # Delete related study tools/progress/annotations
         await db.execute(delete(FlashcardDeck).where(FlashcardDeck.document_version_id.in_(version_ids)))
@@ -791,10 +814,12 @@ async def delete_contribution(
         await db.execute(delete(DocumentEmbedding).where(DocumentEmbedding.document_version_id.in_(version_ids)))
 
     # 4. Final DB removal
+    # Delete related DocumentVersion rows to satisfy FK constraints
+    await db.execute(delete(DocumentVersion).where(DocumentVersion.contribution_id == contribution_id))
     await db.execute(delete(Contribution).where(Contribution.id == contribution_id))
     await db.commit()
     
     await invalidate_cache_patterns(redis_client, "admin_dashboard:*", "course_meta:*")
-    print(f"✅ Contribution {contribution_id} fully deleted")
+    log.info("contribution_fully_deleted")
     
     return {"success": True}

@@ -111,6 +111,7 @@ async def notifications_ws(
     token: str | None = Query(default=None),
     redis_client=Depends(get_redis_client),
 ) -> None:
+    await websocket.accept()
     raw_token = accessToken or token
 
     if not raw_token:

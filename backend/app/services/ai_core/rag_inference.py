@@ -12,6 +12,7 @@ import meilisearch
 from app.core.cache import ttl_with_jitter
 from app.core.config import settings
 from app.core.qdrant_client import get_qdrant_manager, COLLECTION_DOCUMENTS
+from app.services.ai_core.retrieval_enhancer import expand_query_variants
 
 logger = logging.getLogger(__name__)
 
@@ -191,25 +192,24 @@ async def execute_hybrid_search(
     sem_ranks = {}
     if query.strip():
         try:
-            query_vector = await asyncio.to_thread(_embed_query_sync, query)
-
-            # Qdrant hybrid search: dense semantic + sparse lexical fusion
             qdrant = get_qdrant_manager()
-            qdrant_results = await asyncio.to_thread(
-                qdrant.search_similar,
-                COLLECTION_DOCUMENTS,
-                query_vector,
-                document_version_id=None,  # Search across all documents
-                top_k=top_k * 5,
-            )
-
-            # Extract unique document_version_ids with their ranks
             seen_docs = set()
-            for i, result in enumerate(qdrant_results):
-                doc_id = result.get("document_version_id")
-                if doc_id and doc_id not in seen_docs:
-                    sem_ranks[str(doc_id)] = i + 1
-                    seen_docs.add(doc_id)
+            for variant in expand_query_variants(query):
+                query_vector = await asyncio.to_thread(_embed_query_sync, variant)
+                qdrant_results = await asyncio.to_thread(
+                    qdrant.search_similar,
+                    COLLECTION_DOCUMENTS,
+                    query_vector,
+                    variant,
+                    None,
+                    top_k * 5,
+                )
+
+                for i, result in enumerate(qdrant_results):
+                    doc_id = result.get("document_version_id")
+                    if doc_id and doc_id not in seen_docs:
+                        sem_ranks[str(doc_id)] = len(sem_ranks) + 1
+                        seen_docs.add(doc_id)
 
         except Exception as e:
             logger.warning(

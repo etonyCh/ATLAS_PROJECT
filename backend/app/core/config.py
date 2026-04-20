@@ -39,6 +39,12 @@ class Settings(BaseSettings):
         if isinstance(v, str) and not v.startswith("["):
             return [i.strip() for i in v.split(",")]
         elif isinstance(v, (list, str)):
+            # Ensure local dev origins are always present for convenience
+            defaults = ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"]
+            if isinstance(v, list):
+                for d in defaults:
+                    if d not in v:
+                        v.append(d)
             return v
         raise ValueError(v)
 
@@ -140,7 +146,8 @@ class Settings(BaseSettings):
     # SOTA Lego Architecture setup. Decoupled Vision and RAG models.
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL_VISION: str = "openbmb/minicpm-v4"
-    OLLAMA_MODEL_RAG: str = "qwen2.5:3b"
+    OLLAMA_MODEL_RAG: str = "gemma4:e4b"
+    OLLAMA_MODEL_GENERATION: str = "gemma4:e4b"
     
     # Defensive thresholds for multimodal processing
     OLLAMA_TIMEOUT_SECONDS: int = 120

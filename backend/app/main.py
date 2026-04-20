@@ -32,10 +32,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-        # Enforce HTTPS (HSTS)
-        response.headers["Strict-Transport-Security"] = (
-            "max-age=31536000; includeSubDomains; preload"
-        )
+        # Enforce HTTPS (HSTS) - Disabled in development to prevent localhost lockout
+        if settings.ENVIRONMENT != "development":
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains; preload"
+            )
         # Prevent Clickjacking
         response.headers["X-Frame-Options"] = "DENY"
         # Prevent MIME-type sniffing
@@ -147,6 +148,8 @@ if settings_origins:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    # US-24: Robust local dev support (covers localhost/127.0.0.1 with any port)
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?$" if settings.ENVIRONMENT == "development" else None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

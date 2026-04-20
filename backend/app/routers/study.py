@@ -14,9 +14,17 @@ from app.db.session import get_session
 from app.dependencies import get_current_user
 from app.models.contribution import Contribution, DocumentVersion
 from app.models.course import Course
-from app.models.study_tools import Flashcard, FlashcardDeck, MindMap, Question, QuizSession, Summary
+from app.models.study_tools import (
+    AcademicAssetType,
+    Flashcard,
+    FlashcardDeck,
+    MindMap,
+    Question,
+    QuizSession,
+    Summary,
+)
 from app.models.user import User
-from app.services.study_engine import flashcard_service, generation_service
+from app.services.study_engine import asset_cache_service, flashcard_service
 from app.services.study_engine.flashcard_service import ReviewButton
 
 
@@ -50,6 +58,13 @@ class SummaryGenerateRequest(BaseModel):
 class MindMapGenerateRequest(BaseModel):
     course_id: UUID
     target_lang: str = "fr"
+
+
+class DocumentAssetGenerateRequest(BaseModel):
+    asset_type: str
+    target_lang: str = "fr"
+    profile: str = "default"
+    force_regenerate: bool = False
 
 
 async def _latest_document_version(db: AsyncSession, course_id: UUID) -> DocumentVersion:
@@ -89,28 +104,7 @@ async def generate_flashcards(
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     version = await _latest_document_version(db, payload.course_id)
-    cards = await generation_service.generate_flashcards_from_text(version.ocr_text or "", payload.num_cards)
-    if not cards:
-        raise atlas_error("FLASHCARD_001", "Unable to generate flashcards for this course.", status_code=422)
-
-    deck = FlashcardDeck(
-        student_id=current_user.id,
-        document_version_id=version.id,
-        title=f"Flashcards for {payload.course_id}",
-        card_count=len(cards),
-    )
-    db.add(deck)
-    await db.flush()
-
-    for item in cards:
-        db.add(
-            Flashcard(
-                deck_id=deck.id,
-                question=item.get("question") or item.get("front") or "",
-                answer=item.get("answer") or item.get("back") or "",
-            )
-        )
-
+    deck = await asset_cache_service.instantiate_flashcard_deck(db, version, current_user)
     await db.commit()
     return {"job_id": str(deck.id), "status": "READY"}
 
@@ -272,31 +266,7 @@ async def generate_quiz(
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     version = await _latest_document_version(db, payload.course_id)
-    questions = await generation_service.generate_quiz_from_text(version.ocr_text or "", payload.num_questions)
-    if not questions:
-        raise atlas_error("QUIZ_001", "Unable to generate quiz for this course.", status_code=422)
-
-    session_row = QuizSession(
-        student_id=current_user.id,
-        document_version_id=version.id,
-        total_questions=len(questions),
-    )
-    db.add(session_row)
-    await db.flush()
-
-    for item in questions:
-        db.add(
-            Question(
-                quiz_session_id=session_row.id,
-                question_text=item.get("content") or item.get("question") or "",
-                question_type=item.get("question_type") or "MCQ",
-                options=item.get("options") or [],
-                correct_answer=item.get("correct_answer") or "",
-                explanation=item.get("explanation"),
-                source_page=item.get("source_page"),
-            )
-        )
-
+    session_row = await asset_cache_service.instantiate_quiz_session(db, version, current_user)
     await db.commit()
     return {"job_id": str(session_row.id), "status": "READY"}
 
@@ -428,22 +398,13 @@ async def generate_summary(
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     version = await _latest_document_version(db, payload.course_id)
-    content = await generation_service.generate_summary_from_text(
-        text=version.ocr_text or "",
+    summary = await asset_cache_service.instantiate_summary(
+        db,
+        version,
+        current_user,
         format_type=payload.format_type,
         target_lang=payload.target_lang,
     )
-    if not content or "error" in content:
-        raise atlas_error("SUMMARY_001", "Unable to generate summary for this course.", status_code=422)
-
-    summary = Summary(
-        student_id=current_user.id,
-        document_version_id=version.id,
-        format=payload.format_type,
-        target_lang=payload.target_lang,
-        content=content,
-    )
-    db.add(summary)
     await db.commit()
     await db.refresh(summary)
     return {"job_id": str(summary.id), "status": "READY"}
@@ -474,22 +435,12 @@ async def generate_mindmap(
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     version = await _latest_document_version(db, payload.course_id)
-    result = await generation_service.generate_mindmap_from_text(
-        text=version.ocr_text or "",
+    mindmap = await asset_cache_service.instantiate_mindmap(
+        db,
+        version,
+        current_user,
         target_lang=payload.target_lang,
     )
-    if not result:
-        raise atlas_error("MINDMAP_001", "Unable to generate mind map for this course.", status_code=422)
-
-    mindmap = MindMap(
-        student_id=current_user.id,
-        document_version_id=version.id,
-        title=result.get("title") or f"Mind map for {payload.course_id}",
-        target_lang=payload.target_lang,
-        nodes_json=result.get("nodes") or [],
-        edges_json=result.get("edges") or [],
-    )
-    db.add(mindmap)
     await db.commit()
     await db.refresh(mindmap)
     return {"job_id": str(mindmap.id), "status": "READY"}
@@ -511,4 +462,89 @@ async def get_mindmap(
         "nodes": mindmap.nodes_json,
         "edges": mindmap.edges_json,
         "created_at": mindmap.created_at,
+    }
+
+
+@router.get("/documents/{document_version_id}/assets/manifest")
+async def get_document_asset_manifest(
+    document_version_id: UUID,
+    _current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    items = await asset_cache_service.list_cached_assets(db, document_version_id)
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/documents/{document_version_id}/assets/{asset_type}")
+async def get_document_asset(
+    document_version_id: UUID,
+    asset_type: str,
+    target_lang: str = "fr",
+    profile: str = "default",
+    _current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    normalized_type = asset_type.strip().upper()
+    if normalized_type not in {"FLASHCARDS", "QUIZ", "SUMMARY", "MINDMAP"}:
+        raise atlas_error("ASSET_001", "Unsupported asset type.", status_code=400)
+    asset_enum = AcademicAssetType(normalized_type)
+
+    cached = await asset_cache_service.get_cached_asset(
+        db,
+        document_version_id,
+        asset_enum,
+        target_lang=target_lang,
+        profile=profile,
+    )
+    if cached is None:
+        raise atlas_error("ASSET_002", "Cached asset not found.", status_code=404)
+
+    return {
+        "id": str(cached.id),
+        "document_version_id": str(cached.document_version_id),
+        "asset_type": cached.asset_type,
+        "target_lang": cached.target_lang,
+        "profile": cached.profile,
+        "content": cached.content,
+        "chunk_count": cached.chunk_count,
+        "updated_at": cached.updated_at,
+    }
+
+
+@router.post("/documents/{document_version_id}/assets/generate", status_code=status.HTTP_202_ACCEPTED)
+async def generate_document_asset(
+    document_version_id: UUID,
+    payload: DocumentAssetGenerateRequest,
+    _current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    version = await db.get(DocumentVersion, document_version_id)
+    if version is None or version.is_deleted:
+        raise atlas_error("ASSET_003", "Document version not found.", status_code=404)
+
+    normalized_type = payload.asset_type.strip().upper()
+    if normalized_type not in {"FLASHCARDS", "QUIZ", "SUMMARY", "MINDMAP"}:
+        raise atlas_error("ASSET_001", "Unsupported asset type.", status_code=400)
+    asset_enum = AcademicAssetType(normalized_type)
+
+    cached = await asset_cache_service.get_or_generate_asset(
+        db,
+        version,
+        asset_enum,
+        target_lang=payload.target_lang,
+        profile=payload.profile,
+        force_regenerate=payload.force_regenerate,
+    )
+    await db.commit()
+    await db.refresh(cached)
+
+    return {
+        "id": str(cached.id),
+        "document_version_id": str(cached.document_version_id),
+        "asset_type": cached.asset_type,
+        "target_lang": cached.target_lang,
+        "profile": cached.profile,
+        "content": cached.content,
+        "chunk_count": cached.chunk_count,
+        "updated_at": cached.updated_at,
     }

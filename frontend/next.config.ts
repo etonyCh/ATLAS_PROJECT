@@ -49,7 +49,7 @@ const nextConfig: NextConfig = {
           {
             key: "Content-Security-Policy",
             value:
-              "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; font-src 'self' data:; frame-src 'self' http://localhost:9000 https://minio.atlas.tn; connect-src 'self' blob: http://localhost:8000 http://localhost:9000 ws://localhost:8000 ws://localhost:3000 https://api.atlas.tn wss://api.atlas.tn",
+              "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; font-src 'self' data:; frame-src 'self' http://localhost:9000 https://minio.atlas.tn; connect-src 'self' blob: http://localhost:8000 http://127.0.0.1:8000 http://localhost:9000 ws://localhost:8000 ws://127.0.0.1:8000 ws://localhost:3000 https://api.atlas.tn wss://api.atlas.tn",
           },
         ],
       },

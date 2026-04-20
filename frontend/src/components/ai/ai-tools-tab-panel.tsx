@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  BadgeCheck,
   Copy,
   Download,
   FileQuestion,
@@ -23,16 +24,14 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { useCreateRagSessionMutation } from "@/queries";
 import {
   useGenerateFlashcardsMutation,
-  useGenerateMindmapMutation,
+  useDocumentAssetManifestQuery,
   useGenerateQuizMutation,
-  useGenerateSummaryMutation,
 } from "@/queries/study";
 import {
+  documentAssetsApi,
   flashcardsApi,
-  mindmapsApi,
   quizApi,
   ragApi,
-  summariesApi,
 } from "@/lib/api";
 import type {
   Course,
@@ -87,6 +86,15 @@ const toolConfig = {
   },
 } as const;
 
+const assetTypeMap: Partial<
+  Record<Exclude<AIToolType, "chat">, "SUMMARY" | "MINDMAP" | "FLASHCARDS" | "QUIZ">
+> = {
+  summary: "SUMMARY",
+  mindmap: "MINDMAP",
+  flashcards: "FLASHCARDS",
+  quiz: "QUIZ",
+};
+
 interface ChatPanelProps {
   course: Course | null;
 }
@@ -108,10 +116,70 @@ function getMindmapNodeLabel(node: Record<string, unknown>): string {
   return "Untitled node";
 }
 
+function getCourseDocumentVersionId(course: Course | null): string | null {
+  if (!course) return null;
+  return course.current_version_id || course.current_version?.id || null;
+}
+
+function normalizeSummaryContent(
+  summary: Summary["content"],
+): { text: string; title?: string } {
+  if (typeof summary === "string") {
+    return { text: summary };
+  }
+
+  const overview =
+    typeof summary.overview === "string" ? summary.overview : "";
+  const keyConcepts = Array.isArray(summary.key_concepts)
+    ? summary.key_concepts
+        .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        .map((item) => `- ${item}`)
+        .join("\n")
+    : "";
+  const conclusion =
+    typeof summary.conclusion === "string" && summary.conclusion.trim()
+      ? `\n\nConclusion\n${summary.conclusion}`
+      : "";
+
+  const sections = [overview];
+  if (keyConcepts) {
+    sections.push(`Key concepts\n${keyConcepts}`);
+  }
+  if (conclusion) {
+    sections.push(conclusion.trim());
+  }
+  return { text: sections.filter(Boolean).join("\n\n") };
+}
+
+function toSummaryResult(documentVersionId: string, cache: Awaited<ReturnType<typeof documentAssetsApi.get>>): Summary {
+  return {
+    id: cache.id,
+    format: cache.profile.toUpperCase(),
+    target_lang: cache.target_lang,
+    content: cache.content,
+    created_at: cache.updated_at,
+  };
+}
+
+function toMindmapResult(documentVersionId: string, cache: Awaited<ReturnType<typeof documentAssetsApi.get>>): Mindmap {
+  const content = cache.content;
+  return {
+    id: cache.id,
+    title:
+      typeof content.title === "string" && content.title.trim()
+        ? content.title
+        : `Mind map ${documentVersionId.slice(0, 8)}`,
+    target_lang: cache.target_lang,
+    nodes: Array.isArray(content.nodes) ? (content.nodes as Mindmap["nodes"]) : [],
+    edges: Array.isArray(content.edges) ? (content.edges as Mindmap["edges"]) : [],
+    created_at: cache.updated_at,
+  };
+}
+
 function buildCopyContent(result: ToolResult): string {
   switch (result.kind) {
     case "summary":
-      return result.data.content;
+      return normalizeSummaryContent(result.data.content).text;
     case "flashcards":
       return result.data.cards
         .map(
@@ -149,7 +217,7 @@ function buildDownloadPayload(result: ToolResult): {
   switch (result.kind) {
     case "summary":
       return {
-        content: result.data.content,
+        content: normalizeSummaryContent(result.data.content).text,
         fileName: `summary-${result.data.id}.txt`,
         mimeType: "text/plain;charset=utf-8",
       };
@@ -176,9 +244,10 @@ function buildDownloadPayload(result: ToolResult): {
 
 function ResultContent({ result }: { result: ToolResult }) {
   if (result.kind === "summary") {
+    const normalized = normalizeSummaryContent(result.data.content);
     return (
       <div className="prose prose-sm max-w-none whitespace-pre-wrap">
-        {result.data.content}
+        {normalized.text}
       </div>
     );
   }
@@ -463,13 +532,59 @@ interface ToolPanelProps {
 
 function ToolPanel({ tool, course, className }: ToolPanelProps) {
   const config = toolConfig[tool];
+  const documentVersionId = getCourseDocumentVersionId(course);
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<ToolResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isHydratingCached, setIsHydratingCached] = useState(false);
   const generateFlashcards = useGenerateFlashcardsMutation();
   const generateQuiz = useGenerateQuizMutation();
-  const generateSummary = useGenerateSummaryMutation();
-  const generateMindmap = useGenerateMindmapMutation();
+  const manifestQuery = useDocumentAssetManifestQuery(documentVersionId || "");
+  const sourceAssetType = assetTypeMap[tool];
+
+  const hasCachedAsset =
+    Boolean(
+      sourceAssetType &&
+        manifestQuery.data?.items.some((item) => item.asset_type === sourceAssetType),
+    );
+
+  useEffect(() => {
+    if (!documentVersionId || result || isHydratingCached) return;
+    if (tool !== "summary" && tool !== "mindmap") return;
+    if (!hasCachedAsset) return;
+
+    let cancelled = false;
+    setIsHydratingCached(true);
+    setErrorMessage(null);
+
+    const run = async () => {
+      try {
+        const cache = await documentAssetsApi.get(
+          documentVersionId,
+          tool.toUpperCase() as "SUMMARY" | "MINDMAP",
+        );
+        if (cancelled) return;
+        if (tool === "summary") {
+          setResult({ kind: "summary", data: toSummaryResult(documentVersionId, cache) });
+        } else {
+          setResult({ kind: "mindmap", data: toMindmapResult(documentVersionId, cache) });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error(error);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsHydratingCached(false);
+        }
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [documentVersionId, hasCachedAsset, isHydratingCached, result, tool]);
 
   const handleGenerate = async () => {
     if (!course) return;
@@ -491,16 +606,25 @@ function ToolPanel({ tool, course, className }: ToolPanelProps) {
         const quiz = await quizApi.getQuiz(generation.job_id);
         setResult({ kind: "quiz", data: quiz });
       } else if (tool === "summary") {
-        const generation = await generateSummary.mutateAsync({
-          courseId: course.id,
+        if (!documentVersionId) {
+          throw new Error("No document version available for summary generation.");
+        }
+        const cache = await documentAssetsApi.generate(documentVersionId, {
+          asset_type: "SUMMARY",
+          target_lang: "fr",
+          profile: "executive",
         });
-        const summary = await summariesApi.get(generation.job_id);
+        const summary = toSummaryResult(documentVersionId, cache);
         setResult({ kind: "summary", data: summary });
       } else {
-        const generation = await generateMindmap.mutateAsync({
-          courseId: course.id,
+        if (!documentVersionId) {
+          throw new Error("No document version available for mind map generation.");
+        }
+        const cache = await documentAssetsApi.generate(documentVersionId, {
+          asset_type: "MINDMAP",
+          target_lang: "fr",
         });
-        const mindmap = await mindmapsApi.get(generation.job_id);
+        const mindmap = toMindmapResult(documentVersionId, cache);
         setResult({ kind: "mindmap", data: mindmap });
       }
     } catch (error) {
@@ -545,6 +669,12 @@ function ToolPanel({ tool, course, className }: ToolPanelProps) {
                   <div className="flex items-center gap-2">
                     <config.icon className="h-5 w-5 text-primary" />
                     <span className="font-medium">{config.label}</span>
+                    {hasCachedAsset ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
+                        <BadgeCheck className="h-3.5 w-3.5" />
+                        {tool === "flashcards" || tool === "quiz" ? "Source cached" : "Cached"}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="flex gap-2">
                     <Button variant="ghost" size="icon" onClick={handleCopy}>
@@ -582,16 +712,28 @@ function ToolPanel({ tool, course, className }: ToolPanelProps) {
             <p className="mb-6 max-w-sm text-muted-foreground">
               {config.emptyDescription}
             </p>
+            {hasCachedAsset ? (
+              <p className="mb-3 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                <BadgeCheck className="h-3.5 w-3.5" />
+                {tool === "flashcards" || tool === "quiz"
+                  ? "Cached document source is ready for faster generation"
+                  : "Cached result available for this document"}
+              </p>
+            ) : null}
             <Button onClick={handleGenerate} disabled={!course || isGenerating}>
-              {isGenerating ? (
+              {isGenerating || isHydratingCached ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Generating...
+                  {isHydratingCached ? "Loading..." : "Generating..."}
                 </>
               ) : (
                 <>
                   <Sparkles className="mr-2 h-4 w-4" />
-                  Generate {config.label}
+                  {hasCachedAsset
+                    ? tool === "flashcards" || tool === "quiz"
+                      ? `Generate ${config.label}`
+                      : `Open ${config.label}`
+                    : `Generate ${config.label}`}
                 </>
               )}
             </Button>

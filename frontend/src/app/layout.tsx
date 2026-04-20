@@ -92,6 +92,7 @@ export default async function RootLayout({
       </head>
       <body
         className={`${inter.variable} ${ibmPlexMono.variable} ${notoNaskhArabic.variable} min-h-screen flex flex-col bg-background text-foreground antialiased`}
+        suppressHydrationWarning
       >
         <Providers>{children}</Providers>
         <ServiceWorkerRegistration />

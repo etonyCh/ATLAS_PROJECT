@@ -42,6 +42,8 @@ from app.models.study_tools import (
     MindMap,
     Summary,
     SummaryFormat,
+    AcademicAssetType,
+    AcademicAssetCache,
 )
 from app.models.annotation import DocumentAnnotation
 from app.models.intelligence import (
@@ -158,6 +160,8 @@ __all__ = [
     "MindMap",
     "Summary",
     "SummaryFormat",
+    "AcademicAssetType",
+    "AcademicAssetCache",
     "DocumentAnnotation",
     "Notification",
     "ReadingProgress",

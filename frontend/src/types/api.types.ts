@@ -92,6 +92,10 @@ export interface Establishment {
   domain: string;
   is_authorized: boolean;
   status?: string;
+  users?: number;
+  students?: number;
+  teachers?: number;
+  admins?: number;
   created_at: string;
 }
 
@@ -175,6 +179,7 @@ export interface Course {
   id: string;
   title: string;
   description: string | null;
+  contribution_id?: string;
   department_id?: string;
   department_name?: string | null;
   filiere: string | null;
@@ -192,11 +197,13 @@ export interface Course {
   is_official?: boolean;
   tags?: string[];
   created_at: string;
+  current_version?: CourseVersion;
 }
 
 export interface CourseVersion {
   id: string;
   course_id: string;
+  title?: string;
   version_number: number;
   storage_path: string;
   file_url?: string;
@@ -440,6 +447,26 @@ export interface StudyGenerationResponse {
   status: string;
 }
 
+export interface DocumentAssetManifestItem {
+  id: string;
+  asset_type: "FLASHCARDS" | "QUIZ" | "SUMMARY" | "MINDMAP";
+  target_lang: string;
+  profile: string;
+  chunk_count: number;
+  updated_at: string;
+}
+
+export interface DocumentAssetCache {
+  id: string;
+  document_version_id: string;
+  asset_type: "FLASHCARDS" | "QUIZ" | "SUMMARY" | "MINDMAP";
+  target_lang: string;
+  profile: string;
+  content: Record<string, unknown>;
+  chunk_count: number;
+  updated_at: string;
+}
+
 export interface ReviewCardResponse {
   id: string;
   next_review_at: string;
@@ -506,7 +533,7 @@ export interface Summary {
   id: string;
   format: string;
   target_lang: string;
-  content: string;
+  content: string | Record<string, unknown>;
   created_at: string;
 }
 

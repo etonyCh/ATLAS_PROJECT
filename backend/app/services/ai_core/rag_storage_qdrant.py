@@ -13,15 +13,14 @@ import logging
 import asyncio
 from typing import Optional, Tuple
 
-os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
-os.environ.setdefault("HF_HUB_OFFLINE", "1")
-
 from sqlalchemy.ext.asyncio import AsyncSession
+import torch
 from sentence_transformers import SentenceTransformer
 
 from app.models.all_models import DocumentVersion
 from app.core.config import settings
 from app.core.qdrant_client import get_qdrant_manager, COLLECTION_DOCUMENTS
+from app.services.ai_core.retrieval_enhancer import expand_query_variants, rerank_chunks
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +39,9 @@ def _initialize_embedder() -> Optional[SentenceTransformer]:
     global _embedder
     if _embedder is None:
         try:
-            logger.info(f"[RAG] Loading SentenceTransformer: {EMBEDDER_MODEL}")
-            _embedder = SentenceTransformer(EMBEDDER_MODEL, device="cpu")
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            logger.info(f"[RAG] Loading SentenceTransformer: {EMBEDDER_MODEL} on {device}")
+            _embedder = SentenceTransformer(EMBEDDER_MODEL, device=device)
         except Exception as e:
             logger.error(f"[RAG] Failed to load embedder: {e}")
     return _embedder
@@ -108,20 +108,58 @@ async def retrieve_rag_context(
         return None, 0.0, None, None
 
     try:
-        # Use Qdrant for hybrid search
         qdrant = get_qdrant_manager()
-        
-        context, max_score, chunk_idx, chunk_text = await asyncio.to_thread(
-            qdrant.search_by_text,
-            COLLECTION_DOCUMENTS,
-            query,
-            embedder,
-            document_version_id,
-            top_k=5,
-            score_threshold=SIMILARITY_THRESHOLD,
+        variants = expand_query_variants(query)
+
+        merged_results = []
+        seen_keys: set[tuple[str | None, int | None]] = set()
+        best_score = 0.0
+
+        for variant in variants:
+            query_vector = await asyncio.to_thread(
+                lambda text=variant: embedder.encode([text], normalize_embeddings=True)[0].tolist()
+            )
+            results = await asyncio.to_thread(
+                qdrant.search_similar,
+                COLLECTION_DOCUMENTS,
+                query_vector,
+                variant,
+                document_version_id,
+                8,
+                SIMILARITY_THRESHOLD,
+            )
+            for row in results:
+                key = (row.get("document_version_id"), row.get("chunk_index"))
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                merged_results.append(row)
+                best_score = max(best_score, float(row.get("score") or 0.0))
+
+        reranked = rerank_chunks(query, merged_results, top_k=5)
+        if not reranked:
+            return None, 0.0, None, None
+
+        top_score = float(reranked[0].get("score") or 0.0)
+        if top_score < SIMILARITY_THRESHOLD:
+            return None, top_score, None, None
+
+        relevant = [
+            row for row in reranked
+            if float(row.get("score") or 0.0) >= max(RELEVANT_CONTEXT_FLOOR, top_score - RELEVANT_CONTEXT_MARGIN)
+        ]
+        context = "\n\n".join(
+            f"[Snippet {row.get('chunk_index')}] {row.get('chunk_text')}"
+            for row in relevant
+            if row.get("chunk_text")
         )
-        
-        return context, max_score, chunk_idx, chunk_text
+        top_row = reranked[0]
+        return (
+            context or None,
+            top_score,
+            top_row.get("chunk_index"),
+            top_row.get("chunk_text"),
+        )
         
     except Exception as e:
         logger.error(f"[RAG] Qdrant retrieval failed: {e}")

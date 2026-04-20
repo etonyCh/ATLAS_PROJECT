@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircle,
@@ -10,6 +10,7 @@ import {
   Eye,
   FileText,
   BookOpen,
+  UserPlus,
   ChevronLeft,
   ChevronRight,
   Loader2,
@@ -29,22 +30,26 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { contributionsApi } from "@/lib/api";
-import type { Contribution } from "@/types/api.types";
+import type { Contribution, ContributorRequest } from "@/types/api.types";
 
-const typeIcons: Record<string, typeof BookOpen> = {
-  quiz: FileText,
-  flashcard: BookOpen,
-  summary: FileText,
-  mindmap: FileText,
+type QueueKind = "contribution" | "contributor_request";
+
+type QueueRow =
+  | { kind: "contribution"; created_at: string; contribution: Contribution }
+  | { kind: "contributor_request"; created_at: string; request: ContributorRequest };
+
+type SelectedReview =
+  | { kind: "contribution"; contribution: Contribution }
+  | { kind: "contributor_request"; request: ContributorRequest };
+
+const typeIcons = {
   course_material: BookOpen,
-};
+  contributor_request: UserPlus,
+} as const;
 
 const typeLabels: Record<string, string> = {
-  quiz: "Quiz",
-  flashcard: "Flashcards",
-  summary: "Summary",
-  mindmap: "Mind Map",
-  course_material: "Material",
+  course_material: "Community upload",
+  contributor_request: "Contributor application",
 };
 
 export default function ManageContributions() {
@@ -52,42 +57,92 @@ export default function ManageContributions() {
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedContribution, setSelectedContribution] = useState<Contribution | null>(null);
+  const [selected, setSelected] = useState<SelectedReview | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const itemsPerPage = 5;
 
   const queryClient = useQueryClient();
 
-  const queryParams = {
-    limit: 50, 
+  const contributionParams = {
+    limit: 50,
     offset: 0,
     ...(statusFilter !== "all" && { status: statusFilter.toUpperCase() }),
   };
 
-  const { data: response, isLoading } = useQuery({
-    queryKey: ["admin_contributions", queryParams],
-    queryFn: () => contributionsApi.admin.list(queryParams),
+  const requestParams = {
+    limit: 50,
+    offset: 0,
+    ...(statusFilter !== "all" && {
+      status: statusFilter.toUpperCase() as ContributorRequest["status"],
+    }),
+  };
+
+  const contributionsQuery = useQuery({
+    queryKey: ["admin_contributions", contributionParams],
+    queryFn: () => contributionsApi.admin.list(contributionParams),
   });
 
-  const contributions = response?.items || [];
+  const contributorRequestsQuery = useQuery({
+    queryKey: ["admin_contributions", "contributor-requests", requestParams],
+    queryFn: () => contributionsApi.admin.listContributorRequests(requestParams),
+  });
 
-  const filteredContributions = contributions.filter((contribution) => {
+  const isLoading = contributionsQuery.isLoading || contributorRequestsQuery.isLoading;
+  const isError = contributionsQuery.isError || contributorRequestsQuery.isError;
+  const errorMessage =
+    (contributionsQuery.error as Error)?.message ||
+    (contributorRequestsQuery.error as Error)?.message ||
+    "Could not load the review queue.";
+
+  const contributions = contributionsQuery.data?.items ?? [];
+  const requests = contributorRequestsQuery.data?.items ?? [];
+
+  const mergedRows = useMemo((): QueueRow[] => {
+    const fromContributions: QueueRow[] = contributions.map((contribution) => ({
+      kind: "contribution",
+      created_at: contribution.created_at,
+      contribution,
+    }));
+    const fromRequests: QueueRow[] = requests.map((request) => ({
+      kind: "contributor_request",
+      created_at: request.created_at,
+      request,
+    }));
+    return [...fromContributions, ...fromRequests].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+  }, [contributions, requests]);
+
+  const filteredRows = mergedRows.filter((row) => {
+    const q = searchQuery.trim().toLowerCase();
     const matchesSearch =
-      contribution.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      contribution.uploader_id.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesType = typeFilter === "all" || typeFilter === "course_material";
+      !q ||
+      (row.kind === "contribution" &&
+        (row.contribution.title.toLowerCase().includes(q) ||
+          row.contribution.uploader_id.toLowerCase().includes(q) ||
+          (row.contribution.uploader_name?.toLowerCase().includes(q) ?? false))) ||
+      (row.kind === "contributor_request" &&
+        (row.request.demo_contribution.title.toLowerCase().includes(q) ||
+          row.request.email.toLowerCase().includes(q) ||
+          (row.request.full_name?.toLowerCase().includes(q) ?? false)));
+
+    const matchesType =
+      typeFilter === "all" ||
+      (typeFilter === "course_material" && row.kind === "contribution") ||
+      (typeFilter === "contributor_request" && row.kind === "contributor_request");
+
     return matchesSearch && matchesType;
   });
 
-  const totalPages = Math.ceil(filteredContributions.length / itemsPerPage) || 1;
-  const paginatedContributions = filteredContributions.slice(
+  const totalPages = Math.ceil(filteredRows.length / itemsPerPage) || 1;
+  const paginatedRows = filteredRows.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage,
   );
 
-  const pendingCount = contributions.filter(
-    (c) => c.status === "PENDING",
-  ).length;
+  const pendingCount =
+    contributions.filter((c) => c.status === "PENDING").length +
+    requests.filter((r) => r.status === "PENDING").length;
 
   const approveMutation = useMutation({
     mutationFn: async ({ id, note }: { id: string; note: string }) => {
@@ -97,12 +152,12 @@ export default function ManageContributions() {
       alert("Contribution Approved");
       queryClient.invalidateQueries({ queryKey: ["admin_contributions"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard", "teacher"] });
-      setSelectedContribution(null);
+      setSelected(null);
       setReviewNote("");
     },
     onError: (error: Error) => {
       alert(`Action failed: ${error.message}`);
-    }
+    },
   });
 
   const rejectMutation = useMutation({
@@ -113,27 +168,78 @@ export default function ManageContributions() {
       alert("Contribution Rejected");
       queryClient.invalidateQueries({ queryKey: ["admin_contributions"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard", "teacher"] });
-      setSelectedContribution(null);
+      setSelected(null);
       setReviewNote("");
     },
     onError: (error: Error) => {
       alert(`Action failed: ${error.message}`);
-    }
+    },
+  });
+
+  const approveRequestMutation = useMutation({
+    mutationFn: async ({ id, note }: { id: string; note?: string }) =>
+      contributionsApi.admin.approveContributorRequest(id, { review_note: note }),
+    onSuccess: () => {
+      alert("Contributor request approved");
+      queryClient.invalidateQueries({ queryKey: ["admin_contributions"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard", "teacher"] });
+      setSelected(null);
+      setReviewNote("");
+    },
+    onError: (error: Error) => {
+      alert(`Action failed: ${error.message}`);
+    },
+  });
+
+  const rejectRequestMutation = useMutation({
+    mutationFn: async ({ id, note }: { id: string; note: string }) =>
+      contributionsApi.admin.rejectContributorRequest(id, note),
+    onSuccess: () => {
+      alert("Contributor request rejected");
+      queryClient.invalidateQueries({ queryKey: ["admin_contributions"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard", "teacher"] });
+      setSelected(null);
+      setReviewNote("");
+    },
+    onError: (error: Error) => {
+      alert(`Action failed: ${error.message}`);
+    },
   });
 
   const handleApprove = () => {
-    if (!selectedContribution) return;
-    approveMutation.mutate({ id: selectedContribution.id, note: reviewNote });
+    if (!selected) return;
+    if (selected.kind === "contribution") {
+      approveMutation.mutate({ id: selected.contribution.id, note: reviewNote });
+    } else {
+      approveRequestMutation.mutate({ id: selected.request.id, note: reviewNote || undefined });
+    }
   };
 
   const handleReject = () => {
-    if (!selectedContribution) return;
+    if (!selected) return;
     if (!reviewNote.trim()) {
       alert("Review note required: You must provide a reason for rejection.");
       return;
     }
-    rejectMutation.mutate({ id: selectedContribution.id, note: reviewNote });
+    if (selected.kind === "contribution") {
+      rejectMutation.mutate({ id: selected.contribution.id, note: reviewNote });
+    } else {
+      rejectRequestMutation.mutate({ id: selected.request.id, note: reviewNote });
+    }
   };
+
+  const pendingSelected =
+    selected?.kind === "contribution"
+      ? selected.contribution.status === "PENDING"
+      : selected?.kind === "contributor_request"
+        ? selected.request.status === "PENDING"
+        : false;
+
+  const actionPending =
+    approveMutation.isPending ||
+    rejectMutation.isPending ||
+    approveRequestMutation.isPending ||
+    rejectRequestMutation.isPending;
 
   return (
     <div className="space-y-6">
@@ -141,7 +247,7 @@ export default function ManageContributions() {
         <div>
           <h1 className="text-2xl font-bold">Review Student Contributions</h1>
           <p className="text-muted-foreground">
-            Review, preview, approve, or reject student submissions for your department.
+            Community uploads and contributor applications from students in your department.
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-lg bg-amber-100 px-4 py-2 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
@@ -154,54 +260,123 @@ export default function ManageContributions() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search titles or authors..."
+            placeholder="Search titles, student email, or name..."
             value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1);
+            }}
             className="pl-10"
           />
         </div>
         <select
           value={typeFilter}
-          onChange={(e) => { setTypeFilter(e.target.value); setCurrentPage(1); }}
+          onChange={(e) => {
+            setTypeFilter(e.target.value);
+            setCurrentPage(1);
+          }}
           className="rounded-lg border bg-background px-4 py-2 text-sm"
         >
-          <option value="all">All Types</option>
-          <option value="quiz">Quiz</option>
-          <option value="flashcard">Flashcards</option>
-          <option value="summary">Summary</option>
-          <option value="mindmap">Mind Map</option>
-          <option value="course_material">Material</option>
+          <option value="all">All types</option>
+          <option value="course_material">Community uploads</option>
+          <option value="contributor_request">Contributor applications</option>
         </select>
         <select
           value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }}
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setCurrentPage(1);
+          }}
           className="rounded-lg border bg-background px-4 py-2 text-sm"
         >
-          <option value="all">All Status</option>
+          <option value="all">All status</option>
           <option value="pending">Pending</option>
           <option value="approved">Approved</option>
           <option value="rejected">Rejected</option>
         </select>
       </div>
 
-      {isLoading ? (
-        <div className="flex h-[300px] items-center justify-center border rounded-lg">
-           <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      {isError ? (
+        <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-center text-sm">
+          <p className="font-medium text-destructive">Could not load contributions</p>
+          <p className="mt-2 text-muted-foreground">{errorMessage}</p>
+          <Button
+            variant="outline"
+            className="mt-4"
+            onClick={() => {
+              void contributionsQuery.refetch();
+              void contributorRequestsQuery.refetch();
+            }}
+          >
+            Retry
+          </Button>
+        </div>
+      ) : isLoading ? (
+        <div className="flex h-[300px] items-center justify-center rounded-lg border">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
       ) : (
         <div className="grid gap-4">
-          {paginatedContributions.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground border rounded-lg bg-card border-dashed">
-              No contributions match your filters.
+          {paginatedRows.length === 0 ? (
+            <div className="rounded-lg border border-dashed bg-card p-8 text-center text-muted-foreground">
+              <p>No items match your filters.</p>
+              <p className="mt-2 text-sm">
+                Pending <strong>contributor applications</strong> (demo uploads) appear here too—not
+                only regular community uploads.
+              </p>
             </div>
           ) : (
-            paginatedContributions.map((contribution) => {
-              const typeStr = "course_material";
-              const TypeIcon = typeIcons[typeStr] || FileText;
-              const uploaderName = contribution.uploader_id || "Unknown Student";
-              
+            paginatedRows.map((row) => {
+              if (row.kind === "contribution") {
+                const { contribution } = row;
+                const typeStr = "course_material";
+                const TypeIcon = typeIcons[typeStr];
+                const uploaderName =
+                  contribution.uploader_name || contribution.uploader_id || "Unknown student";
+                return (
+                  <Card key={`c-${contribution.id}`}>
+                    <CardContent className="p-4">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
+                            <TypeIcon className="h-6 w-6 text-primary" />
+                          </div>
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="font-semibold">{contribution.title}</h3>
+                              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                                {typeLabels[typeStr]}
+                              </span>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              by {uploaderName} • {new Date(contribution.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <StatusChip status={contribution.status} />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              setSelected({ kind: "contribution", contribution })
+                            }
+                          >
+                            <Eye className="mr-2 h-4 w-4" />
+                            Review
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              }
+
+              const { request } = row;
+              const TypeIcon = typeIcons.contributor_request;
+              const who = request.full_name || request.email;
               return (
-                <Card key={contribution.id}>
+                <Card key={`r-${request.id}`}>
                   <CardContent className="p-4">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                       <div className="flex items-center gap-4">
@@ -209,23 +384,23 @@ export default function ManageContributions() {
                           <TypeIcon className="h-6 w-6 text-primary" />
                         </div>
                         <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-semibold">{contribution.title}</h3>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="font-semibold">{request.demo_contribution.title}</h3>
                             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
-                              {typeLabels[typeStr] || "Material"}
+                              {typeLabels.contributor_request}
                             </span>
                           </div>
                           <p className="text-sm text-muted-foreground">
-                            by {uploaderName} • {new Date(contribution.created_at).toLocaleDateString()}
+                            Applicant: {who} • {new Date(request.created_at).toLocaleDateString()}
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <StatusChip status={contribution.status} />
+                        <StatusChip status={request.status} />
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => setSelectedContribution(contribution)}
+                          onClick={() => setSelected({ kind: "contributor_request", request })}
                         >
                           <Eye className="mr-2 h-4 w-4" />
                           Review
@@ -240,12 +415,12 @@ export default function ManageContributions() {
         </div>
       )}
 
-      {totalPages > 1 && (
+      {totalPages > 1 && !isError && !isLoading ? (
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
             Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
-            {Math.min(currentPage * itemsPerPage, filteredContributions.length)}{" "}
-            of {filteredContributions.length} contributions
+            {Math.min(currentPage * itemsPerPage, filteredRows.length)} of {filteredRows.length}{" "}
+            items
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -276,66 +451,64 @@ export default function ManageContributions() {
             </Button>
           </div>
         </div>
-      )}
+      ) : null}
 
       <Dialog
-        open={!!selectedContribution}
-        onOpenChange={(open) => !open && setSelectedContribution(null)}
+        open={!!selected}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelected(null);
+            setReviewNote("");
+          }
+        }}
       >
-        <DialogContent className="max-w-5xl h-[85vh] overflow-hidden">
+        <DialogContent className="max-h-[85vh] max-w-5xl overflow-hidden">
           <DialogHeader>
-            <DialogTitle>Review Student Contribution</DialogTitle>
+            <DialogTitle>Review submission</DialogTitle>
             <DialogDescription>
-              Preview the uploaded file before you approve or reject it.
+              Preview the file, then approve or reject. Contributor applications grant upload access
+              when approved.
             </DialogDescription>
           </DialogHeader>
-          {selectedContribution && (
-            <div className="flex h-full flex-col gap-4 overflow-hidden">
+          {selected?.kind === "contribution" ? (
+            <div className="flex max-h-[calc(85vh-8rem)] flex-col gap-4 overflow-y-auto">
               <div className="rounded-lg border p-4">
-                <h3 className="font-semibold">{selectedContribution.title}</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  by {selectedContribution.uploader_id} 
+                <h3 className="font-semibold">{selected.contribution.title}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  by {selected.contribution.uploader_name || selected.contribution.uploader_id}
                 </p>
-                <div className="mt-2 flex items-center gap-2">
+                <div className="mt-2 flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
-                    Material
+                    Community upload
                   </span>
-                  <StatusChip status={selectedContribution.status} />
+                  <StatusChip status={selected.contribution.status} />
                 </div>
               </div>
-
               <div>
                 <h4 className="font-medium">Description</h4>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {selectedContribution.description || "No description provided."}
+                  {selected.contribution.description || "No description provided."}
                 </p>
               </div>
-
-              {selectedContribution.status === "REJECTED" && selectedContribution.review_note ? (
+              {selected.contribution.status === "REJECTED" && selected.contribution.review_note ? (
                 <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
-                  <h4 className="font-medium text-destructive">
-                    Previous Rejection Reason
-                  </h4>
-                  <p className="mt-1 text-sm">
-                    {selectedContribution.review_note}
-                  </p>
+                  <h4 className="font-medium text-destructive">Previous rejection reason</h4>
+                  <p className="mt-1 text-sm">{selected.contribution.review_note}</p>
                 </div>
               ) : null}
-
-              <div className="min-h-0 flex-1 overflow-auto">
+              <div className="min-h-[240px] flex-1">
                 <FilePreview
-                  storagePath={selectedContribution.s3_key}
-                  mimeType={selectedContribution.mime_type}
-                  title={selectedContribution.title}
-                  previewText={selectedContribution.preview_text}
+                  storagePath={selected.contribution.s3_key}
+                  mimeType={selected.contribution.mime_type}
+                  title={selected.contribution.title}
+                  previewText={selected.contribution.preview_text}
                 />
               </div>
-
-              {selectedContribution.status === "PENDING" ? (
+              {selected.contribution.status === "PENDING" ? (
                 <div>
-                  <label className="font-medium">Review Note</label>
+                  <label className="font-medium">Review note</label>
                   <Textarea
-                    placeholder="Add a note for the contributor (required for rejection)..."
+                    placeholder="Optional for approval; required for rejection..."
                     value={reviewNote}
                     onChange={(e) => setReviewNote(e.target.value)}
                     className="mt-2"
@@ -344,21 +517,75 @@ export default function ManageContributions() {
                 </div>
               ) : null}
             </div>
-          )}
-          <DialogFooter className="gap-2 sm:gap-0 mt-4">
+          ) : null}
+          {selected?.kind === "contributor_request" ? (
+            <div className="flex max-h-[calc(85vh-8rem)] flex-col gap-4 overflow-y-auto">
+              <div className="rounded-lg border p-4">
+                <h3 className="font-semibold">{selected.request.demo_contribution.title}</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Applicant: {selected.request.full_name || selected.request.email} (
+                  {selected.request.email})
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                    Contributor application
+                  </span>
+                  <StatusChip status={selected.request.status} />
+                </div>
+              </div>
+              <div>
+                <h4 className="font-medium">Description</h4>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {selected.request.demo_contribution.description || "No description provided."}
+                </p>
+              </div>
+              {selected.request.status === "REJECTED" && selected.request.review_note ? (
+                <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+                  <h4 className="font-medium text-destructive">Previous rejection reason</h4>
+                  <p className="mt-1 text-sm">{selected.request.review_note}</p>
+                </div>
+              ) : null}
+              <div className="min-h-[240px] flex-1">
+                <FilePreview
+                  storagePath={selected.request.demo_contribution.s3_key}
+                  mimeType={selected.request.demo_contribution.mime_type}
+                  title={selected.request.demo_contribution.title}
+                  previewText={selected.request.demo_contribution.preview_text}
+                />
+              </div>
+              {selected.request.status === "PENDING" ? (
+                <div>
+                  <label className="font-medium">Review note</label>
+                  <Textarea
+                    placeholder="Optional for approval; required for rejection..."
+                    value={reviewNote}
+                    onChange={(e) => setReviewNote(e.target.value)}
+                    className="mt-2"
+                    rows={3}
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          <DialogFooter className="mt-4 gap-2 sm:gap-0">
             <Button
               variant="outline"
               onClick={handleReject}
-              disabled={selectedContribution?.status !== "PENDING" || rejectMutation.isPending}
+              disabled={!pendingSelected || actionPending}
             >
-              {rejectMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
+              {rejectMutation.isPending || rejectRequestMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <XCircle className="mr-2 h-4 w-4" />
+              )}
               Reject
             </Button>
-            <Button
-              onClick={handleApprove}
-              disabled={selectedContribution?.status !== "PENDING" || approveMutation.isPending}
-            >
-              {approveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle className="mr-2 h-4 w-4" />}
+            <Button onClick={handleApprove} disabled={!pendingSelected || actionPending}>
+              {approveMutation.isPending || approveRequestMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <CheckCircle className="mr-2 h-4 w-4" />
+              )}
               Approve
             </Button>
           </DialogFooter>

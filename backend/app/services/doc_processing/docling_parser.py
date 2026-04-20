@@ -78,7 +78,12 @@ def parse_with_docling(file_path: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def should_use_docling(file_path: str, extracted_text: str) -> bool:
+def should_use_docling(
+    file_path: str,
+    extracted_text: str,
+    page_count: int = 0,
+    handwriting_risk: bool = False,
+) -> bool:
     """
     Heuristic: Use Docling if:
     - Document has sparse text (scanned)
@@ -90,12 +95,18 @@ def should_use_docling(file_path: str, extracted_text: str) -> bool:
     if file_ext in [".png", ".jpg", ".jpeg"]:
         return is_docling_available()
 
+    if handwriting_risk:
+        return False
+
     if len(extracted_text.strip()) < 200:
         return is_docling_available()
 
     indicators = ["equation", "table", "math", "formula", "exercise", "exam"]
     lower_path = file_path.lower()
     if any(ind in lower_path for ind in indicators):
+        return is_docling_available()
+
+    if page_count >= 20 and len(extracted_text.strip()) > 600:
         return is_docling_available()
 
     return False

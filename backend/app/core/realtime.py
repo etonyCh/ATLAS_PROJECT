@@ -19,7 +19,6 @@ class RedisPubSubWebSocketManager:
         self._listeners: dict[str, asyncio.Task[None]] = {}
 
     async def connect(self, channel: str, websocket: WebSocket, redis_client: Redis) -> None:
-        await websocket.accept()
         self._connections[channel].add(websocket)
 
         if channel not in self._listeners:

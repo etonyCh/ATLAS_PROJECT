@@ -6,10 +6,7 @@ import {
   Search,
   Star,
   GraduationCap,
-  BookOpen,
-  Filter,
 } from "lucide-react";
-import Link from "next/link";
 import { useRef, useState } from "react";
 import type { SearchParams } from "@/types/api.types";
 import { MaterialSelectionDialog } from "@/components/course/material-selection-dialog";
@@ -22,31 +19,38 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
-import { useSearchQuery } from "@/queries";
+import { isSearchQueryEnabled, useSearchQuery } from "@/queries";
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
-  const [filiere, setFiliere] = useState("");
-  const [niveau, setNiveau] = useState("");
-  const [typeCours, setTypeCours] = useState("");
+  const [filiere, setFiliere] = useState("all");
+  const [niveau, setNiveau] = useState("all");
+  const [typeCours, setTypeCours] = useState("all");
   const [selectedCourse, setSelectedCourse] = useState<{id: string, title: string} | null>(null);
 
   const searchParams: SearchParams = {
-    q: query || undefined,
+    q: query.trim() || undefined,
     filiere: filiere !== "all" ? filiere : undefined,
-    academic_level: niveau !== "all" ? niveau : undefined,
-    course_type: typeCours !== "all" ? typeCours : undefined,
+    niveau: niveau !== "all" ? niveau : undefined,
+    type: typeCours !== "all" ? typeCours : undefined,
   };
 
-  const { data: searchResults, isLoading } = useSearchQuery(searchParams);
+  const {
+    data: searchResults,
+    isLoading,
+    isError,
+    error,
+    isFetched,
+  } = useSearchQuery(searchParams);
+  const results = searchResults?.items ?? [];
+  const searchEnabled = isSearchQueryEnabled(searchParams);
 
   const parentRef = useRef<HTMLDivElement>(null);
 
   const rowVirtualizer = useVirtualizer({
-    count: searchResults?.results.length ?? 0,
+    count: results.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 140,
     overscan: 5,
@@ -106,7 +110,17 @@ export default function SearchPage() {
         </div>
       </Card>
 
-      {isLoading ? (
+      {isError ? (
+        <EmptyState
+          type="error"
+          title="Search failed"
+          description={
+            error instanceof Error
+              ? error.message
+              : "Could not load results. Try again in a moment."
+          }
+        />
+      ) : isLoading ? (
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
             <Card key={i}>
@@ -122,7 +136,7 @@ export default function SearchPage() {
             </Card>
           ))}
         </div>
-      ) : searchResults?.results.length ? (
+      ) : results.length ? (
         <div
           ref={parentRef}
           className="h-[calc(100vh-320px)] overflow-auto rounded-lg border bg-muted/30"
@@ -135,7 +149,8 @@ export default function SearchPage() {
             }}
           >
             {rowVirtualizer.getVirtualItems().map((virtualItem) => {
-              const result = searchResults.results[virtualItem.index];
+              const result = results[virtualItem.index];
+              if (!result) return null;
               return (
                 <div
                   key={virtualItem.key}
@@ -200,11 +215,17 @@ export default function SearchPage() {
             })}
           </div>
         </div>
+      ) : searchEnabled && isFetched ? (
+        <EmptyState
+          type="no-results"
+          title="No results found"
+          description="Try different keywords or adjust your filters."
+        />
       ) : (
         <EmptyState
           type="search"
           title="Search ATLAS"
-          description="Enter a search term to find documents and courses"
+          description="Enter at least 2 characters or pick a filter (department, level, or type) to search."
         />
       )}
 

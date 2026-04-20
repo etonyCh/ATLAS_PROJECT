@@ -25,7 +25,7 @@ class ColbertEmbedder:
     def __init__(self):
         self._model = None
         self._tokenizer = None
-        self._device = "cpu"
+        self._device = "cuda" if torch.cuda.is_available() else "cpu"
 
     def _load_model(self):
         """Lazy loading of ColBERT model."""
@@ -108,8 +108,9 @@ class HybridEmbedder:
         if self._st_model is None:
             from sentence_transformers import SentenceTransformer
 
+            device = "cuda" if torch.cuda.is_available() else "cpu"
             self._st_model = SentenceTransformer(
-                "sentence-transformers/paraphrase-multilingual-mpnet-base-v2", device="cpu"
+                "sentence-transformers/paraphrase-multilingual-mpnet-base-v2", device=device
             )
         return self._st_model
 

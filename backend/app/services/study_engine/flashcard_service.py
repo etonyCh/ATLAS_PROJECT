@@ -9,8 +9,12 @@ from pydantic import BaseModel, Field, ValidationError
 
 # Importing the Enum from models to ensure domain consistency
 from app.models.study_tools import DifficultyLevel
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Global HTTP client for connection pooling (shared with generation_service)
+http_client = httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=120.0, write=5.0, pool=10.0))
 
 # --- PYDANTIC SCHEMAS FOR STRICT LLM OUTPUT VALIDATION ---
 
@@ -92,83 +96,81 @@ def calculate_sm2(quality: int, repetitions: int, ease_factor: float, interval: 
 
 async def generate_flashcards_from_text(text: str, num_cards: int = 5) -> List[Dict[str, Any]]:
     """
-    Uses an LLM to extract key academic concepts and formulate Question/Answer pairs.
+    Uses local Ollama LLM to extract key academic concepts and formulate Question/Answer pairs.
     Enforces a strict Pydantic JSON output to integrate cleanly with the database.
     """
     # Truncate text to roughly 4000 characters to stay within safe token limits
     safe_text = text[:4000]
     
-    prompt = f"""
-    Analyze the following academic text and generate exactly {num_cards} flashcards.
+    # System prompt + user prompt combined for Ollama
+    system_prompt = "You are an elite academic architect. Output strict, valid JSON matching the exact schema provided."
     
-    REQUIREMENTS:
-    1. Distribute difficulty: Extract definitions (EASY), application/examples (MEDIUM), and critical analysis (HARD).
-    2. You MUST respond with a valid, raw JSON object matching this exact schema:
+    user_prompt = f"""Analyze the following academic text and generate exactly {num_cards} flashcards.
+
+REQUIREMENTS:
+1. Distribute difficulty: Extract definitions (EASY), application/examples (MEDIUM), and critical analysis (HARD).
+2. You MUST respond with a valid, raw JSON object matching this exact schema:
+   {{
+     "flashcards": [
        {{
-         "flashcards": [
-           {{
-             "question": "string",
-             "answer": "string",
-             "difficulty": "EASY" | "MEDIUM" | "HARD"
-           }}
-         ]
+         "question": "string",
+         "answer": "string",
+         "difficulty": "EASY" | "MEDIUM" | "HARD"
        }}
+     ]
+   }}
+
+Do NOT wrap the response in markdown formatting (no ```json). Output raw JSON only.
+
+Text:
+{safe_text}"""
+
+    # Full prompt with system context for Ollama
+    full_prompt = f"{system_prompt}\n\n{user_prompt}"
     
-    Do NOT wrap the response in markdown formatting (no ```json). Output raw JSON only.
-    
-    Text:
-    {safe_text}
-    """
-
-    messages = [
-        {"role": "system", "content": "You are an elite academic architect. Output strict, valid JSON matching the exact schema provided."},
-        {"role": "user", "content": prompt}
-    ]
-
-    api_key = os.getenv("GROQ_API_KEY", "")
-    if not api_key:
-        logger.error("CRITICAL: GROQ_API_KEY environment variable is missing. Flashcard generation aborted.")
-        return []
-
-    url = "[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
+    url = f"{settings.OLLAMA_BASE_URL}/api/generate"
+    model = settings.OLLAMA_MODEL_GENERATION
     
     payload = {
-        "model": "mixtral-8x7b-32768",
-        "messages": messages,
-        "response_format": {"type": "json_object"},
-        "temperature": 0.2
+        "model": model,
+        "prompt": full_prompt,
+        "stream": False,
+        "format": "json",
+        "options": {
+            "temperature": 0.3,
+            "num_predict": 4096
+        }
     }
 
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            response = await client.post(url, headers=headers, json=payload)
-            response.raise_for_status()
-            data = response.json()
-            
-            content = data["choices"][0]["message"]["content"]
-            parsed_json = json.loads(content)
-            
-            # Strict Pydantic Validation Boundary
-            validated_deck = FlashcardDeckGeneration(**parsed_json)
-            
-            logger.info(f"Successfully generated and validated {len(validated_deck.flashcards)} flashcards via AI.")
-            
-            # Return dicts for easy SQLModel insertion downstream (Pydantic V2 syntax)
-            return [card.model_dump() for card in validated_deck.flashcards]
-            
+        logger.info(f"[FLASHCARDS] Generating flashcards via Ollama model: {model}")
+        response = await http_client.post(url, json=payload)
+        response.raise_for_status()
+        data = response.json()
+        
+        content = data.get("response", "")
+        parsed_json = json.loads(content)
+        
+        # Strict Pydantic Validation Boundary
+        validated_deck = FlashcardDeckGeneration(**parsed_json)
+        
+        logger.info(f"[FLASHCARDS] Successfully generated and validated {len(validated_deck.flashcards)} flashcards via Ollama.")
+        
+        # Return dicts for easy SQLModel insertion downstream (Pydantic V2 syntax)
+        return [card.model_dump() for card in validated_deck.flashcards]
+        
     except httpx.HTTPStatusError as http_err:
-        logger.error(f"Upstream API Error during flashcard generation: {http_err.response.text}")
+        logger.error(f"[FLASHCARDS] Ollama HTTP error during flashcard generation: {http_err.response.text}")
+        return []
+    except httpx.ConnectError as conn_err:
+        logger.error(f"[FLASHCARDS] Cannot connect to Ollama at {url}. Is Ollama running? Error: {conn_err}")
         return []
     except ValidationError as val_err:
-        logger.error(f"LLM JSON Output failed strict Pydantic validation: {val_err}")
+        logger.error(f"[FLASHCARDS] LLM JSON Output failed strict Pydantic validation: {val_err}")
         return []
     except json.JSONDecodeError as json_err:
-        logger.error(f"LLM failed to output valid JSON formatting: {json_err}")
+        logger.error(f"[FLASHCARDS] LLM failed to output valid JSON formatting: {json_err}")
         return []
     except Exception as e:
-        logger.exception(f"Unexpected architectural failure during flashcard generation: {e}")
+        logger.exception(f"[FLASHCARDS] Unexpected architectural failure during flashcard generation: {e}")
         return []

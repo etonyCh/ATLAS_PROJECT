@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  documentAssetsApi,
   flashcardsApi,
   mindmapsApi,
   quizApi,
@@ -169,5 +170,14 @@ export function useMindmapQuery(mindmapId: string) {
     queryKey: ["mindmap", mindmapId],
     queryFn: () => mindmapsApi.get(mindmapId),
     enabled: Boolean(mindmapId),
+  });
+}
+
+export function useDocumentAssetManifestQuery(documentVersionId: string) {
+  return useQuery({
+    queryKey: ["document-assets", documentVersionId, "manifest"],
+    queryFn: () => documentAssetsApi.getManifest(documentVersionId),
+    enabled: Boolean(documentVersionId),
+    staleTime: 60 * 1000,
   });
 }

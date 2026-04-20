@@ -1,4 +1,4 @@
-Here's a concise, cross-platform README that works for both Windows and Linux:
+
 
 ```markdown
 # ATLAS

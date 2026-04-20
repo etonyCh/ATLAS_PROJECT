@@ -1,8 +1,6 @@
 import os
 import io
 import base64
-import cv2
-import numpy as np
 import pdfplumber
 import tempfile
 import socket
@@ -16,6 +14,14 @@ from PIL import Image
 from app.core.config import settings
 from app.models.all_models import DocumentVersion, DocumentPipelineStatus, Contribution
 from app.services.doc_processing.storage import minio_client
+from app.services.doc_processing.ocr_strategy import (
+    detect_handwriting_risk,
+    extract_quick_pdf_text,
+    get_pdf_page_count,
+    iter_pdf_page_images,
+    laplacian_variance,
+    should_force_vlm_ocr,
+)
 from app.services.ai_core.embedding_tasks_qdrant import embed_document
 from app.services.ai_core.ollama_client import ollama  # NEW: SOTA Lego Client
 
@@ -74,6 +80,34 @@ def _perform_llm_ocr(base64_img: str) -> str:
     except Exception as e:
         log.error("llm_vision_ocr_failed", error=str(e))
         return ""
+
+
+def _extract_pdf_via_vlm(file_path: str, log) -> tuple[str, float, int]:
+    extracted_parts: list[str] = []
+    quality_total = 0.0
+    scanned_pages = 0
+
+    for batch in iter_pdf_page_images(file_path):
+        for page_number, pil_img in batch:
+            scanned_pages += 1
+            variance = laplacian_variance(pil_img)
+            quality_total += variance
+
+            if variance < 100.0:
+                log.warning(
+                    "low_scan_quality",
+                    variance=variance,
+                    page_number=page_number,
+                )
+
+            base64_img = _pil_to_base64(pil_img)
+            page_text = _perform_llm_ocr(base64_img)
+            if page_text:
+                extracted_parts.append(page_text)
+            else:
+                log.warning("vision_ocr_empty_result", page_number=page_number)
+
+    return "\n\n".join(extracted_parts).strip(), quality_total, scanned_pages
 
 
 def _scan_file_with_clamav(
@@ -260,18 +294,31 @@ def process_document_ocr(document_version_id: str):
                     is_docling_available,
                 )
 
-                quick_text = ""
-                try:
-                    with pdfplumber.open(temp_path) as pdf:
-                        for page in pdf.pages[:3]:
-                            page_text = page.extract_text() or ""
-                            quick_text += page_text + "\n"
-                except Exception:
-                    quick_text = ""
+                page_count = get_pdf_page_count(temp_path)
+                quick_text = extract_quick_pdf_text(temp_path, max_pages=3)
+                handwriting_risk = detect_handwriting_risk(temp_path, max_pages=3)
+                force_vlm_ocr = should_force_vlm_ocr(
+                    temp_path,
+                    quick_text,
+                    page_count,
+                    handwriting_risk,
+                )
 
-                use_docling = is_docling_available() and should_use_docling(temp_path, quick_text)
+                log.info(
+                    "ocr_strategy_selected",
+                    page_count=page_count,
+                    handwriting_risk=handwriting_risk,
+                    force_vlm_ocr=force_vlm_ocr,
+                )
 
-                if use_docling:
+                use_docling = is_docling_available() and should_use_docling(
+                    temp_path,
+                    quick_text,
+                    page_count=page_count,
+                    handwriting_risk=handwriting_risk,
+                )
+
+                if use_docling and not force_vlm_ocr:
                     log.info("routing_to_docling_parser", reason="complex_document_detected")
                     docling_result = parse_with_docling(temp_path)
 
@@ -284,6 +331,17 @@ def process_document_ocr(document_version_id: str):
                             has_tables=docling_result.get("has_tables", False),
                             pages=docling_result.get("page_count", 0),
                         )
+
+                if not extracted_text and force_vlm_ocr:
+                    log.info("routing_to_batched_vision_ocr", page_count=page_count)
+                    parser_used = "ollama_vision_pdf"
+                    (
+                        extracted_text,
+                        quality_from_vlm,
+                        scanned_pages_from_vlm,
+                    ) = _extract_pdf_via_vlm(temp_path, log)
+                    total_quality_score += quality_from_vlm
+                    scanned_pages_count += scanned_pages_from_vlm
 
                 if not extracted_text:
                     log.info("routing_to_pdfplumber_pipeline")
@@ -301,10 +359,7 @@ def process_document_ocr(document_version_id: str):
                                 scanned_pages_count += 1
 
                                 pil_img = page.to_image(resolution=300).original
-                                img_cv = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-
-                                gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
-                                variance = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+                                variance = laplacian_variance(pil_img)
                                 total_quality_score += variance
 
                                 if variance < 100.0:
@@ -344,10 +399,7 @@ def process_document_ocr(document_version_id: str):
 
                         try:
                             pil_img = Image.open(temp_path).convert("RGB")
-                            img_cv = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-
-                            gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
-                            variance = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+                            variance = laplacian_variance(pil_img)
                             total_quality_score += variance
 
                             base64_img = _pil_to_base64(pil_img)
@@ -361,10 +413,7 @@ def process_document_ocr(document_version_id: str):
 
                     try:
                         pil_img = Image.open(temp_path).convert("RGB")
-                        img_cv = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-
-                        gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
-                        variance = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+                        variance = laplacian_variance(pil_img)
                         total_quality_score += variance
 
                         base64_img = _pil_to_base64(pil_img)

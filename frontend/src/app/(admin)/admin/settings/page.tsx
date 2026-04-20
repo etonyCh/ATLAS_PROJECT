@@ -27,7 +27,9 @@ type CourseFormState = {
   description: string;
   department_id: string;
   level: string;
-  administrative_year: string;
+  academic_year: string;
+  course_type: string;
+  language: string;
 };
 
 const EMPTY_COURSE_FORM: CourseFormState = {
@@ -36,6 +38,8 @@ const EMPTY_COURSE_FORM: CourseFormState = {
   department_id: "",
   level: "L1",
   academic_year: "2025-2026",
+  course_type: "LECTURE",
+  language: "FR",
 };
 
 export default function AdminSettingsPage() {
@@ -122,6 +126,8 @@ export default function AdminSettingsPage() {
       department_id: course.department_id ?? "",
       level: course.level ?? "L1",
       academic_year: course.academic_year ?? "2025-2026",
+      course_type: course.course_type ?? "LECTURE",
+      language: course.language ?? "FR",
     });
   };
 

@@ -46,10 +46,9 @@ celery_app.conf.update(
     task_acks_late=True,
     
     # OLLAMA SPECIFIC DEFENSES:
-    # Hard bounds to prevent zombie workers if the vision or generation model hangs indefinitely.
-    # We add a buffer to the Ollama timeout for network and serialization overhead.
-    task_soft_time_limit=settings.OLLAMA_TIMEOUT_SECONDS + 15,
-    task_time_limit=settings.OLLAMA_TIMEOUT_SECONDS + 30,
+    # Calculate limits based on total possible duration (timeout * retries) + buffer for backoff/overhead
+    task_soft_time_limit=(settings.OLLAMA_TIMEOUT_SECONDS * settings.OLLAMA_MAX_RETRIES) + 60,
+    task_time_limit=(settings.OLLAMA_TIMEOUT_SECONDS * settings.OLLAMA_MAX_RETRIES) + 90,
 )
 
 logger.info("Celery Application configured with strict timeouts and model fallback environment.")

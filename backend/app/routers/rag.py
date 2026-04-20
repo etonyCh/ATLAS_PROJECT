@@ -8,12 +8,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Response, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import delete, select
+from sqlalchemy import delete, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import atlas_error
 from app.db.session import get_session
 from app.dependencies import get_current_user
+from app.models.contribution import Contribution, DocumentVersion
 from app.models.rag import Message, RAGSession
 from app.models.user import User
 from app.schemas.pagination import PageMeta
@@ -50,6 +51,44 @@ class MessageResponse(BaseModel):
 class MessageListResponse(BaseModel):
     items: list[MessageResponse]
     meta: PageMeta
+
+
+async def _latest_document_version_for_course(db: AsyncSession, course_id: UUID) -> DocumentVersion:
+    """Pick the newest non-deleted document version linked to the course (same rule as study tools)."""
+    result = await db.execute(
+        select(DocumentVersion)
+        .join(Contribution, Contribution.id == DocumentVersion.contribution_id)
+        .where(
+            Contribution.course_id == course_id,
+            DocumentVersion.is_deleted.is_(False),
+        )
+        .order_by(desc(DocumentVersion.version_number))
+        .limit(1)
+    )
+    version = result.scalar_one_or_none()
+    if version is None:
+        raise atlas_error(
+            "RAG_002",
+            "No documents are available for this course yet. Add or approve course materials first.",
+            status_code=404,
+        )
+    return version
+
+
+async def _course_id_for_document_version(db: AsyncSession, document_version_id: UUID) -> UUID:
+    result = await db.execute(
+        select(Contribution.course_id)
+        .join(DocumentVersion, DocumentVersion.contribution_id == Contribution.id)
+        .where(DocumentVersion.id == document_version_id)
+    )
+    cid = result.scalar_one_or_none()
+    if cid is None:
+        raise atlas_error(
+            "RAG_003",
+            "RAG session is linked to a document that no longer exists.",
+            status_code=500,
+        )
+    return cid
 
 
 async def _event_stream(
@@ -101,6 +140,11 @@ async def _event_stream(
         except json.JSONDecodeError:
             continue
 
+        error = decoded.get("error")
+        if error:
+            yield f'data: {json.dumps({"type": "error", "error": error})}\n\n'
+            return
+
         token = decoded.get("delta")
         if token:
             full_content += token
@@ -108,10 +152,11 @@ async def _event_stream(
 
     sources = []
     if source_page is not None:
+        course_id = await _course_id_for_document_version(db, session_row.document_version_id)
         sources.append(
             {
-                "course_id": str(session_row.document_version_id),
-                "title": f"Course {session_row.document_version_id}",
+                "course_id": str(course_id),
+                "title": f"Course {course_id}",
                 "page": int(source_page),
             }
         )
@@ -139,9 +184,15 @@ async def create_session(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ) -> SessionResponse:
+    try:
+        course_uuid = UUID(payload.course_id.strip())
+    except ValueError as exc:
+        raise atlas_error("RAG_004", "Invalid course_id.", status_code=422) from exc
+
+    version = await _latest_document_version_for_course(db, course_uuid)
     session_row = RAGSession(
         student_id=current_user.id,
-        document_version_id=payload.course_id,
+        document_version_id=version.id,
         message_count=0,
         is_active=True,
         created_at=datetime.utcnow(),
@@ -151,14 +202,14 @@ async def create_session(
     await db.refresh(session_row)
     return SessionResponse(
         id=str(session_row.id),
-        course_id=str(session_row.document_version_id),
+        course_id=str(course_uuid),
         message_count=session_row.message_count,
         created_at=session_row.created_at,
     )
 
 
 @router.get("/rag/sessions/{session_id}", response_model=SessionResponse)
-async def get_session(
+async def get_rag_session(
     session_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
@@ -172,9 +223,10 @@ async def get_session(
     session_row = result.scalar_one_or_none()
     if session_row is None:
         raise atlas_error("RAG_001", "RAG session not found.", status_code=404)
+    course_id = await _course_id_for_document_version(db, session_row.document_version_id)
     return SessionResponse(
         id=str(session_row.id),
-        course_id=str(session_row.document_version_id),
+        course_id=str(course_id),
         message_count=session_row.message_count,
         created_at=session_row.created_at,
     )
@@ -198,6 +250,8 @@ async def list_messages(
     if session_row is None:
         raise atlas_error("RAG_001", "RAG session not found.", status_code=404)
 
+    course_id = await _course_id_for_document_version(db, session_row.document_version_id)
+
     result = await db.execute(
         select(Message).where(Message.session_id == session_id).order_by(Message.timestamp.asc())
     )
@@ -211,7 +265,7 @@ async def list_messages(
             content=row.content,
             created_at=row.timestamp,
             sources=(
-                [{"course_id": str(session_row.document_version_id), "title": f"Course {session_row.document_version_id}", "page": row.source_page}]
+                [{"course_id": str(course_id), "title": f"Course {course_id}", "page": row.source_page}]
                 if row.source_page is not None
                 else []
             ),

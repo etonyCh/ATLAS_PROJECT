@@ -219,6 +219,7 @@ class QdrantManager:
         self,
         collection_name: str,
         query_vector: List[float],
+        query_text: Optional[str] = None,
         document_version_id: Optional[str] = None,
         top_k: int = 5,
         score_threshold: float = 0.0,
@@ -244,9 +245,7 @@ class QdrantManager:
             )
 
         # Generate sparse query vector
-        sparse_query = _compute_bm25_sparse_vectors([""])[
-            0
-        ]  # Placeholder - should be actual query text
+        sparse_query = _compute_bm25_sparse_vectors([query_text or ""])[0]
 
         # Hybrid search with prefetch + RRF fusion
         results = client.query_points(
@@ -306,6 +305,7 @@ class QdrantManager:
         results = self.search_similar(
             collection_name=collection_name,
             query_vector=query_vector,
+            query_text=query_text,
             document_version_id=document_version_id,
             top_k=top_k,
         )
@@ -326,6 +326,51 @@ class QdrantManager:
         context = "\n\n".join(context_parts)
 
         return context, max_score, top_result["chunk_index"], top_result["chunk_text"]
+
+    def get_document_chunks(
+        self,
+        collection_name: str,
+        document_version_id: str,
+        limit: int = 256,
+    ) -> List[Dict[str, Any]]:
+        """
+        Returns ordered chunk payloads for a single document version.
+        """
+        self.ensure_collection(collection_name)
+        client = self.get_client()
+
+        points, _ = client.scroll(
+            collection_name=collection_name,
+            scroll_filter=models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="document_version_id",
+                        match=models.MatchValue(value=document_version_id),
+                    )
+                ]
+            ),
+            limit=limit,
+            with_payload=True,
+            with_vectors=False,
+        )
+
+        rows: List[Dict[str, Any]] = []
+        for point in points:
+            payload = point.payload or {}
+            rows.append(
+                {
+                    "chunk_index": int(payload.get("chunk_index") or 0),
+                    "chunk_text": payload.get("chunk_text") or "",
+                    "document_version_id": payload.get("document_version_id"),
+                    "content_type": payload.get("content_type") or "document",
+                    "chunk_type": payload.get("chunk_type") or "TEXT",
+                    "is_atomic": bool(payload.get("is_atomic") or False),
+                    "token_count": int(payload.get("token_count") or 0),
+                }
+            )
+
+        rows.sort(key=lambda item: item["chunk_index"])
+        return rows
 
     def delete_document_embeddings(
         self,

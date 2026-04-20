@@ -12,7 +12,7 @@ This module handles:
 import torch
 from celery import shared_task
 from sqlmodel import Session, create_engine, select
-from sqlalchemy import delete as sa_delete
+from sqlalchemy import delete as sa_delete, update as sa_update
 import structlog
 import os
 import meilisearch
@@ -27,6 +27,7 @@ except Exception:
 from app.core.config import settings
 from app.core.qdrant_client import get_qdrant_manager, COLLECTION_DOCUMENTS
 from app.models.all_models import (
+    AcademicAssetCache,
     DocumentVersion,
     DocumentPipelineStatus,
     Contribution,
@@ -53,11 +54,19 @@ _embedding_model = None
 _kw_model = None
 
 
+def _mark_document_asset_cache_stale(session: Session, document_version_id: str) -> None:
+    session.execute(
+        sa_update(AcademicAssetCache)
+        .where(AcademicAssetCache.document_version_id == document_version_id)
+        .values(is_stale=True)
+    )
+
+
 def _get_models():
     """Initializes ML models once per worker process."""
     global _device, _embedding_model, _kw_model
     if _embedding_model is None:
-        _device = "cpu"
+        _device = "cuda" if torch.cuda.is_available() else "cpu"
         structlog.get_logger().info("loading_ml_models", device=_device, model=MODEL_NAME)
         _embedding_model = SentenceTransformer(MODEL_NAME, device=_device)
         _kw_model = KeyBERT(model=_embedding_model)
@@ -261,6 +270,7 @@ def embed_document(self, document_version_id: str):
 
         if not dv.ocr_text:
             log.warning("missing_ocr_text")
+            _mark_document_asset_cache_stale(session, document_version_id)
             dv.pipeline_status = DocumentPipelineStatus.READY
             session.add(dv)
             session.commit()
@@ -305,6 +315,8 @@ def embed_document(self, document_version_id: str):
                     metadata=chunk_metadata,
                 )
                 log.info("qdrant_embeddings_stored", chunks_count=len(chunked_embeddings))
+
+            _mark_document_asset_cache_stale(session, document_version_id)
 
             # Finalize pipeline
             dv.pipeline_status = DocumentPipelineStatus.READY
@@ -369,6 +381,9 @@ def reindex_document(document_version_id: str) -> bool:
                     content_type="document",
                     metadata=chunk_metadata,
                 )
+
+            _mark_document_asset_cache_stale(session, document_version_id)
+            session.commit()
 
             log.info("document_reindexed", chunks_count=len(chunked_embeddings))
             return True
