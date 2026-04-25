@@ -15,6 +15,7 @@ import {
   Activity,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+// Heatmap removed for students; heatmap is available for teachers/admin only
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useStudentDashboardQuery } from "@/queries";
@@ -87,6 +88,9 @@ export function StudentDashboardPageClient() {
     ][i],
     activities: 0,
   }));
+
+  // Heatmap data intentionally not loaded on student dashboard
+  const heatmapData: Array<{ date: string; value: number }> = [];
 
   return (
     <div className="space-y-6">
@@ -227,6 +231,8 @@ export function StudentDashboardPageClient() {
           </CardContent>
         </Card>
       </div>
+
+      { /* Heatmap intentionally omitted for students */ }
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 import io
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, List, Dict
 from uuid import UUID
 
 from fastapi import APIRouter, Depends
@@ -21,10 +21,28 @@ from app.models.course import Course
 from app.models.gamification import XPTransaction
 from app.models.study_tools import FlashcardDeck, QuizSession
 from app.models.user import Department, User
-
-
 router = APIRouter(tags=["Dashboard"])
 REPORT_TITLE_PREFIX = "Feedback received: "
+
+@router.get("/analytics/daily-activity")
+async def daily_activity(
+    days: int = 365,
+    current_user: User = Depends(require_role("TEACHER", "ADMIN")),
+    db: AsyncSession = Depends(get_session),
+) -> List[Dict[str, Any]]:
+    start_date = datetime.utcnow() - timedelta(days=days)
+    result = await db.execute(
+        select(
+            func.date(Contribution.created_at).label("date"),
+            func.count(Contribution.id).label("value"),
+        )
+        .where(Contribution.user_id == current_user.id, Contribution.created_at >= start_date)
+        .group_by(func.date(Contribution.created_at))
+        .order_by(func.date(Contribution.created_at))
+    )
+    rows = result.all()
+    data = [ {"date": r.date.isoformat(), "value": int(r.value)} for r in rows ]
+    return data
 
 
 @router.get("/students/me/dashboard")

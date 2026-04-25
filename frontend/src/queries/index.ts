@@ -6,3 +6,4 @@ export * from "./notifications";
 export * from "./rag";
 export * from "./search";
 export * from "./study";
+export * from "./daily-activity";

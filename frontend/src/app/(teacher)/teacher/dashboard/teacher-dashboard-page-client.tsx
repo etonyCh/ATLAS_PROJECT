@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { BookOpen, CheckCircle, Upload, Activity, TrendingUp, FileText } from "lucide-react";
+import CalendarHeatmap from "@/components/ui/calendar-heatmap";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ActivityHeatmap } from "@/components/ui/heatmap";
+import { useDailyActivityQuery } from "@/queries/daily-activity";
 import { useTeacherAnalyticsQuery } from "@/queries/dashboard";
 import { useAuthStore } from "@/store/auth.store";
 import { useTranslation } from "@/hooks/use-translation";
@@ -55,7 +56,6 @@ export function TeacherDashboardPageClient() {
     day: `W-${7 - i}`,
     uploads: 0,
   }));
-
   const heatmapData = analyticsQuery.data?.weekly_trend?.slice(-28).map((item) => ({
     date: item.week,
     value: item.uploads + item.approved,
@@ -69,6 +69,9 @@ export function TeacherDashboardPageClient() {
       label: "activities",
     };
   });
+
+  const { data: dailyActivity } = useDailyActivityQuery(365);
+  const calendarHeatMapData = dailyActivity ?? [];
 
   const stats = [
     {
@@ -140,6 +143,7 @@ export function TeacherDashboardPageClient() {
         title={t("teacher.activityHeatmap")}
         description={t("teacher.activityHeatmapDescription")}
       />
+      <CalendarHeatmap data={calendarHeatMapData} title={t("teacher.calendarHeatmap") ?? "Calendar Heatmap"} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

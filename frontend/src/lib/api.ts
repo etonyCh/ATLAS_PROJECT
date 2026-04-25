@@ -1107,6 +1107,12 @@ export const dashboardApi = {
   },
 };
 
+// New analytics API for calendar heatmap (daily activity per user)
+export const analyticsApi = {
+  dailyActivity: (days: number = 365): Promise<{ date: string; value: number }[]> =>
+    api.get<{ date: string; value: number }[]>(`/analytics/daily-activity?days=${days}`),
+};
+
 export const notificationsApi = {
   list: (params?: {
     limit?: number;

@@ -12,6 +12,8 @@ import { formatRole } from "@/lib/utils";
 import { useAdminDashboardQuery } from "@/queries/dashboard";
 import { useAuthStore } from "@/store/auth.store";
 import { useTranslation } from "@/hooks/use-translation";
+import { CalendarHeatmap } from "@/components/ui/calendar-heatmap";
+import { useDailyActivityQuery } from "@/queries/daily-activity";
 import {
   PieChart,
   Pie,
@@ -103,6 +105,10 @@ export function AdminDashboardPageClient() {
     },
   ];
 
+  // Admin calendar heatmap data (recent daily activity)
+  const { data: adminDaily } = useDailyActivityQuery(365);
+  const adminHeatmapData = adminDaily ?? [];
+
   return (
     <div className="space-y-6">
       <div>
@@ -191,6 +197,14 @@ export function AdminDashboardPageClient() {
             ) : (
               <p className="py-8 text-center text-muted-foreground">{t("common.noDataAvailable")}</p>
             )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-lg">{adminT.activityHeatmap ?? "Activity Heatmap"}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CalendarHeatmap data={adminHeatmapData} title={t("dashboard.activityHeatmap")} />
           </CardContent>
         </Card>
 
