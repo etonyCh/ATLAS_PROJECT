@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -548,3 +548,47 @@ async def generate_document_asset(
         "chunk_count": cached.chunk_count,
         "updated_at": cached.updated_at,
     }
+
+
+@router.get("/calendar/ics")
+async def get_study_calendar_ics(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    from app.utils.ics import generate_study_session_ics
+    from app.models.study_tools import Flashcard
+
+    due_cards = await db.execute(
+        select(Flashcard)
+        .join(FlashcardDeck, FlashcardDeck.id == Flashcard.deck_id)
+        .where(
+            FlashcardDeck.student_id == current_user.id,
+            Flashcard.next_review_at.isnot(None),
+        )
+        .order_by(Flashcard.next_review_at.asc())
+        .limit(100)
+    )
+    cards = due_cards.scalars().all()
+
+    sessions = []
+    for card in cards:
+        if card.next_review_at:
+            sessions.append({
+                "title": f"Flashcard Review: {card.question[:50]}..." if len(card.question) > 50 else f"Flashcard Review: {card.question}",
+                "description": f"Review flashcard (Difficulty: {card.difficulty})",
+                "date": card.next_review_at.isoformat(),
+                "duration": 10,
+            })
+
+    ics_content = generate_study_session_ics(
+        sessions,
+        user_name=current_user.full_name or "Student"
+    )
+
+    return Response(
+        content=ics_content,
+        media_type="text/calendar",
+        headers={
+            "Content-Disposition": f'attachment; filename="atlas-study-calendar-{datetime.utcnow().strftime("%Y-%m-%d")}.ics"'
+        }
+    )

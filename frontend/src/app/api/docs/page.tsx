@@ -415,6 +415,16 @@ const endpointGroups: Record<string, Endpoint[]> = {
         "200": { description: "Streak data" },
       },
     },
+    {
+      method: "GET",
+      path: "/v1/study/calendar/ics",
+      summary: "Study Calendar Export",
+      description: "Export upcoming flashcard reviews as .ics calendar file for external calendar integration.",
+      tags: ["Study"],
+      responses: {
+        "200": { description: "Calendar file download" },
+      },
+    },
   ],
   Contributions: [
     {
@@ -449,42 +459,6 @@ const endpointGroups: Record<string, Endpoint[]> = {
       tags: ["Contributions"],
       responses: {
         "200": { description: "Contribution details" },
-      },
-    },
-  ],
-  Gamification: [
-    {
-      method: "GET",
-      path: "/v1/gamification/leaderboard",
-      summary: "Leaderboard",
-      description: "Get global or course-specific leaderboards.",
-      tags: ["Gamification"],
-      parameters: [
-        { name: "course_id", in: "query", required: false, type: "string", description: "Filter by course" },
-        { name: "limit", in: "query", required: false, type: "integer", description: "Top N users" },
-      ],
-      responses: {
-        "200": { description: "Leaderboard entries" },
-      },
-    },
-    {
-      method: "GET",
-      path: "/v1/gamification/badges",
-      summary: "User Badges",
-      description: "Get all badges earned by the user.",
-      tags: ["Gamification"],
-      responses: {
-        "200": { description: "Badge list" },
-      },
-    },
-    {
-      method: "GET",
-      path: "/v1/gamification/points",
-      summary: "Points History",
-      description: "Get user's points transaction history.",
-      tags: ["Gamification"],
-      responses: {
-        "200": { description: "Points history" },
       },
     },
   ],

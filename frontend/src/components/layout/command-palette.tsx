@@ -100,16 +100,6 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         group: "navigation",
       },
       {
-        id: "nav-forum",
-        label: cpT.forum,
-        icon: MessageSquare,
-        action: () => {
-          router.push("/forum");
-          onOpenChange(false);
-        },
-        group: "navigation",
-      },
-      {
         id: "nav-leaderboard",
         label: cpT.leaderboard,
         icon: GraduationCap,

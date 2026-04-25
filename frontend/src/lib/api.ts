@@ -33,10 +33,6 @@ import type {
   QuizSubmitRequest,
   QuizSubmitResponse,
   QuizHistoryItem,
-  GamificationProfile,
-  LeaderboardEntry,
-  UserXP,
-  XPTransaction,
   Notification,
   SmartOverviewResponse,
   RAGSession,
@@ -1002,68 +998,6 @@ export const contributionsApi = {
   },
 };
 
-export const forumsApi = {
-  listPosts: (params?: {
-    course_id?: string;
-    sort?: "wilson" | "recent" | "votes";
-    limit?: number;
-    offset?: number;
-  }): Promise<PaginatedResponse<ForumPost>> => {
-    const searchParams = new URLSearchParams();
-    Object.entries(params || {}).forEach(([key, value]) => {
-      if (value !== undefined) searchParams.append(key, String(value));
-    });
-    const query = searchParams.toString();
-    return api.get<PaginatedResponse<ForumPost>>(
-      `/forums/posts${query ? `?${query}` : ""}`,
-    );
-  },
-
-  createPost: (data: {
-    course_id: string;
-    title: string;
-    content: Record<string, unknown>;
-  }): Promise<ForumPost> => api.post<ForumPost>("/forums/posts", data),
-
-  getPost: (postId: string): Promise<ForumPost> =>
-    api.get<ForumPost>(`/forums/posts/${postId}`),
-
-  updatePost: (
-    postId: string,
-    data: {
-      course_id: string;
-      title: string;
-      content: Record<string, unknown>;
-    },
-  ): Promise<ForumPost> =>
-    api.patch<ForumPost>(`/forums/posts/${postId}`, data),
-
-  deletePost: (postId: string): Promise<{ message: string }> =>
-    api.delete<{ message: string }>(`/forums/posts/${postId}`),
-
-  addReply: (
-    postId: string,
-    data: { content: Record<string, unknown> },
-  ): Promise<ForumReply> =>
-    api.post<ForumReply>(`/forums/posts/${postId}/replies`, data),
-
-  vote: (
-    postId: string,
-    value: 1 | -1,
-  ): Promise<ForumPost> =>
-    api.post<ForumPost>(`/forums/posts/${postId}/vote`, { value }),
-
-  pinReply: (replyId: string): Promise<{ id: string; is_pinned: boolean }> =>
-    api.patch<{ id: string; is_pinned: boolean }>(`/forums/replies/${replyId}/pin`),
-
-  report: (data: {
-    target_type: "post" | "reply";
-    target_id: string;
-    reason: string;
-  }): Promise<{ message: string }> =>
-    api.post<{ message: string }>("/reports", data),
-};
-
 export const feedbackApi = {
   submit: (data: {
     type: string;
@@ -1073,6 +1007,11 @@ export const feedbackApi = {
     screenshot_url?: string;
   }): Promise<{ message: string; id: string }> =>
     api.post<{ message: string; id: string }>("/reports", data),
+};
+
+export const flashcardApi = {
+  exportCalendar: (): Promise<Blob> =>
+    api.getBlob("/study/calendar/ics"),
 };
 
 export const dashboardApi = {
@@ -1166,31 +1105,6 @@ export const dashboardApi = {
     exportAnalytics: (): Promise<Blob> =>
       api.getBlob("/admin/analytics/export"),
   },
-};
-
-export const gamificationApi = {
-  getXP: (userId: string): Promise<UserXP> =>
-    api.get<UserXP>(`/users/${userId}/xp`),
-
-  getBadges: (userId: string): Promise<GamificationProfile> =>
-    api.get<GamificationProfile>(`/users/${userId}/badges`),
-
-  getLeaderboard: (
-    limit = 20,
-    filiere?: string,
-    anonymous = false,
-  ): Promise<LeaderboardEntry[]> => {
-    const params = new URLSearchParams({ limit: String(limit) });
-    if (filiere) params.append("filiere", filiere);
-    if (anonymous) params.append("anonymous", "true");
-    return api.get<LeaderboardEntry[]>(`/leaderboard?${params.toString()}`);
-  },
-
-  getProfile: (username: string): Promise<UserProfile> =>
-    api.get<UserProfile>(`/profile/${username}`),
-
-  getTransactions: (userId: string, limit = 50): Promise<XPTransaction[]> =>
-    api.get<XPTransaction[]>(`/users/${userId}/transactions?limit=${limit}`),
 };
 
 export const notificationsApi = {

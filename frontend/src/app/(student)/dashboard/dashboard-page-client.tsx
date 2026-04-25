@@ -4,16 +4,15 @@ import Link from "next/link";
 import {
   ArrowRight,
   BookOpen,
+  Calendar,
   Clock,
   Flame,
   GraduationCap,
   Star,
   Target,
   TrendingUp,
-  Trophy,
   Zap,
   Activity,
-  Award,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -391,24 +390,41 @@ export function StudentDashboardPageClient() {
               className="h-auto py-4 flex-col gap-2 group hover:border-primary/50 transition-all" 
               asChild
             >
-              <Link href="/leaderboard">
-                <div className="rounded-full bg-primary/10 p-2 group-hover:bg-primary/20 transition-colors">
-                  <Trophy className="h-5 w-5 text-primary" />
-                </div>
-                <span>{t("dashboard.leaderboard")}</span>
-              </Link>
-            </Button>
-            <Button 
-              variant="outline" 
-              className="h-auto py-4 flex-col gap-2 group hover:border-primary/50 transition-all" 
-              asChild
-            >
               <Link href="/my/history">
                 <div className="rounded-full bg-primary/10 p-2 group-hover:bg-primary/20 transition-colors">
                   <Clock className="h-5 w-5 text-primary" />
                 </div>
                 <span>{t("dashboard.studyHistory")}</span>
               </Link>
+            </Button>
+            <Button
+              variant="outline"
+              className="h-auto py-4 flex-col gap-2 group hover:border-primary/50 transition-all"
+              onClick={async () => {
+                try {
+                  const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/v1/study/calendar/ics`, {
+                    credentials: "include",
+                  });
+                  if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `atlas-study-calendar-${new Date().toISOString().split("T")[0]}.ics`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                  }
+                } catch (error) {
+                  console.error("Failed to download calendar:", error);
+                }
+              }}
+            >
+              <div className="rounded-full bg-primary/10 p-2 group-hover:bg-primary/20 transition-colors">
+                <Calendar className="h-5 w-5 text-primary" />
+              </div>
+              <span>{t("dashboard.exportCalendar")}</span>
             </Button>
           </div>
         </CardContent>

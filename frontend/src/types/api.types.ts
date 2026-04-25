@@ -561,61 +561,6 @@ export type MindmapNode = Record<string, unknown>;
 
 export type MindmapEdge = Record<string, unknown>;
 
-export interface GamificationProfile {
-  user_id: string;
-  total_xp: number;
-  level: number;
-  next_level_xp?: number;
-  xp_to_next_level?: number;
-  badges: Badge[];
-}
-
-export interface Badge {
-  id: string;
-  slug?: string;
-  code: string;
-  name: string;
-  description: string;
-  icon: string;
-  awarded_at?: string;
-  xp_threshold?: number;
-  condition?: Record<string, unknown>;
-}
-
-export interface LeaderboardEntry {
-  user_id: string;
-  name: string;
-  username?: string;
-  filiere: string | null;
-  xp: number;
-  level?: number;
-  avatar_url?: string;
-  is_anonymous?: boolean;
-}
-
-export interface XPBreakdown {
-  category: string;
-  xp: number;
-  percentage: number;
-}
-
-export interface UserXP {
-  total_xp: number;
-  level: number;
-  streak_days: number;
-  breakdown: XPBreakdown[];
-}
-
-export interface XPTransaction {
-  id: string;
-  user_id: string;
-  amount: number;
-  transaction_type: string;
-  description: string | null;
-  created_at: string;
-  metadata?: Record<string, unknown>;
-}
-
 export interface Notification {
   id: string;
   user_id: string;
@@ -661,28 +606,6 @@ export interface XRayMetadata {
   type: "xray_metadata";
   source_page: number;
   chunk_text: string;
-}
-
-export interface ForumPost {
-  id: string;
-  course_id: string;
-  author_id: string;
-  title: string;
-  content: Record<string, unknown>;
-  status: string;
-  reply_count: number;
-  score: number;
-  created_at: string;
-  updated_at: string | null;
-}
-
-export interface ForumReply {
-  id: string;
-  post_id: string;
-  author_id: string;
-  content: Record<string, unknown>;
-  is_pinned: boolean;
-  created_at: string;
 }
 
 export interface Vote {

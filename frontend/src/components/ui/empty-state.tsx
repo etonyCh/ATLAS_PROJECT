@@ -23,12 +23,10 @@ type EmptyStateType =
   | "no-notifications"
   | "no-courses"
   | "no-students"
-  | "no-badges"
   | "error"
   | "custom"
   | "chat"
   | "flashcards"
-  | "forum"
   | "mindmap"
   | "quiz"
   | "reader"
@@ -87,11 +85,6 @@ const emptyStateConfig: Record<
     title: "No students enrolled",
     description: "Students will appear here once they enroll in your courses.",
   },
-  "no-badges": {
-    icon: FileQuestion,
-    title: "No badges earned",
-    description: "Complete tasks and challenges to earn badges.",
-  },
   error: {
     icon: AlertCircle,
     title: "Something went wrong",
@@ -112,11 +105,6 @@ const emptyStateConfig: Record<
     icon: Layers,
     title: "No flashcards yet",
     description: "Flashcards will appear here once they're generated or added.",
-  },
-  forum: {
-    icon: MessageSquare,
-    title: "No discussions yet",
-    description: "Start a discussion or wait for others to post.",
   },
   mindmap: {
     icon: GitBranch,

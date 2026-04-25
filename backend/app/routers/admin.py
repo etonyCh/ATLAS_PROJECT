@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import delete, desc, func, select, update
 from sqlalchemy.exc import IntegrityError
@@ -717,3 +717,55 @@ async def delete_user(
     await db.commit()
     
     return {"message": f"User {user_id} deleted successfully. Their contributions and documents remain but are now orphaned."}
+
+
+@router.get("/admin/analytics/export")
+async def export_analytics_pdf(
+    period: str = Query(default="monthly", description="Report period (monthly, weekly)"),
+    lang: str = Query(default="en", description="Language for report"),
+    current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_session),
+):
+    from app.services.doc_processing.analytics_export_service import generate_analytics_pdf
+    from app.models.contribution import Contribution
+    from app.models.course import Course
+
+    today = datetime.utcnow()
+    if period == "monthly":
+        start_date = today.replace(day=1)
+        period_label = today.strftime("%B %Y")
+    else:
+        start_date = today - timedelta(days=7)
+        period_label = f"{start_date.strftime('%Y-%m-%d')} to {today.strftime('%Y-%m-%d')}"
+
+    total_users = await db.execute(select(func.count(User.id)))
+    total_courses = await db.execute(select(func.count(Course.id)).where(Course.is_deleted == False))
+    total_uploads = await db.execute(
+        select(func.count(Contribution.id))
+        .where(Contribution.created_at >= start_date)
+    )
+    approved_uploads = await db.execute(
+        select(func.count(Contribution.id))
+        .where(Contribution.created_at >= start_date, Contribution.status == "APPROVED")
+    )
+
+    report_data = {
+        "summary": {
+            "total_users": total_users.scalar() or 0,
+            "total_courses": total_courses.scalar() or 0,
+            "total_uploads": total_uploads.scalar() or 0,
+            "approved_uploads": approved_uploads.scalar() or 0,
+        },
+        "top_courses": [],
+        "period": period_label,
+    }
+
+    pdf_bytes = generate_analytics_pdf("admin", period_label, report_data, lang)
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="atlas-admin-report-{today.strftime("%Y-%m-%d")}.pdf"'
+        }
+    )
