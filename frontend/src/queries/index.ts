@@ -2,7 +2,6 @@ export * from "./auth";
 export * from "./contributions";
 export * from "./courses";
 export * from "./dashboard";
-export * from "./gamification";
 export * from "./notifications";
 export * from "./rag";
 export * from "./search";
