@@ -29,6 +29,7 @@ import {
   Users,
 } from "lucide-react";
 import { useAuthStore } from "@/store/auth.store";
+import { useTranslation } from "@/hooks/use-translation";
 
 interface Command {
   id: string;
@@ -45,6 +46,8 @@ interface CommandPaletteProps {
 }
 
 export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
+  const { t, tSection } = useTranslation();
+  const cpT = tSection("commandPalette");
   const router = useRouter();
   const { user, logout } = useAuthStore();
   const [query, setQuery] = useState("");
@@ -64,7 +67,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     () => [
       {
         id: "nav-dashboard",
-        label: "Go to Dashboard",
+        label: cpT.dashboard,
         icon: LayoutDashboard,
         action: () => {
           router.push(
@@ -78,7 +81,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       },
       {
         id: "nav-search",
-        label: "Go to Search",
+        label: cpT.search,
         icon: Search,
         action: () => {
           router.push("/search");
@@ -88,7 +91,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       },
       {
         id: "nav-flashcards",
-        label: "Go to My Flashcards",
+        label: cpT.flashcards,
         icon: Layers,
         action: () => {
           router.push("/my/flashcards");
@@ -98,7 +101,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       },
       {
         id: "nav-forum",
-        label: "Go to Forum",
+        label: cpT.forum,
         icon: MessageSquare,
         action: () => {
           router.push("/forum");
@@ -108,7 +111,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       },
       {
         id: "nav-leaderboard",
-        label: "Go to Leaderboard",
+        label: cpT.leaderboard,
         icon: GraduationCap,
         action: () => {
           router.push("/leaderboard");
@@ -118,7 +121,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       },
       {
         id: "action-quiz",
-        label: "Start New Quiz",
+        label: cpT.startQuiz,
         icon: FileQuestion,
         action: () => {
           router.push("/ai/workspace?tab=quiz");
@@ -128,7 +131,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       },
       {
         id: "action-flashcards",
-        label: "Generate Flashcard Deck",
+        label: cpT.generateFlashcards,
         icon: Brain,
         action: () => {
           router.push("/ai/workspace?tab=flashcards");
@@ -138,7 +141,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       },
       {
         id: "action-chat",
-        label: "Open AI Chat",
+        label: cpT.openAIChat,
         icon: MessageSquare,
         action: () => {
           router.push("/ai/workspace?tab=chat");
@@ -148,7 +151,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       },
       {
         id: "action-upload",
-        label: "Upload Course",
+        label: cpT.uploadCourse,
         icon: Upload,
         action: () => {
           router.push("/teacher/courses/upload");
@@ -158,19 +161,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         roles: ["TEACHER", "ADMIN", "SUPERADMIN"],
       },
       {
-        id: "action-contributions",
-        label: "Review Contributions",
-        icon: FolderKanban,
-        action: () => {
-          router.push("/admin/contributions");
-          onOpenChange(false);
-        },
-        group: "actions",
-        roles: ["ADMIN", "SUPERADMIN"],
-      },
-      {
         id: "action-users",
-        label: "Manage Users",
+        label: cpT.manageUsers,
         icon: Users,
         action: () => {
           router.push("/admin/users");
@@ -181,7 +173,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       },
       {
         id: "nav-settings",
-        label: "Go to Settings",
+        label: cpT.settings,
         icon: Settings,
         action: () => {
           router.push("/settings");
@@ -191,7 +183,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       },
       {
         id: "action-logout",
-        label: "Logout",
+        label: cpT.logout,
         icon: LogOut,
         action: async () => {
           await logout();
@@ -201,7 +193,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         group: "actions",
       },
     ],
-    [logout, onOpenChange, router, user],
+    [logout, onOpenChange, router, user, cpT],
   );
 
   const filteredCommands = useMemo(
@@ -267,7 +259,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           <CommandInput
             value={query}
             onValueChange={setQuery}
-            placeholder="Type a command or search..."
+            placeholder={cpT.placeholder}
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
           <kbd className="hidden h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] text-muted-foreground sm:inline-flex">
@@ -277,11 +269,11 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
         <CommandList className="max-h-96 overflow-y-auto p-2">
           <CommandEmpty className="px-3 py-8 text-center text-sm text-muted-foreground">
-            No commands found
+            {cpT.noCommands}
           </CommandEmpty>
 
           {groupedCommands.navigation.length > 0 ? (
-            <CommandGroup heading="Navigation">
+            <CommandGroup heading={cpT.navigation}>
               {groupedCommands.navigation.map((cmd) => {
                 const Icon = cmd.icon;
                 return (
@@ -302,7 +294,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           {groupedCommands.actions.length > 0 ? (
             <>
               <CommandSeparator className="my-2 h-px bg-border" />
-              <CommandGroup heading="Actions">
+              <CommandGroup heading={cpT.actions}>
                 {groupedCommands.actions.map((cmd) => {
                   const Icon = cmd.icon;
                   return (
@@ -324,7 +316,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           {groupedCommands.recent.length > 0 ? (
             <>
               <CommandSeparator className="my-2 h-px bg-border" />
-              <CommandGroup heading="Recent">
+              <CommandGroup heading={cpT.recent}>
                 {groupedCommands.recent.map((cmd: Command) => (
                   <CommandItem
                     key={cmd.id}

@@ -108,7 +108,13 @@ class Contribution(SQLModel, table=True):
         description="Auto-flagged true if document scan quality is below OCR_QUALITY_ALERT_THRESHOLD",
     )
 
-    uploader_id: uuid.UUID = Field(foreign_key="user.id", index=True)
+    uploader_id: Optional[uuid.UUID] = Field(
+        default=None,
+        foreign_key="user.id",
+        index=True,
+        nullable=True,
+        ondelete="SET NULL",
+    )
     uploader: Optional["User"] = Relationship(back_populates="contributions")
 
     # US-06: Link the physical upload to the academic course taxonomy

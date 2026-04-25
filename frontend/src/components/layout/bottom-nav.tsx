@@ -17,7 +17,7 @@ const studentNavItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Home" },
   { href: "/search", icon: Search, label: "Search" },
   { href: "/courses", icon: BookOpen, label: "Courses" },
-  { href: "/notifications", icon: Bell, label: "Alerts" },
+
   { href: "/profile", icon: User, label: "Profile" },
 ];
 
@@ -32,7 +32,7 @@ export function BottomNav() {
         { href: "/dashboard", icon: LayoutDashboard, label: "Home" },
         { href: "/search", icon: Search, label: "Search" },
         { href: "/upload", icon: Upload, label: "Upload" },
-        { href: "/notifications", icon: Bell, label: "Alerts" },
+
         { href: "/profile", icon: User, label: "Profile" },
       ]
     : studentNavItems;

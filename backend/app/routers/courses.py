@@ -131,6 +131,7 @@ async def upload_course(
     course_id: UUID = Form(...),
     course_type: str = Form("LECTURE"),
     language: str = Form("FR"),
+    academic_year: str = Form(...),
     file: UploadFile = File(...),
     current_user: User = Depends(require_role("TEACHER")),
     db: AsyncSession = Depends(get_session),
@@ -146,6 +147,7 @@ async def upload_course(
             file=file,
             course_type=CourseType(course_type),
             language=CourseLanguage(language),
+            academic_year=academic_year,
         )
     except ValueError as exc:
         raise atlas_error("COURSE_002", str(exc), status_code=400) from exc
@@ -361,7 +363,8 @@ async def get_course_versions(
                 "uploader_name": uploader.full_name or uploader.email,
                 "course_type": contribution.course_type.value if hasattr(contribution.course_type, "value") else str(contribution.course_type),
                 "language": contribution.language.value if hasattr(contribution.language, "value") else str(contribution.language),
-                "title": contribution.title
+                "title": contribution.title,
+                "academic_year": contribution.course.academic_year if contribution.course else None
             })
             versions.append(v_data)
 

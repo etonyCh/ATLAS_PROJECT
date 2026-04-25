@@ -5,11 +5,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AIToolsTabPanel } from "@/components/ai/ai-tools-tab-panel";
 import { useCourseQuery } from "@/queries";
+import { useTrackLearning } from "@/hooks/use-continue-learning";
 
 export default function QuizPage() {
   const params = useParams();
   const courseId = params.id as string;
   const { data: course, isLoading, isError } = useCourseQuery(courseId);
+
+  useTrackLearning(courseId, course?.title || "Course Material", "quiz");
 
   if (isLoading) {
     return <Skeleton className="h-[calc(100vh-220px)] w-full" />;

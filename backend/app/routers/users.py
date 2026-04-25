@@ -37,6 +37,10 @@ class UserUpdateRequest(BaseModel):
     preferred_language: str | None = None
     profile_picture_url: str | None = None
     onboarding_completed: bool | None = None
+    push_notifications_enabled: bool | None = None
+    email_digest_enabled: bool | None = None
+    notification_types: list[str] | None = None
+    is_rtl: bool | None = None
 
 
 @router.patch("/users/me")
@@ -91,6 +95,14 @@ async def update_me(
         current_user.profile_picture_url = payload.profile_picture_url
     if payload.onboarding_completed is not None:
         current_user.onboarding_completed = payload.onboarding_completed
+    if payload.push_notifications_enabled is not None:
+        current_user.push_notifications_enabled = payload.push_notifications_enabled
+    if payload.email_digest_enabled is not None:
+        current_user.email_digest_enabled = payload.email_digest_enabled
+    if payload.notification_types is not None:
+        current_user.notification_types = payload.notification_types
+    if payload.is_rtl is not None:
+        current_user.is_rtl = payload.is_rtl
 
     db.add(current_user)
     await db.commit()
@@ -113,6 +125,10 @@ async def update_me(
         "profile_picture_url": current_user.profile_picture_url,
         "role": current_user.role,
         "onboarding_completed": current_user.onboarding_completed,
+        "push_notifications_enabled": current_user.push_notifications_enabled,
+        "email_digest_enabled": current_user.email_digest_enabled,
+        "notification_types": current_user.notification_types,
+        "is_rtl": current_user.is_rtl,
     }
 
 
@@ -269,6 +285,22 @@ async def get_my_profile(
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
     """Get full profile for the current user (same as public but for self)."""
-    # Reuse public profile logic
     from uuid import UUID
-    return await get_public_profile(UUID(str(current_user.id)), db, current_user)
+
+
+@router.delete("/users/me")
+async def delete_my_account(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    """
+    Delete own account. This is a soft delete that marks the user as deleted.
+    """
+    current_user.is_deleted = True
+    current_user.email = f"deleted_{current_user.id}@{current_user.email.split('@')[1]}"
+    current_user.full_name = "Deleted User"
+    current_user.is_active = False
+    
+    await db.commit()
+    
+    return {"message": "Your account has been deleted successfully."}

@@ -197,7 +197,7 @@ def send_admin_new_contribution_email(to_email: str, title: str, uploader_name: 
 
     subject = f"Action Required: New Contribution Pending Review - {title}"
     frontend_url = getattr(settings, "BACKEND_CORS_ORIGINS", ["http://localhost:3000"])[0]
-    moderation_link = f"{frontend_url}/admin/moderation"
+    moderation_link = f"{frontend_url}/superadmin/reports"
     
     try:
         template = template_env.get_template("admin_new_contribution.html")

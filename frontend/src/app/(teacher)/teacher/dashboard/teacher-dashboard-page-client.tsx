@@ -1,47 +1,78 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { BookOpen, CheckCircle, Clock, Upload } from "lucide-react";
+import { BookOpen, CheckCircle, Upload, Activity, TrendingUp, FileText } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState } from "@/components/ui/empty-state";
-import { StatusChip } from "@/components/ui/status-chip";
-import { contributionsApi } from "@/lib/api";
 import { useTeacherAnalyticsQuery } from "@/queries/dashboard";
 import { useAuthStore } from "@/store/auth.store";
-import type { Contribution } from "@/types/api.types";
+import { useTranslation } from "@/hooks/use-translation";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  Legend,
+} from "recharts";
+
+const COLORS = ['#10B981', '#F59E0B', '#EF4444', '#3B82F6', '#8B5CF6'];
 
 export function TeacherDashboardPageClient() {
+  const { t } = useTranslation();
   const { user } = useAuthStore();
   const analyticsQuery = useTeacherAnalyticsQuery();
-  const queueQuery = useQuery({
-    queryKey: ["dashboard", "teacher", "contributions"],
-    queryFn: () => contributionsApi.admin.list({ limit: 5, offset: 0 }),
-  });
 
-  const isLoading = analyticsQuery.isLoading || queueQuery.isLoading;
+  const isLoading = analyticsQuery.isLoading;
+
+  // Prepare data for charts
+  const statusData = analyticsQuery.data ? [
+    { name: t("status.approved"), value: analyticsQuery.data.approved_uploads },
+    { name: t("status.pending"), value: analyticsQuery.data.pending_uploads },
+    { name: t("status.rejected"), value: analyticsQuery.data.rejected_uploads },
+  ].filter(d => d.value > 0) : [];
+
+  const courseData = analyticsQuery.data?.top_courses.map(course => ({
+    name: course.title.length > 15 ? course.title.substring(0, 15) + '...' : course.title,
+    uploads: course.uploads,
+    approved: course.approved_uploads,
+  })) || [];
+
+  // Activity data from backend
+  const activityData = analyticsQuery.data?.weekly_trend?.slice(-7).map((item, index) => ({
+    day: item.week,
+    uploads: item.uploads,
+  })) || Array.from({ length: 7 }, (_, i) => ({
+    day: `W-${7 - i}`,
+    uploads: 0,
+  }));
+
   const stats = [
     {
-      title: "Total Uploads",
+      title: t("teacher.totalUploads"),
       value: analyticsQuery.data?.total_uploads ?? 0,
       icon: Upload,
+      color: "text-blue-500",
     },
     {
-      title: "Approved Uploads",
+      title: t("teacher.approvedUploads"),
       value: analyticsQuery.data?.approved_uploads ?? 0,
       icon: CheckCircle,
+      color: "text-green-500",
     },
     {
-      title: "Pending Reviews",
-      value: queueQuery.data?.meta.total ?? 0,
-      icon: Clock,
-    },
-    {
-      title: "Courses Contributed To",
+      title: t("course.courses"),
       value: analyticsQuery.data?.total_courses ?? 0,
       icon: BookOpen,
+      color: "text-purple-500",
     },
   ];
 
@@ -50,20 +81,25 @@ export function TeacherDashboardPageClient() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">
-            Welcome back, {user?.full_name?.split(" ")[0] || "Teacher"}!
+            {t("teacher.welcomeBackTeacher", { name: user?.full_name?.split(" ")[0] || t("teacher.teacher") })}
           </h1>
           <p className="text-muted-foreground">
-            Review the latest contribution activity and your upload totals.
+            {t("teacher.dashboardDescription")}
           </p>
         </div>
-        <Button asChild>
-          <Link href="/teacher/manage-contributions">Review Contributions</Link>
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" asChild>
+             <Link href="/teacher/manage-contributions">{t("teacher.manageQueue")}</Link>
+          </Button>
+          <Button asChild>
+            <Link href="/upload">{t("teacher.uploadNewMaterial")}</Link>
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat) => (
-          <Card key={stat.title}>
+          <Card key={stat.title} className="transition-all hover:shadow-md">
             <CardContent className="p-4">
               {isLoading ? (
                 <>
@@ -74,7 +110,7 @@ export function TeacherDashboardPageClient() {
                 <>
                   <div className="flex items-center justify-between">
                     <p className="text-sm text-muted-foreground">{stat.title}</p>
-                    <stat.icon className="h-5 w-5 text-primary" />
+                    <stat.icon className={`h-5 w-5 ${stat.color}`} />
                   </div>
                   <p className="mt-2 text-2xl font-bold">{stat.value}</p>
                 </>
@@ -84,81 +120,128 @@ export function TeacherDashboardPageClient() {
         ))}
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">Recent Contribution Queue</CardTitle>
-          <Button variant="ghost" size="sm" asChild>
-            <Link href="/teacher/manage-contributions">View all</Link>
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {queueQuery.isLoading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((key) => (
-                <Skeleton key={key} className="h-16 w-full" />
-              ))}
-            </div>
-          ) : queueQuery.data?.items.length ? (
-            <div className="space-y-3">
-              {queueQuery.data.items.map((contribution: Contribution) => (
-                <div
-                  key={contribution.id}
-                  className="flex items-center gap-3 rounded-lg border p-3"
-                >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                    <BookOpen className="h-5 w-5 text-primary" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{contribution.title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Uploaded {new Date(contribution.created_at).toLocaleString()}
-                    </p>
-                  </div>
-                  <StatusChip status={contribution.status} />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              type="contributions"
-              title="No contributions in review"
-              description="New uploads will appear here when students submit them."
-            />
-          )}
-        </CardContent>
-      </Card>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-lg">{t("teacher.uploadStatus")}</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-[250px] w-full" />
+            ) : statusData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={250}>
+                <PieChart>
+                  <Pie
+                    data={statusData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {statusData.map((entry, index) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={
+                          entry.name === t("status.approved") ? '#10B981' : 
+                          entry.name === t("status.pending") ? '#F59E0B' : 
+                          '#EF4444'
+                        } 
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--card))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px',
+                    }}
+                  />
+                  <Legend verticalAlign="bottom" height={36}/>
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-[250px] items-center justify-center text-muted-foreground">
+                {t("teacher.noUploadData")}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-lg">{t("teacher.courseAnalytics")}</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <Skeleton className="h-[250px] w-full" />
+            ) : courseData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={courseData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                  <XAxis dataKey="name" className="text-xs" />
+                  <YAxis className="text-xs" />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--card))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px',
+                    }}
+                  />
+                  <Legend />
+                  <Bar dataKey="uploads" name={t("teacher.uploads")} fill="#3B82F6" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="approved" name={t("teacher.approved")} fill="#10B981" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-[250px] items-center justify-center text-muted-foreground">
+                {t("teacher.noCourseData")}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">Top Course Areas</CardTitle>
-          <Button variant="ghost" size="sm" asChild>
-            <Link href="/teacher/analytics">Open analytics</Link>
-          </Button>
+          <CardTitle className="text-lg">{t("teacher.recentActivity")}</CardTitle>
+          <Activity className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          {analyticsQuery.isLoading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((key) => (
-                <Skeleton key={key} className="h-16 w-full" />
-              ))}
-            </div>
-          ) : analyticsQuery.data?.top_courses.length ? (
-            <div className="space-y-3">
-              {analyticsQuery.data.top_courses.slice(0, 3).map((course) => (
-                <div key={course.course_id} className="rounded-lg border p-3">
-                  <p className="font-medium">{course.title}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {course.uploads} uploads, {course.approved_uploads} approved
-                  </p>
-                </div>
-              ))}
-            </div>
+          {isLoading ? (
+            <Skeleton className="h-[200px] w-full" />
           ) : (
-            <EmptyState
-              type="no-data"
-              title="No teacher analytics yet"
-              description="Your top course areas will appear after you upload materials."
-            />
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={activityData}>
+                <defs>
+                  <linearGradient id="colorUploads" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                <XAxis dataKey="day" className="text-xs" />
+                <YAxis className="text-xs" />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: 'hsl(var(--card))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '8px',
+                  }}
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="uploads" 
+                  stroke="hsl(var(--primary))" 
+                  fillOpacity={1} 
+                  fill="url(#colorUploads)"
+                  name={t("teacher.uploads")}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
           )}
         </CardContent>
       </Card>

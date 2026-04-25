@@ -2,8 +2,10 @@
 
 import { useEffect, useCallback, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { useAuthStore, useUIStore } from "@/store/auth.store";
+import { useAuthStore } from "@/store/auth.store";
 import type { UserRole } from "@/types/api.types";
+
+export { useRTL, useTheme } from "./use-rtl";
 
 export function useAuth() {
   const router = useRouter();
@@ -251,39 +253,6 @@ export function useWebSocket(
     connect,
     disconnect,
   };
-}
-
-export function useRTL() {
-  const { isRTL, toggleRTL, setRTL } = useUIStore();
-
-  useEffect(() => {
-    document.documentElement.dir = isRTL ? "rtl" : "ltr";
-    document.documentElement.lang = isRTL ? "ar" : "fr";
-  }, [isRTL]);
-
-  return { isRTL, toggleRTL, setRTL };
-}
-
-export function useTheme() {
-  const { theme, setTheme } = useUIStore();
-
-  useEffect(() => {
-    const root = window.document.documentElement;
-
-    if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-        .matches
-        ? "dark"
-        : "light";
-      root.classList.remove("light", "dark");
-      root.classList.add(systemTheme);
-    } else {
-      root.classList.remove("light", "dark");
-      root.classList.add(theme);
-    }
-  }, [theme]);
-
-  return { theme, setTheme };
 }
 
 export function useDebounce<T>(value: T, delay: number): T {

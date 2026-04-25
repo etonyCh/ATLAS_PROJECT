@@ -41,6 +41,7 @@ interface ExtendedCourseVersion extends CourseVersion {
   course_type?: string;
   language?: string;
   title?: string;
+  academic_year?: string;
 }
 
 export function MaterialSelectionDialog({ 
@@ -126,6 +127,12 @@ export function MaterialSelectionDialog({
                           <UserIcon className="h-3 w-3" />
                           <span className="truncate max-w-[120px]">{version.uploader_name}</span>
                         </div>
+                        {version.academic_year && (
+                          <div className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            <span>{version.academic_year}</span>
+                          </div>
+                        )}
                         <div className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
                           <span>{formatDistanceToNow(new Date(version.uploaded_at))} ago</span>

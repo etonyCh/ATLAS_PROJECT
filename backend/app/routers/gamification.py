@@ -96,6 +96,7 @@ async def get_user_badges(
 
 @router.get("/leaderboard")
 async def leaderboard(
+    limit: int = 20,
     filiere: str | None = None,
     anonymous: bool = False,
     db: AsyncSession = Depends(get_session),
@@ -105,7 +106,7 @@ async def leaderboard(
         .outerjoin(XPTransaction, XPTransaction.user_id == User.id)
         .group_by(User.id)
         .order_by(desc("xp"))
-        .limit(20)
+        .limit(limit)
     )
     if filiere:
         stmt = stmt.where(User.filiere == filiere)

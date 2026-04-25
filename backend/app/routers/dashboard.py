@@ -474,6 +474,31 @@ async def admin_dashboard(
         )
     ).scalar_one()
 
+    # Weekly activity trend (last 7 days)
+    weekly_activity = []
+    for i in range(7):
+        day_end = now - timedelta(days=i)
+        day_begin = day_end - timedelta(days=1)
+        day_users = (
+            await db.execute(
+                select(func.count(func.distinct(XPTransaction.user_id)))
+                .where(XPTransaction.created_at >= day_begin, XPTransaction.created_at < day_end)
+            )
+        ).scalar_one()
+        day_contributions = (
+            await db.execute(
+                select(func.count(Contribution.id))
+                .where(Contribution.created_at >= day_begin, Contribution.created_at < day_end)
+            )
+        ).scalar_one()
+        day_name = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][day_end.weekday()]
+        weekly_activity.append({
+            "day": day_name,
+            "users": int(day_users or 0),
+            "contributions": int(day_contributions or 0),
+        })
+    weekly_activity.reverse()  # Most recent last
+
     # Breakdown by role
     user_role_rows = (
         await db.execute(select(User.role, func.count(User.id)).group_by(User.role))
@@ -541,6 +566,7 @@ async def admin_dashboard(
             "forum_posts": int(forum_posts_7d or 0),
             "active_users": int(active_users_7d or 0),
         },
+        "weekly_activity": weekly_activity,
         "study_tools": {
             "total_quizzes_taken": int(total_quizzes or 0),
             "total_flashcard_decks": int(total_flashcard_decks or 0),

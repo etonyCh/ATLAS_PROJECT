@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useTheme as useNextTheme } from "next-themes";
 import { useUIStore } from "@/store/auth.store";
+import { useLanguageContext } from "@/components/providers";
 
 export type Language = "fr" | "ar" | "en";
 
@@ -12,95 +13,69 @@ function isLanguage(value: string | null | undefined): value is Language {
   return !!value && SUPPORTED_LANGUAGES.includes(value as Language);
 }
 
-function getCookieLanguage(): Language | null {
-  if (typeof document === "undefined") {
-    return null;
-  }
-
-  const match = document.cookie
-    .split("; ")
-    .find((entry) => entry.startsWith("atlas_lang="))
-    ?.split("=")[1];
-
-  if (!match) {
-    return null;
-  }
-
-  const decoded = decodeURIComponent(match);
-  return isLanguage(decoded) ? decoded : null;
-}
-
-function getInitialLanguage(): Language {
-  if (typeof window === "undefined") {
-    return "fr";
-  }
-
-  const cookieLang = getCookieLanguage();
-  if (cookieLang) {
-    return cookieLang;
-  }
-
-  const stored = localStorage.getItem("atlas_lang");
-  if (isLanguage(stored)) {
-    return stored;
-  }
-
-  return "fr";
-}
-
 interface RTLContext {
   dir: "ltr" | "rtl";
   isRTL: boolean;
   lang: Language;
   setLanguage: (lang: Language) => void;
   languageNames: Record<Language, string>;
-}
-
-function applyDocumentLanguage(lang: Language, setRTL: (rtl: boolean) => void) {
-  const rtl = lang === "ar";
-  setRTL(rtl);
-  document.documentElement.lang = lang;
-  document.documentElement.dir = rtl ? "rtl" : "ltr";
+  toggleRTL: () => void;
 }
 
 export function useRTL(): RTLContext {
+  const { lang: contextLang, setLang: setContextLang } = useLanguageContext();
   const { isRTL, setRTL } = useUIStore();
-  const [lang, setLangState] = useState<Language>(getInitialLanguage);
-
-  const setLanguage = (nextLang: Language) => {
-    setLangState(nextLang);
-    localStorage.setItem("atlas_lang", nextLang);
-    document.cookie = `atlas_lang=${encodeURIComponent(nextLang)}; path=/; max-age=31536000; SameSite=Lax`;
-  };
+  
+  const [lang, setLang] = useState<Language>(contextLang);
 
   useEffect(() => {
-    applyDocumentLanguage(lang, setRTL);
+    setLang(contextLang);
+  }, [contextLang]);
+
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.documentElement.lang = lang;
+      document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
+    }
+    setRTL(lang === "ar");
   }, [lang, setRTL]);
+
+  const setLanguage = useCallback((nextLang: Language) => {
+    setLang(nextLang);
+    setContextLang(nextLang);
+    localStorage.setItem("atlas_lang", nextLang);
+    if (typeof document !== "undefined") {
+      document.cookie = `atlas_lang=${encodeURIComponent(nextLang)}; path=/; max-age=31536000; SameSite=Lax`;
+      document.documentElement.lang = nextLang;
+      document.documentElement.dir = nextLang === "ar" ? "rtl" : "ltr";
+    }
+  }, [setContextLang]);
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
-      if (event.key !== "atlas_lang") {
-        return;
-      }
-
+      if (event.key !== "atlas_lang") return;
       if (isLanguage(event.newValue)) {
-        setLangState(event.newValue);
+        setLanguage(event.newValue);
       }
     };
 
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
-  }, []);
+  }, [setLanguage]);
 
   return {
-    dir: isRTL ? "rtl" : "ltr",
-    isRTL,
+    dir: lang === "ar" ? "rtl" : "ltr",
+    isRTL: lang === "ar",
     lang,
     setLanguage,
     languageNames: {
-      fr: "Francais",
-      ar: "Arabic",
+      fr: "Français",
+      ar: "العربية",
       en: "English",
+    },
+    toggleRTL: () => {
+      const newLang = lang === "ar" ? "fr" : "ar";
+      setLanguage(newLang);
     },
   };
 }

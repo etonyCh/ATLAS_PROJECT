@@ -5,28 +5,30 @@ import { useTeacherAnalyticsQuery } from "@/queries/dashboard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { useTranslation } from "@/hooks/use-translation";
 
 export default function TeacherAnalyticsPage() {
+  const { t } = useTranslation();
   const analyticsQuery = useTeacherAnalyticsQuery();
 
   const stats = [
     {
-      title: "Total Uploads",
+      title: t("teacher.totalUploads"),
       value: analyticsQuery.data?.total_uploads ?? 0,
       icon: Upload,
     },
     {
-      title: "Approved Uploads",
+      title: t("teacher.approvedUploads"),
       value: analyticsQuery.data?.approved_uploads ?? 0,
       icon: CheckCircle2,
     },
     {
-      title: "Pending Uploads",
+      title: t("teacher.pendingUploads"),
       value: analyticsQuery.data?.pending_uploads ?? 0,
       icon: Clock,
     },
     {
-      title: "Rejected Uploads",
+      title: t("teacher.rejectedUploads"),
       value: analyticsQuery.data?.rejected_uploads ?? 0,
       icon: FileX,
     },
@@ -35,9 +37,9 @@ export default function TeacherAnalyticsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Analytics</h1>
+        <h1 className="text-2xl font-bold">{t("teacher.analyticsTitle")}</h1>
         <p className="text-muted-foreground">
-          Track your upload performance, recent activity, and strongest course areas.
+          {t("teacher.analyticsDescription")}
         </p>
       </div>
 
@@ -67,7 +69,7 @@ export default function TeacherAnalyticsPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Activity Snapshot</CardTitle>
+            <CardTitle className="text-lg">{t("teacher.activitySnapshot")}</CardTitle>
           </CardHeader>
           <CardContent>
             {analyticsQuery.isLoading ? (
@@ -79,13 +81,13 @@ export default function TeacherAnalyticsPage() {
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="rounded-lg border p-4">
-                  <p className="text-sm text-muted-foreground">Distinct Courses</p>
+                  <p className="text-sm text-muted-foreground">{t("teacher.distinctCourses")}</p>
                   <p className="mt-2 text-3xl font-bold">
                     {analyticsQuery.data?.total_courses ?? 0}
                   </p>
                 </div>
                 <div className="rounded-lg border p-4">
-                  <p className="text-sm text-muted-foreground">Uploads This Week</p>
+                  <p className="text-sm text-muted-foreground">{t("teacher.uploadsThisWeek")}</p>
                   <p className="mt-2 text-3xl font-bold">
                     {analyticsQuery.data?.recent_uploads_7d ?? 0}
                   </p>
@@ -97,7 +99,7 @@ export default function TeacherAnalyticsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Top Courses</CardTitle>
+            <CardTitle className="text-lg">{t("teacher.topCourses")}</CardTitle>
           </CardHeader>
           <CardContent>
             {analyticsQuery.isLoading ? (
@@ -112,10 +114,10 @@ export default function TeacherAnalyticsPage() {
                   <div key={course.course_id} className="rounded-lg border p-4">
                     <p className="font-medium">{course.title}</p>
                     <div className="mt-2 flex flex-wrap gap-4 text-sm text-muted-foreground">
-                      <span>{course.uploads} uploads</span>
-                      <span>{course.approved_uploads} approved</span>
+                      <span>{course.uploads} {t("teacher.uploads")}</span>
+                      <span>{course.approved_uploads} {t("teacher.approved")}</span>
                       <span>
-                        Last submission{" "}
+                        {t("teacher.lastSubmission")}{" "}
                         {course.last_submission_at
                           ? new Date(course.last_submission_at).toLocaleDateString()
                           : "N/A"}
@@ -127,8 +129,8 @@ export default function TeacherAnalyticsPage() {
             ) : (
               <EmptyState
                 type="no-data"
-                title="No course analytics yet"
-                description="Upload course material to start building analytics."
+                title={t("teacher.noAnalyticsYet")}
+                description={t("teacher.uploadToStartAnalytics")}
               />
             )}
           </CardContent>

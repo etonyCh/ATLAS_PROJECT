@@ -77,3 +77,6 @@
     transition: background-color 0.3s, color 0.3s;
   }
 }
+[lang="ar"] {
+  font-family: var(--font-arabic), ui-sans-serif, system-ui, sans-serif;
+}

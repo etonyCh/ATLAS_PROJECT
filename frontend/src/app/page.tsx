@@ -13,7 +13,7 @@ import {
 export const metadata: Metadata = {
   title: "ATLAS",
   description:
-    "ATLAS helps students, teachers, and admins turn academic content into structured learning workflows.",
+    "ATLAS helps students and teachers turn academic content into structured learning workflows.",
 };
 
 const highlights = [
@@ -67,7 +67,7 @@ export default function HomePage() {
         <div className="space-y-8">
           <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-800">
             <Sparkles className="h-4 w-4" />
-            Coherent academic platform for students, teachers, and admins
+            Coherent academic platform for students and teachers
           </div>
           <div className="space-y-4">
             <h1 className="max-w-3xl text-5xl font-semibold tracking-tight text-slate-950">

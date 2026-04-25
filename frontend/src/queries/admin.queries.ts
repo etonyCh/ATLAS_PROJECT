@@ -104,6 +104,18 @@ export function useUpdateUserMutation() {
   });
 }
 
+export function useDeleteUserMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (userId: string) => adminApi.deleteUser(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard", "admin"] }); // Invalidate dashboard stats
+    },
+  });
+}
+
 export function useApproveTeacherRequestMutation() {
   const queryClient = useQueryClient();
 
@@ -177,8 +189,8 @@ export function useCreateCatalogCourseMutation() {
       department_id: string;
       level: string;
       course_type: string;
-      academic_year: string;
       language: string;
+      academic_year?: string;
     }) => adminApi.createCatalogCourse(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "catalog", "courses"] });

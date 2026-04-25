@@ -5,6 +5,7 @@ import { Download, FileSpreadsheet, Loader2, Upload } from "lucide-react";
 import { adminApi } from "@/lib/api";
 import { useImportTeachersMutation } from "@/queries/admin.queries";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "@/hooks/use-translation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { TeacherImportResult } from "@/types/api.types";
@@ -19,6 +20,8 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 export default function AdminTeacherImportPage() {
+  const { t, tSection } = useTranslation();
+  const adminT = tSection("admin");
   const inputRef = useRef<HTMLInputElement | null>(null);
   const importMutation = useImportTeachersMutation();
   const [result, setResult] = useState<TeacherImportResult | null>(null);
@@ -50,10 +53,9 @@ export default function AdminTeacherImportPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Teacher Import</h1>
+          <h1 className="text-2xl font-bold">{adminT.teacherImport}</h1>
           <p className="text-muted-foreground">
-            Use the CDC-aligned institutional onboarding flow: download the template, complete it,
-            and batch import teacher accounts for activation.
+            {adminT.importDescription}
           </p>
         </div>
         <div className="flex gap-3">
@@ -67,7 +69,7 @@ export default function AdminTeacherImportPage() {
             ) : (
               <Download className="mr-2 h-4 w-4" />
             )}
-            Download Template
+            {adminT.downloadTemplate}
           </Button>
           <Button
             disabled={importMutation.isPending}
@@ -78,7 +80,7 @@ export default function AdminTeacherImportPage() {
             ) : (
               <Upload className="mr-2 h-4 w-4" />
             )}
-            Import File
+            {adminT.importFile}
           </Button>
           <input
             ref={inputRef}
@@ -92,19 +94,19 @@ export default function AdminTeacherImportPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>How This Flow Works</CardTitle>
+          <CardTitle>{adminT.howFlowWorks}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
-          <p>1. Download the template with the valid departments for your establishment.</p>
-          <p>2. Fill in `email`, `full_name`, and `department_name` for each teacher.</p>
-          <p>3. Import the file to create inactive teacher accounts and send onboarding invitations.</p>
-          <p>4. Teachers activate access through the verification flow after receiving their invitation.</p>
+          <p>{adminT.flowStep1}</p>
+          <p>{adminT.flowStep2}</p>
+          <p>{adminT.flowStep3}</p>
+          <p>{adminT.flowStep4}</p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Import Result</CardTitle>
+          <CardTitle>{adminT.importResult}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           {result ? (
@@ -113,30 +115,30 @@ export default function AdminTeacherImportPage() {
                 <Card>
                   <CardContent className="p-4 text-center">
                     <p className="text-2xl font-bold text-green-600">{result.success_count}</p>
-                    <p className="text-sm text-muted-foreground">Imported</p>
+                    <p className="text-sm text-muted-foreground">{adminT.imported}</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="p-4 text-center">
                     <p className="text-2xl font-bold text-amber-600">{result.duplicates.length}</p>
-                    <p className="text-sm text-muted-foreground">Duplicates</p>
+                    <p className="text-sm text-muted-foreground">{adminT.duplicates}</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="p-4 text-center">
                     <p className="text-2xl font-bold text-red-600">{result.errors.length}</p>
-                    <p className="text-sm text-muted-foreground">Errors</p>
+                    <p className="text-sm text-muted-foreground">{adminT.errors}</p>
                   </CardContent>
                 </Card>
               </div>
 
               {result.duplicates.length ? (
                 <div className="space-y-2">
-                  <h2 className="font-medium">Duplicates</h2>
+                  <h2 className="font-medium">{adminT.duplicates}</h2>
                   <div className="space-y-2">
                     {result.duplicates.map((item) => (
                       <div key={`${item.row}-${item.email}`} className="rounded-lg border p-3 text-sm">
-                        Row {item.row}: {item.email}
+                        {adminT.row} {item.row}: {item.email}
                       </div>
                     ))}
                   </div>
@@ -145,12 +147,12 @@ export default function AdminTeacherImportPage() {
 
               {result.errors.length ? (
                 <div className="space-y-2">
-                  <h2 className="font-medium">Validation Errors</h2>
+                  <h2 className="font-medium">{adminT.validationErrors}</h2>
                   <div className="space-y-2">
                     {result.errors.map((item) => (
                       <div key={`${item.row}-${item.email}`} className="rounded-lg border p-3 text-sm">
                         <p>
-                          Row {item.row}: {item.email}
+                          {adminT.row} {item.row}: {item.email}
                         </p>
                         <p className="text-muted-foreground">{item.reason}</p>
                       </div>
@@ -162,8 +164,8 @@ export default function AdminTeacherImportPage() {
           ) : (
             <EmptyState
               type="no-results"
-              title="No import run yet"
-              description="Download the template, upload a CSV or XLSX file, and the import summary will appear here."
+              title={adminT.noImportRun}
+              description={adminT.importRunDescription}
               icon={FileSpreadsheet}
             />
           )}

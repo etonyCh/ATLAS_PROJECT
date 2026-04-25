@@ -22,13 +22,22 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { isSearchQueryEnabled, useSearchQuery } from "@/queries";
+import { useRegistrationOptionsQuery } from "@/queries/auth";
+import { useTranslation } from "@/hooks/use-translation";
 
 export default function SearchPage() {
+  const { t, tSection } = useTranslation();
+  const searchT = tSection("search");
+  
   const [query, setQuery] = useState("");
   const [filiere, setFiliere] = useState("all");
   const [niveau, setNiveau] = useState("all");
   const [typeCours, setTypeCours] = useState("all");
   const [selectedCourse, setSelectedCourse] = useState<{id: string, title: string} | null>(null);
+
+  const { data: options } = useRegistrationOptionsQuery();
+  const filieres = options?.departments.map(d => d.name) || [];
+  const levels = options?.levels || [];
 
   const searchParams: SearchParams = {
     q: query.trim() || undefined,
@@ -59,52 +68,57 @@ export default function SearchPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold">Search Atlas</h1>
+        <h1 className="text-2xl font-bold">{searchT.searchAtlas}</h1>
       </div>
 
       <Card className="p-4">
         <div className="grid gap-4 md:grid-cols-4">
           <div className="md:col-span-1">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Search className="absolute inset-inline-start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search..."
+                placeholder={searchT.searchPlaceholder}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="pl-10"
+                className="ps-10"
               />
             </div>
           </div>
           <Select value={filiere} onValueChange={setFiliere}>
             <SelectTrigger>
-              <SelectValue placeholder="Department" />
+              <SelectValue placeholder={searchT.department} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Departments</SelectItem>
-              <SelectItem value="Informatique">Informatique</SelectItem>
-              <SelectItem value="Mathematiques">Mathematiques</SelectItem>
+              <SelectItem value="all">{searchT.allDepartments}</SelectItem>
+              {filieres.map((f) => (
+                <SelectItem key={f} value={f}>
+                  {f}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Select value={niveau} onValueChange={setNiveau}>
             <SelectTrigger>
-              <SelectValue placeholder="Level" />
+              <SelectValue placeholder={searchT.level} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Levels</SelectItem>
-              <SelectItem value="L1">L1</SelectItem>
-              <SelectItem value="L2">L2</SelectItem>
-              <SelectItem value="L3">L3</SelectItem>
+              <SelectItem value="all">{searchT.allLevels}</SelectItem>
+              {levels.map((l) => (
+                <SelectItem key={l} value={l}>
+                  {l}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Select value={typeCours} onValueChange={setTypeCours}>
             <SelectTrigger>
-              <SelectValue placeholder="Type" />
+              <SelectValue placeholder={searchT.type} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="Lecture">Lecture</SelectItem>
-              <SelectItem value="TD">TD</SelectItem>
-              <SelectItem value="Exam">Exam</SelectItem>
+              <SelectItem value="all">{searchT.allTypes}</SelectItem>
+              <SelectItem value="Lecture">{searchT.lecture}</SelectItem>
+              <SelectItem value="TD">{searchT.td}</SelectItem>
+              <SelectItem value="Exam">{searchT.exam}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -113,11 +127,11 @@ export default function SearchPage() {
       {isError ? (
         <EmptyState
           type="error"
-          title="Search failed"
+          title={searchT.searchFailed}
           description={
             error instanceof Error
               ? error.message
-              : "Could not load results. Try again in a moment."
+              : searchT.couldNotLoadResults
           }
         />
       ) : isLoading ? (
@@ -157,7 +171,7 @@ export default function SearchPage() {
                   style={{
                     position: "absolute",
                     top: 0,
-                    left: 0,
+                    insetInlineStart: 0,
                     width: "100%",
                     height: `${virtualItem.size}px`,
                     transform: `translateY(${virtualItem.start}px)`,
@@ -184,7 +198,7 @@ export default function SearchPage() {
                             </h3>
                             {result.is_official && (
                               <span className="shrink-0 rounded-full bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
-                                Official
+                                {searchT.official}
                               </span>
                             )}
                           </div>
@@ -218,14 +232,14 @@ export default function SearchPage() {
       ) : searchEnabled && isFetched ? (
         <EmptyState
           type="no-results"
-          title="No results found"
-          description="Try different keywords or adjust your filters."
+          title={searchT.noResultsFound}
+          description={searchT.tryAdjustingFilters}
         />
       ) : (
         <EmptyState
           type="search"
-          title="Search ATLAS"
-          description="Enter at least 2 characters or pick a filter (department, level, or type) to search."
+          title={searchT.searchAtlas}
+          description={searchT.enterMinChars}
         />
       )}
 

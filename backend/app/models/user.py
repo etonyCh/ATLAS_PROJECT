@@ -145,6 +145,15 @@ class UserBase(SQLModel):
     profile_picture_url: Optional[str] = Field(default=None)
 
     onboarding_completed: bool = Field(default=False, index=True)
+    
+    # User Preferences & Settings
+    push_notifications_enabled: bool = Field(default=True)
+    email_digest_enabled: bool = Field(default=False)
+    notification_types: list[str] = Field(
+        default_factory=lambda: ["contributions", "achievements", "reminders", "leaderboard"],
+        sa_column=sa.Column(sa.JSON(), nullable=False)
+    )
+    is_rtl: bool = Field(default=False)
 
 
 class TeacherProfile(SQLModel, table=True):

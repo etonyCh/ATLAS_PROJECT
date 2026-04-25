@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Moon, Sun, Bell, Shield, Palette, Monitor } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Moon, Sun, Bell, Shield, Palette, Monitor, Loader2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -10,27 +10,86 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { useUIStore } from "@/store/auth.store";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { useAuthStore } from "@/store/auth.store";
+import { useRTL, useTheme } from "@/hooks/use-rtl";
+import { useTranslation } from "@/hooks/use-translation";
+import { authApi } from "@/lib/api";
 
 export default function SettingsPage() {
-  const { theme, setTheme, isRTL, toggleRTL } = useUIStore();
-  const [notifications, setNotifications] = useState(true);
-  const [emailDigest, setEmailDigest] = useState(false);
-  const [language, setLanguage] = useState("fr");
+  const { user, setUser } = useAuthStore();
+  const { theme, setTheme } = useTheme();
+  const { lang, setLanguage, isRTL, toggleRTL } = useRTL();
+  const { t } = useTranslation();
+  
+  const [isSaving, setIsSaving] = useState<string | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Sync isRTL from backend if it differs
+  useEffect(() => {
+    if (user && user.is_rtl !== isRTL) {
+      // If we want to strictly follow backend, we could call toggleRTL here
+      // But typically we want to follow the store which is persisted in localStorage
+    }
+  }, [user, isRTL]);
+
+  const handleUpdate = async (field: string, value: any) => {
+    if (!user) return;
+    
+    setIsSaving(field);
+    try {
+      const updatedUser = await authApi.updateProfile({ [field]: value });
+      setUser(updatedUser);
+      // toast.success("Settings updated");
+    } catch (error) {
+      console.error("Failed to update settings:", error);
+    } finally {
+      setIsSaving(null);
+    }
+  };
+
+  const handleToggleNotificationType = async (type: string) => {
+    if (!user) return;
+    
+    const currentTypes = user.notification_types || [];
+    const nextTypes = currentTypes.includes(type)
+      ? currentTypes.filter(t => t !== type)
+      : [...currentTypes, type];
+    
+    await handleUpdate("notification_types", nextTypes);
+  };
+
+  if (!user) {
+    return (
+      <div className="flex h-[50vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Settings</h1>
+        <h1 className="text-2xl font-bold">{t("account.settings")}</h1>
         <p className="text-muted-foreground">Customize your experience</p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
+        {/* Appearance */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Palette className="h-5 w-5" />
-              Appearance
+              {t("account.appearance")}
             </CardTitle>
             <CardDescription>Customize how ATLAS looks</CardDescription>
           </CardHeader>
@@ -38,57 +97,44 @@ export default function SettingsPage() {
             <div className="space-y-2">
               <label className="text-sm font-medium">Theme</label>
               <div className="flex gap-2">
-                <Button
-                  variant={theme === "light" ? "default" : "outline"}
-                  className="flex-1"
-                  onClick={() => setTheme("light")}
-                >
-                  <Sun className="h-4 w-4 mr-2" />
-                  Light
-                </Button>
-                <Button
-                  variant={theme === "dark" ? "default" : "outline"}
-                  className="flex-1"
-                  onClick={() => setTheme("dark")}
-                >
-                  <Moon className="h-4 w-4 mr-2" />
-                  Dark
-                </Button>
-                <Button
-                  variant={theme === "system" ? "default" : "outline"}
-                  className="flex-1"
-                  onClick={() => setTheme("system")}
-                >
-                  <Monitor className="h-4 w-4 mr-2" />
-                  System
-                </Button>
+                {(["light", "dark", "system"] as const).map((t) => (
+                  <Button
+                    key={t}
+                    variant={theme === t ? "default" : "outline"}
+                    className="flex-1 capitalize"
+                    onClick={() => setTheme(t)}
+                  >
+                    {t === "light" && <Sun className="h-4 w-4 mr-2" />}
+                    {t === "dark" && <Moon className="h-4 w-4 mr-2" />}
+                    {t === "system" && <Monitor className="h-4 w-4 mr-2" />}
+                    {t}
+                  </Button>
+                ))}
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Language</label>
+              <label className="text-sm font-medium">{t("account.language")}</label>
               <div className="flex gap-2">
-                <Button
-                  variant={language === "fr" ? "default" : "outline"}
-                  className="flex-1"
-                  onClick={() => setLanguage("fr")}
-                >
-                  Français
-                </Button>
-                <Button
-                  variant={language === "en" ? "default" : "outline"}
-                  className="flex-1"
-                  onClick={() => setLanguage("en")}
-                >
-                  English
-                </Button>
-                <Button
-                  variant={language === "ar" ? "default" : "outline"}
-                  className="flex-1"
-                  onClick={() => setLanguage("ar")}
-                >
-                  العربية
-                </Button>
+                {[
+                  { id: "fr", label: "Français" },
+                  { id: "en", label: "English" },
+                  { id: "ar", label: "العربية" },
+                ].map((l) => (
+                  <Button
+                    key={l.id}
+                    variant={lang === l.id ? "default" : "outline"}
+                    className="flex-1"
+                    onClick={() => {
+                      setLanguage(l.id as any);
+                      handleUpdate("preferred_language", l.id);
+                    }}
+                    disabled={isSaving === "preferred_language"}
+                  >
+                    {isSaving === "preferred_language" && lang === l.id && <Loader2 className="h-3 w-3 animate-spin mr-2" />}
+                    {l.label}
+                  </Button>
+                ))}
               </div>
             </div>
 
@@ -99,21 +145,30 @@ export default function SettingsPage() {
                   Switch text direction
                 </p>
               </div>
-              <Button variant="outline" onClick={toggleRTL}>
-                {isRTL ? "RTL" : "LTR"}
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  toggleRTL();
+                  handleUpdate("is_rtl", !isRTL);
+                }}
+                disabled={isSaving === "is_rtl"}
+              >
+                {isSaving === "is_rtl" && <Loader2 className="h-3 w-3 animate-spin mr-2" />}
+                {isRTL ? "RTL (Enabled)" : "LTR (Default)"}
               </Button>
             </div>
           </CardContent>
         </Card>
 
+        {/* Notifications */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Bell className="h-5 w-5" />
-              Notifications
+              {t("account.notifications")}
             </CardTitle>
             <CardDescription>
-              Manage your notification preferences
+              {t("account.emailNotifications")}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -121,15 +176,17 @@ export default function SettingsPage() {
               <div>
                 <p className="font-medium">Push Notifications</p>
                 <p className="text-sm text-muted-foreground">
-                  Receive notifications in your browser
+                  {t("account.pushNotifications")}
                 </p>
               </div>
               <Button
-                variant={notifications ? "default" : "outline"}
+                variant={user.push_notifications_enabled ? "default" : "outline"}
                 size="sm"
-                onClick={() => setNotifications(!notifications)}
+                onClick={() => handleUpdate("push_notifications_enabled", !user.push_notifications_enabled)}
+                disabled={isSaving === "push_notifications_enabled"}
               >
-                {notifications ? "On" : "Off"}
+                {isSaving === "push_notifications_enabled" && <Loader2 className="h-3 w-3 animate-spin mr-2" />}
+                {user.push_notifications_enabled ? "On" : "Off"}
               </Button>
             </div>
 
@@ -137,15 +194,17 @@ export default function SettingsPage() {
               <div>
                 <p className="font-medium">Email Digest</p>
                 <p className="text-sm text-muted-foreground">
-                  Weekly summary of your activity
+                  {t("student.weeklyProgress")}
                 </p>
               </div>
               <Button
-                variant={emailDigest ? "default" : "outline"}
+                variant={user.email_digest_enabled ? "default" : "outline"}
                 size="sm"
-                onClick={() => setEmailDigest(!emailDigest)}
+                onClick={() => handleUpdate("email_digest_enabled", !user.email_digest_enabled)}
+                disabled={isSaving === "email_digest_enabled"}
               >
-                {emailDigest ? "On" : "Off"}
+                {isSaving === "email_digest_enabled" && <Loader2 className="h-3 w-3 animate-spin mr-2" />}
+                {user.email_digest_enabled ? "On" : "Off"}
               </Button>
             </div>
 
@@ -153,14 +212,21 @@ export default function SettingsPage() {
               <label className="text-sm font-medium">Notification Types</label>
               <div className="space-y-2">
                 {[
-                  "New contributions",
-                  "Achievements",
-                  "Study reminders",
-                  "Leaderboard updates",
+                  { id: "contributions", label: "New contributions" },
+                  { id: "achievements", label: "Achievements" },
+                  { id: "reminders", label: "Study reminders" },
+                  { id: "leaderboard", label: "Leaderboard updates" },
                 ].map((type) => (
-                  <label key={type} className="flex items-center gap-2">
-                    <input type="checkbox" className="rounded" defaultChecked />
-                    <span className="text-sm">{type}</span>
+                  <label key={type.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted/50 p-1 rounded transition-colors">
+                    <input 
+                      type="checkbox" 
+                      className="rounded border-primary text-primary focus:ring-primary" 
+                      checked={user.notification_types?.includes(type.id)}
+                      onChange={() => handleToggleNotificationType(type.id)}
+                      disabled={isSaving === "notification_types"}
+                    />
+                    <span className="text-sm">{type.label}</span>
+                    {isSaving === "notification_types" && <Loader2 className="h-3 w-3 animate-spin ml-auto" />}
                   </label>
                 ))}
               </div>
@@ -168,27 +234,66 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
+        {/* Security */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-destructive">
               <Shield className="h-5 w-5" />
-              Privacy & Security
+              {t("account.dangerZone")}
             </CardTitle>
-            <CardDescription>Manage your account security</CardDescription>
+            <CardDescription>{t("account.irreversibleActions")}</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <Button variant="outline" className="w-full" asChild>
-              <a href="/auth/forgot-password">Change Password</a>
+          <CardContent className="space-y-4">
+            <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+              <p className="text-sm text-destructive">
+                {t("account.deleteWarning")}
+              </p>
+            </div>
+            <Button variant="destructive" className="w-full" onClick={() => setDeleteOpen(true)}>
+              {t("account.deleteMyAccount")}
             </Button>
-            <Button variant="outline" className="w-full">
-              Enable Two-Factor Authentication
-            </Button>
-            <Button variant="outline" className="w-full">
-              Download My Data
-            </Button>
+
+            <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-destructive" />
+                    {t("account.deleteAccount")}
+                  </DialogTitle>
+                  <DialogDescription>
+                    {t("account.deleteAccountConfirm")}
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setDeleteOpen(false)}>
+                    {t("account.cancel")}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    disabled={isDeleting}
+                    onClick={async () => {
+                      setIsDeleting(true);
+                      try {
+                        await authApi.deleteAccount();
+                        setDeleteOpen(false);
+                        window.location.href = "/";
+                      } catch (error) {
+                        console.error("Failed to delete account:", error);
+                        alert(t("account.deleteFailed"));
+                      } finally {
+                        setIsDeleting(false);
+                      }
+                    }}
+                  >
+                    {isDeleting ? t("account.deleting") : t("account.deleteMyAccount")}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </CardContent>
         </Card>
 
+        {/* About */}
         <Card>
           <CardHeader>
             <CardTitle>About ATLAS</CardTitle>
@@ -201,10 +306,10 @@ export default function SettingsPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Build</span>
-              <span className="font-mono text-sm">2024.03.1</span>
+              <span className="font-mono text-sm">2024.04.22</span>
             </div>
             <div className="pt-2 border-t">
-              <Button variant="outline" className="w-full" size="sm">
+              <Button variant="outline" className="w-full" size="sm" disabled>
                 Check for Updates
               </Button>
             </div>

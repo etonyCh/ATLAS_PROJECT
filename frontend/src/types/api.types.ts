@@ -53,6 +53,10 @@ export interface User {
   address?: string | null;
   preferred_language?: string | null;
   profile_picture_url?: string | null;
+  push_notifications_enabled?: boolean;
+  email_digest_enabled?: boolean;
+  notification_types?: string[];
+  is_rtl?: boolean;
   created_at: string;
   last_login_at?: string;
 }
@@ -216,6 +220,7 @@ export interface CourseVersion {
   uploaded_at: string;
   uploader_id?: string;
   quality_score?: number | null;
+  academic_year?: string;
 }
 
 export interface CourseWithVersion extends Course {
@@ -264,6 +269,11 @@ export interface SuggestedFlashcardDeck {
   due_cards_count: number;
 }
 
+export interface WeeklyActivityData {
+  day: string;
+  activities: number;
+}
+
 export interface SmartOverviewResponse {
   greeting: string;
   progress: DashboardProgress;
@@ -271,6 +281,7 @@ export interface SmartOverviewResponse {
   recommended_courses: CourseRecommendation[];
   weak_topics: WeakTopic[];
   suggested_flashcards: SuggestedFlashcardDeck[];
+  weekly_activity?: WeeklyActivityData[];
 }
 
 export interface CourseProgressDetail {
@@ -691,6 +702,10 @@ export interface Report {
   title: string;
   description: string;
   is_resolved: boolean;
+  is_read?: boolean;
+  message?: string;
+  user_id?: string;
+  contribution_id?: string | null;
   created_at: string;
 }
 
@@ -722,6 +737,11 @@ export interface TeacherAnalytics {
     approved_uploads: number;
     last_submission_at: string | null;
   }>;
+  weekly_trend: Array<{
+    week: string;
+    uploads: number;
+    approved: number;
+  }>;
 }
 
 export interface CourseAnalytics {
@@ -737,10 +757,13 @@ export interface AdminDashboard {
   total_courses: number;
   total_contributions: number;
   pending_contributions: number;
-  total_reports: number;
-  pending_reports: number;
   users_by_role: Record<string, number>;
   contributions_by_status: Record<string, number>;
+  weekly_activity: Array<{
+    day: string;
+    users: number;
+    contributions: number;
+  }>;
 }
 
 export interface UserProfile {

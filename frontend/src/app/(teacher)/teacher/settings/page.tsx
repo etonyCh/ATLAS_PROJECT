@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Settings, Bell, Globe, Shield, Save } from "lucide-react";
+import { Settings, Bell, Globe, Shield, Save, AlertTriangle } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -12,11 +12,24 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useAuthStore } from "@/store/auth.store";
+import { useTranslation } from "@/hooks/use-translation";
+import { authApi } from "@/lib/api";
 
 export default function TeacherSettings() {
   const { user } = useAuthStore();
+  const { t } = useTranslation();
   const [isSaving, setIsSaving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [notifications, setNotifications] = useState({
     emailContributions: true,
@@ -39,10 +52,10 @@ export default function TeacherSettings() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Settings</h1>
+<div>
+        <h1 className="text-2xl font-bold">{t("account.settings")}</h1>
         <p className="text-muted-foreground">
-          Manage your account and preferences
+          {t("account.yourAccountDetails")}
         </p>
       </div>
 
@@ -50,32 +63,24 @@ export default function TeacherSettings() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Settings className="h-5 w-5" />
-            Profile Settings
+            {t("account.profile")}
           </CardTitle>
-          <CardDescription>Update your profile information</CardDescription>
+          <CardDescription>{t("account.profileInformation")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="text-sm font-medium">Full Name</label>
+              <label className="text-sm font-medium">{t("account.fullName")}</label>
               <Input defaultValue={user?.full_name || ""} className="mt-1" />
             </div>
             <div>
-              <label className="text-sm font-medium">Email</label>
+              <label className="text-sm font-medium">{t("account.email")}</label>
               <Input
                 defaultValue={user?.email || ""}
                 disabled
                 className="mt-1"
               />
             </div>
-          </div>
-          <div>
-            <label className="text-sm font-medium">Bio</label>
-            <textarea
-              className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm"
-              rows={3}
-              placeholder="Tell students about yourself..."
-            />
           </div>
         </CardContent>
       </Card>
@@ -84,7 +89,7 @@ export default function TeacherSettings() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Bell className="h-5 w-5" />
-            Notification Preferences
+            {t("account.notifications")}
           </CardTitle>
           <CardDescription>Choose how you want to be notified</CardDescription>
         </CardHeader>
@@ -184,7 +189,7 @@ export default function TeacherSettings() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Globe className="h-5 w-5" />
-            Appearance
+            {t("account.appearance")}
           </CardTitle>
           <CardDescription>Customize how ATLAS looks for you</CardDescription>
         </CardHeader>
@@ -204,7 +209,7 @@ export default function TeacherSettings() {
             />
           </div>
           <div>
-            <label className="text-sm font-medium">Language</label>
+            <label className="text-sm font-medium">{t("account.language")}</label>
             <select className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm sm:w-48">
               <option value="en">English</option>
               <option value="fr">Français</option>
@@ -214,17 +219,79 @@ export default function TeacherSettings() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-destructive">
+            <Shield className="h-5 w-5" />
+            {t("account.dangerZone")}
+          </CardTitle>
+          <CardDescription>{t("account.irreversibleActions")}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+            <p className="text-sm text-destructive">
+              {t("account.deleteWarning")}
+            </p>
+          </div>
+          <Button
+            variant="destructive"
+            className="w-full"
+            onClick={() => setDeleteOpen(true)}
+          >
+            {t("account.deleteMyAccount")}
+          </Button>
+
+          <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-destructive" />
+                  {t("account.deleteAccount")}
+                </DialogTitle>
+                <DialogDescription>
+                  {t("account.deleteAccountConfirm")}
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDeleteOpen(false)}>
+                  {t("account.cancel")}
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={isDeleting}
+                  onClick={async () => {
+                    setIsDeleting(true);
+                    try {
+                      await authApi.deleteAccount();
+                      setDeleteOpen(false);
+                      window.location.href = "/";
+                    } catch (error) {
+                      console.error("Failed to delete account:", error);
+                      alert(t("account.deleteFailed"));
+                    } finally {
+                      setIsDeleting(false);
+                    }
+                  }}
+                >
+                  {isDeleting ? t("account.deleting") : t("account.deleteMyAccount")}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </CardContent>
+      </Card>
+
       <div className="flex justify-end">
         <Button onClick={handleSave} disabled={isSaving}>
           {isSaving ? (
             <>
               <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-              Saving...
+              {t("ui.loading")}
             </>
           ) : (
             <>
               <Save className="mr-2 h-4 w-4" />
-              Save Changes
+              {t("ui.save")}
             </>
           )}
         </Button>

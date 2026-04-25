@@ -1,3 +1,4 @@
+import { useTranslation } from "@/hooks/use-translation";
 import { cn } from "@/lib/utils";
 
 type StatusType =
@@ -49,83 +50,9 @@ function normalizeStatus(status: string): StatusType {
     QUEUED: "pending",
     FAILED: "error",
     SUCCESS: "success",
-    WARNING: "warning",
-    INFO: "info",
   };
   return statusMap[status.toUpperCase()] || "info";
 }
-
-const statusConfig: Record<
-  StatusType,
-  { bg: string; text: string; dot: string; label: string }
-> = {
-  pending: {
-    bg: "bg-amber-50 dark:bg-amber-950",
-    text: "text-amber-700 dark:text-amber-300",
-    dot: "bg-amber-500",
-    label: "Pending",
-  },
-  processing: {
-    bg: "bg-blue-50 dark:bg-blue-950",
-    text: "text-blue-700 dark:text-blue-300",
-    dot: "bg-blue-500 animate-pulse",
-    label: "Processing",
-  },
-  ready: {
-    bg: "bg-emerald-50 dark:bg-emerald-950",
-    text: "text-emerald-700 dark:text-emerald-300",
-    dot: "bg-emerald-500",
-    label: "Ready",
-  },
-  approved: {
-    bg: "bg-green-50 dark:bg-green-950",
-    text: "text-green-700 dark:text-green-300",
-    dot: "bg-green-500",
-    label: "Approved",
-  },
-  rejected: {
-    bg: "bg-red-50 dark:bg-red-950",
-    text: "text-red-700 dark:text-red-300",
-    dot: "bg-red-500",
-    label: "Rejected",
-  },
-  active: {
-    bg: "bg-green-50 dark:bg-green-950",
-    text: "text-green-700 dark:text-green-300",
-    dot: "bg-green-500",
-    label: "Active",
-  },
-  inactive: {
-    bg: "bg-gray-50 dark:bg-gray-800",
-    text: "text-gray-600 dark:text-gray-400",
-    dot: "bg-gray-400",
-    label: "Inactive",
-  },
-  success: {
-    bg: "bg-green-50 dark:bg-green-950",
-    text: "text-green-700 dark:text-green-300",
-    dot: "bg-green-500",
-    label: "Success",
-  },
-  warning: {
-    bg: "bg-amber-50 dark:bg-amber-950",
-    text: "text-amber-700 dark:text-amber-300",
-    dot: "bg-amber-500",
-    label: "Warning",
-  },
-  error: {
-    bg: "bg-red-50 dark:bg-red-950",
-    text: "text-red-700 dark:text-red-300",
-    dot: "bg-red-500",
-    label: "Error",
-  },
-  info: {
-    bg: "bg-blue-50 dark:bg-blue-950",
-    text: "text-blue-700 dark:text-blue-300",
-    dot: "bg-blue-500",
-    label: "Info",
-  },
-};
 
 export function StatusChip({
   status,
@@ -133,9 +60,72 @@ export function StatusChip({
   className,
   size = "md",
 }: StatusChipProps) {
+  const { t } = useTranslation();
   const normalizedStatus = normalizeStatus(status);
+
+  const statusConfig: Record<
+    StatusType,
+    { bg: string; text: string; dot: string }
+  > = {
+    pending: {
+      bg: "bg-amber-50 dark:bg-amber-950",
+      text: "text-amber-700 dark:text-amber-300",
+      dot: "bg-amber-500",
+    },
+    processing: {
+      bg: "bg-blue-50 dark:bg-blue-950",
+      text: "text-blue-700 dark:text-blue-300",
+      dot: "bg-blue-500 animate-pulse",
+    },
+    ready: {
+      bg: "bg-emerald-50 dark:bg-emerald-950",
+      text: "text-emerald-700 dark:text-emerald-300",
+      dot: "bg-emerald-500",
+    },
+    approved: {
+      bg: "bg-green-50 dark:bg-green-950",
+      text: "text-green-700 dark:text-green-300",
+      dot: "bg-green-500",
+    },
+    rejected: {
+      bg: "bg-red-50 dark:bg-red-950",
+      text: "text-red-700 dark:text-red-300",
+      dot: "bg-red-500",
+    },
+    active: {
+      bg: "bg-green-50 dark:bg-green-950",
+      text: "text-green-700 dark:text-green-300",
+      dot: "bg-green-500",
+    },
+    inactive: {
+      bg: "bg-gray-50 dark:bg-gray-800",
+      text: "text-gray-600 dark:text-gray-400",
+      dot: "bg-gray-400",
+    },
+    success: {
+      bg: "bg-green-50 dark:bg-green-950",
+      text: "text-green-700 dark:text-green-300",
+      dot: "bg-green-500",
+    },
+    warning: {
+      bg: "bg-amber-50 dark:bg-amber-950",
+      text: "text-amber-700 dark:text-amber-300",
+      dot: "bg-amber-500",
+    },
+    error: {
+      bg: "bg-red-50 dark:bg-red-950",
+      text: "text-red-700 dark:text-red-300",
+      dot: "bg-red-500",
+    },
+    info: {
+      bg: "bg-blue-50 dark:bg-blue-950",
+      text: "text-blue-700 dark:text-blue-300",
+      dot: "bg-blue-500",
+    },
+  };
+
   const config = statusConfig[normalizedStatus];
-  const displayLabel = label || config.label;
+  const displayLabel = label || t(`status.${normalizedStatus}` as any);
 
   const sizeClasses = {
     sm: "px-2 py-0.5 text-xs gap-1",

@@ -8,22 +8,19 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useLeaderboardQuery } from "@/queries";
 import { useAuthStore } from "@/store/auth.store";
-
-const FILIERES = [
-  "All",
-  "Informatique",
-  "Mathematiques",
-  "Physique",
-  "Chimie",
-  "Biologie",
-  "Economie",
-  "Droit",
-];
+import { useRegistrationOptionsQuery } from "@/queries/auth";
+import { useTranslation } from "@/hooks/use-translation";
 
 export default function LeaderboardPage() {
+  const { t, tSection } = useTranslation();
+  const leaderboardT = tSection("leaderboard");
+  
   const { user } = useAuthStore();
   const [filiere, setFiliere] = useState<string>("All");
   const [limit, setLimit] = useState(20);
+
+  const { data: options } = useRegistrationOptionsQuery();
+  const filieres = ["All", ...(options?.departments.map(d => d.name) || [])];
 
   const { data: leaderboard, isLoading } = useLeaderboardQuery(
     limit,
@@ -46,9 +43,9 @@ export default function LeaderboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Leaderboard</h1>
+        <h1 className="text-2xl font-bold">{leaderboardT.leaderboard}</h1>
         <p className="text-muted-foreground">
-          See how you rank against other students
+          {leaderboardT.rankDescription}
         </p>
       </div>
 
@@ -58,9 +55,9 @@ export default function LeaderboardPage() {
           onChange={(e) => setFiliere(e.target.value)}
           className="min-h-11 w-full sm:w-48"
         >
-          {FILIERES.map((f) => (
+          {filieres.map((f) => (
             <option key={f} value={f}>
-              {f === "All" ? "All Programs" : f}
+              {f === "All" ? leaderboardT.allPrograms : f}
             </option>
           ))}
         </Select>
@@ -69,10 +66,10 @@ export default function LeaderboardPage() {
           onChange={(e) => setLimit(Number(e.target.value))}
           className="min-h-11 w-full sm:w-32"
         >
-          <option value="10">Top 10</option>
-          <option value="20">Top 20</option>
-          <option value="50">Top 50</option>
-          <option value="100">Top 100</option>
+          <option value="10">{t("leaderboard.topN", { n: 10 })}</option>
+          <option value="20">{t("leaderboard.topN", { n: 20 })}</option>
+          <option value="50">{t("leaderboard.topN", { n: 50 })}</option>
+          <option value="100">{t("leaderboard.topN", { n: 100 })}</option>
         </Select>
       </div>
 
@@ -85,8 +82,8 @@ export default function LeaderboardPage() {
       ) : leaderboard?.length === 0 ? (
         <EmptyState
           type="no-results"
-          title="No data yet"
-          description="The leaderboard will populate as students earn XP"
+          title={leaderboardT.noDataYet}
+          description={leaderboardT.noDataDescription}
         />
       ) : leaderboard ? (
         <div className="space-y-3">
@@ -115,7 +112,7 @@ export default function LeaderboardPage() {
                       {entry.name}
                       {isCurrentUser && (
                         <span className="ml-2 text-xs text-muted-foreground">
-                          (You)
+                          ({leaderboardT.you})
                         </span>
                       )}
                     </p>
@@ -143,26 +140,26 @@ export default function LeaderboardPage() {
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
             <Trophy className="h-5 w-5 text-amber-500" />
-            How XP Works
+            {leaderboardT.howXPWorks}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-lg border p-3">
-              <p className="font-medium">Study Sessions</p>
-              <p className="text-sm text-muted-foreground">+10 XP per hour</p>
+              <p className="font-medium">{leaderboardT.studySessions}</p>
+              <p className="text-sm text-muted-foreground">{t("leaderboard.xpPerHour", { xp: 10 })}</p>
             </div>
             <div className="rounded-lg border p-3">
-              <p className="font-medium">Flashcards</p>
-              <p className="text-sm text-muted-foreground">+2 XP per review</p>
+              <p className="font-medium">{leaderboardT.flashcards}</p>
+              <p className="text-sm text-muted-foreground">{t("leaderboard.xpPerReview", { xp: 2 })}</p>
             </div>
             <div className="rounded-lg border p-3">
-              <p className="font-medium">Quiz Completion</p>
-              <p className="text-sm text-muted-foreground">+20 XP per quiz</p>
+              <p className="font-medium">{leaderboardT.quizCompletion}</p>
+              <p className="text-sm text-muted-foreground">{t("leaderboard.xpPerQuiz", { xp: 20 })}</p>
             </div>
             <div className="rounded-lg border p-3">
-              <p className="font-medium">Contributions</p>
-              <p className="text-sm text-muted-foreground">+50 XP per upload</p>
+              <p className="font-medium">{leaderboardT.contributions}</p>
+              <p className="text-sm text-muted-foreground">{t("leaderboard.xpPerUpload", { xp: 50 })}</p>
             </div>
           </div>
         </CardContent>

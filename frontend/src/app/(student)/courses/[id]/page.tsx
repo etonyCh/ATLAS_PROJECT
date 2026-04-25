@@ -24,6 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useCourseQuery } from "@/queries";
 import { useCourseStatsQuery } from "@/queries/courses";
+import { useTrackLearning } from "@/hooks/use-continue-learning";
 import { MaterialSelectionDialog } from "@/components/course/material-selection-dialog";
 import { useState } from "react";
 
@@ -73,6 +74,8 @@ export default function CourseDetailPage() {
   const versionId = searchParams.get("version");
   const { data: course, isLoading } = useCourseQuery(courseId);
   const { data: stats, isLoading: statsLoading } = useCourseStatsQuery(courseId);
+
+  useTrackLearning(courseId, course?.title || "Course Material");
   const [isSelectionModalOpen, setIsSelectionModalOpen] = useState(false);
 
   if (isLoading) {

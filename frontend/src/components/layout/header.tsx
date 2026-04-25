@@ -19,14 +19,17 @@ import {
   Sparkles,
   Sun,
   User,
+  Menu,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatRole } from "@/lib/utils";
 import { createNotificationsWebSocket, notificationsApi, searchApi } from "@/lib/api";
 import { useRTL, useTheme } from "@/hooks/use-rtl";
-import { useAuthStore } from "@/store/auth.store";
+import { useTranslation } from "@/hooks/use-translation";
+import { useAuthStore, useUIStore } from "@/store/auth.store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ContinueLearningCTA } from "@/components/layout/continue-learning-cta";
 import type { Language } from "@/hooks/use-rtl";
 import type { AutocompleteResult, Notification } from "@/types/api.types";
 
@@ -41,23 +44,16 @@ const roleHomes = {
   SUPERADMIN: "/superadmin",
 } as const;
 
-const roleCTAs = {
-  STUDENT: { label: "Continue Learning", href: "/courses" },
-  TEACHER: { label: "Upload Course", href: "/teacher/courses/upload" },
-  ADMIN: { label: "Review Queue", href: "/admin/contributions" },
-  SUPERADMIN: { label: "Platform Overview", href: "/superadmin" },
-} as const;
-
 const settingsRoutes = {
   STUDENT: "/settings",
   TEACHER: "/teacher/settings",
   ADMIN: "/admin/settings",
-  SUPERADMIN: "/superadmin/dashboard",
+  SUPERADMIN: "/settings",
 } as const;
 
 export function Header({ className }: HeaderProps) {
   const router = useRouter();
-  const pathname = usePathname();
+  const { t, tSection } = useTranslation();
   const { user, logout } = useAuthStore();
   const { theme, setTheme } = useTheme();
   const { lang, setLanguage, languageNames } = useRTL();
@@ -184,19 +180,26 @@ export function Header({ className }: HeaderProps) {
       return null;
     }
 
+    const labels = tSection("header");
+
     if (user.role === "STUDENT") {
       const lastVisitedCourse =
         typeof window !== "undefined"
           ? window.localStorage.getItem("atlas_last_course_path")
           : null;
       return {
-        label: roleCTAs.STUDENT.label,
-        href: lastVisitedCourse || roleCTAs.STUDENT.href,
+        label: labels.continueLearning,
+        href: lastVisitedCourse || "/courses",
       };
     }
 
-    return roleCTAs[user.role as keyof typeof roleCTAs] ?? null;
-  }, [user?.role]);
+    const ctas = {
+      TEACHER: { label: labels.uploadCourse, href: "/teacher/courses/upload" },
+      SUPERADMIN: { label: labels.platformOverview, href: "/superadmin" },
+    };
+
+    return ctas[user.role as keyof typeof ctas] ?? null;
+  }, [user?.role, t]);
 
   const homeHref = user?.role
     ? roleHomes[user.role as keyof typeof roleHomes] || "/"
@@ -281,14 +284,13 @@ export function Header({ className }: HeaderProps) {
     setShowLangMenu(false);
   };
 
+  const commonT = tSection("common");
+  const headerT = tSection("header");
+  const { toggleSidebar } = useUIStore();
+
   if (!mounted) {
     return (
-      <header
-        className={cn(
-          "sticky top-0 z-50 border-b glass-dark",
-          className,
-        )}
-      >
+      <header className={cn("sticky top-0 z-50 border-b glass-dark", className)}>
         <div className="flex h-16 items-center justify-between px-4 lg:px-6">
           <Skeleton className="h-8 w-24" />
           <Skeleton className="h-10 w-96" />
@@ -302,31 +304,36 @@ export function Header({ className }: HeaderProps) {
   }
 
   return (
-    <header
-      className={cn(
-        "sticky top-0 z-50 border-b glass-dark",
-        className,
-      )}
-    >
+    <header className={cn("sticky top-0 z-50 border-b glass-dark", className)}>
       <div className="flex h-16 items-center justify-between px-4 lg:px-6">
-        <Link href={homeHref} className="flex items-center gap-2">
-          <GraduationCap className="h-8 w-8 text-primary" />
-          <span className="text-xl font-bold">ATLAS</span>
-        </Link>
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleSidebar}
+            className="flex lg:hidden"
+          >
+            <Menu className="h-6 w-6" />
+          </Button>
+          <Link href={homeHref} className="flex items-center gap-2">
+            <GraduationCap className="h-8 w-8 text-primary" />
+            <span className="text-xl font-bold">ATLAS</span>
+          </Link>
+        </div>
 
         <div ref={searchRef} className="relative mx-8 hidden max-w-xl flex-1 md:flex">
           <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="absolute inset-inline-start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="search"
-              placeholder="Search courses, ask anything..."
+              placeholder={commonT.search}
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               onKeyDown={handleSearchKeyDown}
               onFocus={() => searchQuery.length >= 2 && setShowSearch(true)}
-              className="w-full pl-10 pr-20"
+              className="w-full ps-10 pe-20"
             />
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+            <div className="absolute inset-inline-end-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
               {isSearching ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
@@ -338,11 +345,11 @@ export function Header({ className }: HeaderProps) {
           </div>
 
           {showSearch && (
-            <div className="absolute left-0 right-0 top-full mt-2 max-h-96 overflow-y-auto rounded-lg border bg-background shadow-lg">
+            <div className="absolute inset-inline-start-0 inset-inline-end-0 top-full mt-2 max-h-96 overflow-y-auto rounded-lg border bg-background shadow-lg">
               {searchResults.length > 0 ? (
                 <div className="p-2">
                   <div className="px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
-                    Courses
+                    {headerT.searchCourses}
                   </div>
                   {searchResults.map((result) => (
                     <button
@@ -351,7 +358,7 @@ export function Header({ className }: HeaderProps) {
                       className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-muted"
                     >
                       <BookOpen className="h-4 w-4 text-muted-foreground" />
-                      <span className="flex-1 truncate text-left">{result.title}</span>
+                      <span className="flex-1 truncate text-start">{result.title}</span>
                       <span className="text-xs text-muted-foreground">{result.type}</span>
                     </button>
                   ))}
@@ -361,12 +368,12 @@ export function Header({ className }: HeaderProps) {
                     className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-primary hover:bg-muted"
                   >
                     <Sparkles className="h-4 w-4" />
-                    <span>Ask AI about &quot;{searchQuery}&quot;</span>
+                    <span>{t("header.askAIAbout", { query: searchQuery })}</span>
                   </button>
                 </div>
               ) : searchQuery.length >= 2 ? (
                 <div className="p-4 text-center text-sm text-muted-foreground">
-                  No results found
+                  {headerT.noResultsFound}
                 </div>
               ) : null}
             </div>
@@ -374,11 +381,13 @@ export function Header({ className }: HeaderProps) {
         </div>
 
         <div className="flex items-center gap-2">
-          {roleCTA && (
-            <Button asChild className="hidden lg:flex">
+          {user?.role === "STUDENT" ? (
+            <ContinueLearningCTA />
+          ) : roleCTA ? (
+            <Button asChild className="hidden lg:flex" size="sm">
               <Link href={roleCTA.href}>{roleCTA.label}</Link>
             </Button>
-          )}
+          ) : null}
 
           <button
             onClick={() =>
@@ -402,7 +411,7 @@ export function Header({ className }: HeaderProps) {
             </button>
 
             {showLangMenu && (
-              <div className="absolute right-0 top-full mt-2 w-40 rounded-lg border bg-background py-1 shadow-lg">
+              <div className="absolute right-0 rtl:left-0 rtl:right-auto top-full z-50 mt-2 w-40 rounded-lg border bg-background py-1 shadow-lg">
                 {(["fr", "ar", "en"] as Language[]).map((language) => (
                   <button
                     key={language}
@@ -424,26 +433,26 @@ export function Header({ className }: HeaderProps) {
             <button
               onClick={() => setShowNotifications((current) => !current)}
               className="relative rounded-lg p-2 transition-colors hover:bg-muted"
-              aria-label="Notifications"
+              aria-label={commonT.notifications}
             >
               <Bell className="h-5 w-5" />
               {unreadCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs text-destructive-foreground">
+                <span className="absolute -inset-inline-end-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-xs text-destructive-foreground">
                   {unreadCount > 9 ? "9+" : unreadCount}
                 </span>
               )}
             </button>
 
             {showNotifications && (
-              <div className="absolute right-0 top-full mt-2 w-80 rounded-lg border bg-background shadow-lg">
+              <div className="absolute right-0 rtl:left-0 rtl:right-auto top-full z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-lg border bg-background shadow-lg">
                 <div className="flex items-center justify-between border-b p-4">
-                  <h3 className="font-semibold">Notifications</h3>
+                  <h3 className="font-semibold">{commonT.notifications}</h3>
                   {unreadCount > 0 && (
                     <button
                       onClick={handleMarkAllRead}
                       className="text-xs text-primary hover:underline"
                     >
-                      Mark all read
+                      {headerT.markAllRead}
                     </button>
                   )}
                 </div>
@@ -453,7 +462,7 @@ export function Header({ className }: HeaderProps) {
                       <button
                         key={notification.id}
                         className={cn(
-                          "block w-full border-b p-4 text-left last:border-b-0 hover:bg-muted/50",
+                          "block w-full border-b p-4 text-start last:border-b-0 hover:bg-muted/50",
                           !notification.is_read && "bg-primary/5",
                         )}
                         onClick={() =>
@@ -473,14 +482,14 @@ export function Header({ className }: HeaderProps) {
                     <div className="p-8 text-center">
                       <CheckCircle className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
                       <p className="text-sm text-muted-foreground">
-                        You are all caught up
+                        {headerT.allCaughtUp}
                       </p>
                     </div>
                   )}
                 </div>
                 <div className="border-t p-2">
                   <Button asChild variant="ghost" className="w-full" size="sm">
-                    <Link href="/notifications">View all notifications</Link>
+                    <Link href="/notifications">{headerT.viewAllNotifications}</Link>
                   </Button>
                 </div>
               </div>
@@ -499,12 +508,12 @@ export function Header({ className }: HeaderProps) {
             </button>
 
             {showProfile && (
-              <div className="absolute right-0 top-full mt-2 w-56 rounded-lg border bg-background py-1 shadow-lg">
+              <div className="absolute right-0 rtl:left-0 rtl:right-auto top-full z-50 mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-lg border bg-background py-1 shadow-lg">
                 <div className="border-b px-4 py-3">
                   <p className="font-medium">{user?.full_name || "User"}</p>
                   <p className="text-sm text-muted-foreground">{user?.email}</p>
                   <span className="mt-1 inline-block rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
-                    {user?.role}
+                    {formatRole(user?.role)}
                   </span>
                 </div>
                 <Link
@@ -512,15 +521,16 @@ export function Header({ className }: HeaderProps) {
                   className="flex items-center gap-3 px-4 py-2 text-sm hover:bg-muted"
                 >
                   <Settings className="h-4 w-4" />
-                  Settings
+                  {commonT.settings}
                 </Link>
+
                 {user?.role === "STUDENT" && (
                   <Link
-                    href={pathname === "/profile" ? "/profile" : "/profile"}
+                    href="/profile"
                     className="flex items-center gap-3 px-4 py-2 text-sm hover:bg-muted"
                   >
                     <User className="h-4 w-4" />
-                    Profile
+                    {commonT.profile}
                   </Link>
                 )}
                 <button
@@ -528,7 +538,7 @@ export function Header({ className }: HeaderProps) {
                   className="flex w-full items-center gap-3 px-4 py-2 text-sm text-destructive hover:bg-muted"
                 >
                   <LogOut className="h-4 w-4" />
-                  Logout
+                  {commonT.logout}
                 </button>
               </div>
             )}
@@ -538,14 +548,14 @@ export function Header({ className }: HeaderProps) {
 
       <div className="px-4 pb-3 md:hidden">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute inset-inline-start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="search"
-            placeholder="Search courses, ask anything..."
+            placeholder={commonT.search}
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             onKeyDown={handleSearchKeyDown}
-            className="w-full pl-10"
+            className="w-full ps-10"
           />
         </div>
       </div>

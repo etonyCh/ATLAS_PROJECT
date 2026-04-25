@@ -8,6 +8,7 @@ import {
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { ServiceWorkerRegistration } from "@/components/service-worker";
+import { Footer } from "@/components/layout/footer";
 
 const inter = Inter({
   subsets: ["latin", "latin-ext"],
@@ -94,7 +95,9 @@ export default async function RootLayout({
         className={`${inter.variable} ${ibmPlexMono.variable} ${notoNaskhArabic.variable} min-h-screen flex flex-col bg-background text-foreground antialiased`}
         suppressHydrationWarning
       >
-        <Providers>{children}</Providers>
+        <Providers>
+          {children}
+        </Providers>
         <ServiceWorkerRegistration />
       </body>
     </html>

@@ -14,8 +14,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useAuthStore } from "@/store/auth.store";
+import { useTranslation } from "@/hooks/use-translation";
 
 export function LoginPageClient() {
+  const { t, tSection } = useTranslation();
+  const authT = tSection("auth");
   const router = useRouter();
   const { login } = useAuthStore();
   const [email, setEmail] = useState("");
@@ -34,7 +37,7 @@ export function LoginPageClient() {
       router.push("/dashboard");
     } catch (err) {
       // SOTA: Detect unverified account and redirect to OTP activation
-      const errorMessage = err instanceof Error ? err.message : "Login failed";
+      const errorMessage = err instanceof Error ? err.message : t("auth.loginFailed");
       if (errorMessage.includes("not activated") || errorMessage.includes("VERIFY_OTP")) {
         router.push(`/auth/activate/student?email=${encodeURIComponent(email)}`);
         return;
@@ -53,8 +56,8 @@ export function LoginPageClient() {
             <GraduationCap className="h-6 w-6 text-primary-foreground" />
           </div>
           <div>
-            <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
-            <CardDescription>Sign in to access your learning dashboard</CardDescription>
+            <CardTitle className="text-2xl font-bold">{authT.welcomeBack}</CardTitle>
+            <CardDescription>{authT.signInDescription}</CardDescription>
           </div>
         </CardHeader>
         <CardContent>
@@ -66,8 +69,8 @@ export function LoginPageClient() {
             ) : null}
             <Input
               type="email"
-              label="Email"
-              placeholder="you@university.tn"
+              label={authT.email}
+              placeholder={authT.emailPlaceholder}
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               required
@@ -76,8 +79,8 @@ export function LoginPageClient() {
             <div className="relative">
               <Input
                 type={showPassword ? "text" : "password"}
-                label="Password"
-                placeholder="Enter your password"
+                label={authT.password}
+                placeholder={authT.passwordPlaceholder}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 required
@@ -94,24 +97,24 @@ export function LoginPageClient() {
             </div>
             <div className="flex justify-end">
               <Link href="/auth/forgot-password" className="text-sm text-primary hover:underline">
-                Forgot password?
+                {authT.forgotPassword}
               </Link>
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Signing in...
+                  {authT.signingIn}
                 </>
               ) : (
-                "Sign in"
+                authT.signIn
               )}
             </Button>
           </form>
           <div className="mt-6 text-center text-sm">
-            <span className="text-muted-foreground">Don&apos;t have an account? </span>
+            <span className="text-muted-foreground">{authT.dontHaveAccount} </span>
             <Link href="/auth/register" className="font-medium text-primary hover:underline">
-              Student registration
+              {authT.studentRegistration}
             </Link>
           </div>
 

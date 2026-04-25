@@ -6,9 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusChip } from "@/components/ui/status-chip";
-import { useApproveTeacherRequestMutation, useTeacherRequestsQuery } from "@/queries/admin.queries";
+import { useTranslation } from "@/hooks/use-translation";
+import { useTeacherRequestsQuery, useApproveTeacherRequestMutation } from "@/queries/admin.queries";
 
 export default function AdminTeacherRequestsPage() {
+  const { t, tSection } = useTranslation();
+  const adminT = tSection("admin");
   const teacherRequestsQuery = useTeacherRequestsQuery();
   const approveTeacherRequestMutation = useApproveTeacherRequestMutation();
   const requests = teacherRequestsQuery.data?.items ?? [];
@@ -24,25 +27,25 @@ export default function AdminTeacherRequestsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Teacher Verification Requests</h1>
+        <h1 className="text-2xl font-bold">{adminT.teacherVerificationRequests}</h1>
         <p className="text-muted-foreground">
-          Review fallback educator requests and approve institutional access when teachers were not imported through the admin template flow.
+          {adminT.teacherVerificationDescription}
         </p>
       </div>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle>Pending Queue</CardTitle>
+            <CardTitle>{adminT.pendingQueue}</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              CDC-aligned onboarding starts with teacher import. This queue handles exceptions and fallback requests.
+              {adminT.pendingQueueDescription}
             </p>
           </div>
           <div className="flex items-center gap-3">
             <Button variant="outline" size="sm" asChild>
-              <Link href="/admin/teachers/import">Open Teacher Import</Link>
+              <Link href="/admin/teachers/import">{adminT.importTeachers}</Link>
             </Button>
-            <StatusChip status={requests.length ? "warning" : "active"} label={`${requests.length} pending`} />
+            <StatusChip status={requests.length ? "warning" : "active"} label={`${requests.length} ${t("teacher.pendingContributionsCount")}`} />
           </div>
         </CardHeader>
         <CardContent>
@@ -54,16 +57,16 @@ export default function AdminTeacherRequestsPage() {
                   className="flex flex-col gap-4 rounded-xl border p-4 md:flex-row md:items-center md:justify-between"
                 >
                   <div className="space-y-1">
-                    <p className="font-medium">{request.full_name || "Unnamed educator"}</p>
+                    <p className="font-medium">{request.full_name || adminT.unnamedEducator}</p>
                     <p className="text-sm text-muted-foreground">{request.email}</p>
                     <p className="text-sm text-muted-foreground">
-                      Requested department: {request.requested_department}
+                      {adminT.requestedDepartment}: {request.requested_department}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      Institutional domain: {request.requested_domain}
+                      {adminT.institutionalDomain}: {request.requested_domain}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Submitted {new Date(request.created_at).toLocaleString()}
+                      {adminT.submitted} {new Date(request.created_at).toLocaleString()}
                     </p>
                   </div>
                   <Button
@@ -72,7 +75,7 @@ export default function AdminTeacherRequestsPage() {
                     onClick={() => approveTeacherRequestMutation.mutate({ requestId: request.id })}
                   >
                     <ShieldCheck className="mr-2 h-4 w-4" />
-                    Approve Teacher
+                    {adminT.approveTeacher}
                   </Button>
                 </div>
               ))}
@@ -80,8 +83,8 @@ export default function AdminTeacherRequestsPage() {
           ) : (
             <EmptyState
               type="no-results"
-              title="No pending teacher requests"
-              description="Educator requests will appear here once teachers submit verification requests."
+              title={adminT.noPendingTeacherRequests}
+              description={adminT.educatorRequestsDescription}
             />
           )}
         </CardContent>
@@ -91,8 +94,7 @@ export default function AdminTeacherRequestsPage() {
         <CardContent className="flex items-start gap-3 p-4 text-sm text-muted-foreground">
           <UserRoundSearch className="mt-0.5 h-5 w-5 text-primary" />
           <p>
-            Use this queue for trust-based onboarding. Student registration remains automatic, while educator access
-            must be reviewed and approved by an administrator.
+            {adminT.trustOnboardingDescription}
           </p>
         </CardContent>
       </Card>

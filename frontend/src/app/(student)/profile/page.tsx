@@ -8,6 +8,7 @@ import { Input, Select } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { authApi } from "@/lib/api";
 import { useAuthStore } from "@/store/auth.store";
+import { useTranslation } from "@/hooks/use-translation";
 import type { Gender, StudentLevel } from "@/types/api.types";
 
 type ProfileFormState = {
@@ -43,6 +44,7 @@ function buildFormState(user: ReturnType<typeof useAuthStore.getState>["user"]):
 }
 
 export default function ProfilePage() {
+  const { t } = useTranslation();
   const { user, setUser } = useAuthStore();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -108,9 +110,9 @@ export default function ProfilePage() {
       });
       setUser(updatedUser);
       setIsEditing(false);
-      setSuccess("Profile updated successfully.");
+      setSuccess(t("student.profileUpdated"));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update profile.");
+      setError(err instanceof Error ? err.message : t("student.profileUpdateFailed"));
     } finally {
       setIsSaving(false);
     }
@@ -119,8 +121,8 @@ export default function ProfilePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Profile</h1>
-        <p className="text-muted-foreground">Manage your academic and personal information.</p>
+        <h1 className="text-2xl font-bold">{t("student.profile")}</h1>
+        <p className="text-muted-foreground">{t("student.profileDescription")}</p>
       </div>
 
       {error ? <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{error}</div> : null}
@@ -128,10 +130,10 @@ export default function ProfilePage() {
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Student Profile</CardTitle>
+          <CardTitle>{t("student.studentProfile")}</CardTitle>
           <Button onClick={() => (isEditing ? handleSave() : setIsEditing(true))} disabled={isSaving}>
             <Save className="mr-2 h-4 w-4" />
-            {isEditing ? (isSaving ? "Saving..." : "Save") : "Edit"}
+            {isEditing ? (isSaving ? t("ui.saving") : t("ui.save")) : t("ui.edit")}
           </Button>
         </CardHeader>
         <CardContent className="space-y-8">
@@ -153,18 +155,18 @@ export default function ProfilePage() {
               ) : null}
             </div>
             <div>
-              <p className="font-semibold">{user?.full_name || "Student"}</p>
+              <p className="font-semibold">{user?.full_name || t("student.student")}</p>
               <p className="text-sm text-muted-foreground">{user?.email}</p>
             </div>
           </div>
 
           <section className="space-y-4">
-            <h2 className="text-lg font-semibold">Academic Information</h2>
+            <h2 className="text-lg font-semibold">{t("student.academicInformation")}</h2>
             <div className="grid gap-4 md:grid-cols-2">
-              <Input label="Full Name" value={form.full_name} onChange={(event) => updateField("full_name", event.target.value)} disabled={!isEditing} />
-              <Input label="Email" value={user?.email || ""} disabled />
+              <Input label={t("account.fullName")} value={form.full_name} onChange={(event) => updateField("full_name", event.target.value)} disabled={!isEditing} />
+              <Input label={t("account.email")} value={user?.email || ""} disabled />
               <div className="space-y-2">
-                <label className="text-sm font-medium">Department</label>
+                <label className="text-sm font-medium">{t("student.department")}</label>
                 <Select
                   value={form.filiere}
                   onChange={(event) => {
@@ -173,7 +175,7 @@ export default function ProfilePage() {
                   }}
                   disabled={!isEditing}
                 >
-                  <option value="">Select department</option>
+                  <option value="">{t("student.selectDepartment")}</option>
                   {departments.map((department) => (
                     <option key={department.id} value={department.name}>
                       {department.name}
@@ -182,9 +184,9 @@ export default function ProfilePage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">Level</label>
+                <label className="text-sm font-medium">{t("student.level")}</label>
                 <Select value={form.level} onChange={(event) => updateField("level", event.target.value)} disabled={!isEditing || !form.filiere}>
-                  <option value="">Select level</option>
+                  <option value="">{t("student.selectLevel")}</option>
                   {availableLevels.map((level) => (
                     <option key={level} value={level}>
                       {level}
@@ -192,44 +194,44 @@ export default function ProfilePage() {
                   ))}
                 </Select>
               </div>
-              <Input label="Student ID / Roll Number" value={form.student_id} onChange={(event) => updateField("student_id", event.target.value)} disabled={!isEditing} />
-              <Input label="Program / Course of Study" value={form.program} onChange={(event) => updateField("program", event.target.value)} disabled={!isEditing} />
-              <Input label="Year" value={form.academic_year} onChange={(event) => updateField("academic_year", event.target.value)} disabled={!isEditing} />
+              <Input label={t("student.studentId")} value={form.student_id} onChange={(event) => updateField("student_id", event.target.value)} disabled={!isEditing} />
+              <Input label={t("student.program")} value={form.program} onChange={(event) => updateField("program", event.target.value)} disabled={!isEditing} />
+              <Input label={t("student.academicYear")} value={form.academic_year} onChange={(event) => updateField("academic_year", event.target.value)} disabled={!isEditing} />
             </div>
           </section>
 
           <section className="space-y-4">
-            <h2 className="text-lg font-semibold">Personal Information</h2>
+            <h2 className="text-lg font-semibold">{t("student.personalInformation")}</h2>
             <div className="grid gap-4 md:grid-cols-2">
-              <Input label="Date of Birth" type="date" value={form.date_of_birth} onChange={(event) => updateField("date_of_birth", event.target.value)} disabled={!isEditing} />
+              <Input label={t("student.dateOfBirth")} type="date" value={form.date_of_birth} onChange={(event) => updateField("date_of_birth", event.target.value)} disabled={!isEditing} />
               <div className="space-y-2">
-                <label className="text-sm font-medium">Gender</label>
+                <label className="text-sm font-medium">{t("student.gender")}</label>
                 <Select value={form.gender} onChange={(event) => updateField("gender", event.target.value)} disabled={!isEditing}>
-                  <option value="">Prefer not to say</option>
-                  <option value="MALE">Male</option>
-                  <option value="FEMALE">Female</option>
-                  <option value="OTHER">Other</option>
-                  <option value="PREFER_NOT_TO_SAY">Prefer not to say</option>
+                  <option value="">{t("student.preferNotToSay")}</option>
+                  <option value="MALE">{t("student.male")}</option>
+                  <option value="FEMALE">{t("student.female")}</option>
+                  <option value="OTHER">{t("ui.other")}</option>
+                  <option value="PREFER_NOT_TO_SAY">{t("student.preferNotToSay")}</option>
                 </Select>
               </div>
-              <Input label="Phone Number" value={form.phone_number} onChange={(event) => updateField("phone_number", event.target.value)} disabled={!isEditing} />
-              <Input label="Address" value={form.address} onChange={(event) => updateField("address", event.target.value)} disabled={!isEditing} />
+              <Input label={t("student.phoneNumber")} value={form.phone_number} onChange={(event) => updateField("phone_number", event.target.value)} disabled={!isEditing} />
+              <Input label={t("student.address")} value={form.address} onChange={(event) => updateField("address", event.target.value)} disabled={!isEditing} />
             </div>
           </section>
 
           <section className="space-y-4">
-            <h2 className="text-lg font-semibold">Additional Preferences</h2>
+            <h2 className="text-lg font-semibold">{t("student.additionalPreferences")}</h2>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Preferred Language</label>
+                <label className="text-sm font-medium">{t("student.preferredLanguage")}</label>
                 <Select value={form.preferred_language} onChange={(event) => updateField("preferred_language", event.target.value)} disabled={!isEditing}>
-                  <option value="">Select language</option>
-                  <option value="en">English</option>
-                  <option value="fr">French</option>
-                  <option value="ar">Arabic</option>
+                  <option value="">{t("student.selectLanguage")}</option>
+                  <option value="en">{t("teacher.english")}</option>
+                  <option value="fr">{t("teacher.french")}</option>
+                  <option value="ar">{t("teacher.arabic")}</option>
                 </Select>
               </div>
-              <Input label="Profile Picture URL" value={form.profile_picture_url} onChange={(event) => updateField("profile_picture_url", event.target.value)} disabled={!isEditing} />
+              <Input label={t("student.profilePictureUrl")} value={form.profile_picture_url} onChange={(event) => updateField("profile_picture_url", event.target.value)} disabled={!isEditing} />
             </div>
           </section>
         </CardContent>

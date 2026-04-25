@@ -16,25 +16,30 @@ import { useCoursesQuery } from "@/queries/courses";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 
-const FILIERES = [
-  "All",
-  "Informatique",
-  "Mathématiques",
-  "Physique",
-  "Chimie",
-  "Biologie",
-  "Économie",
-  "Droit",
-  "Médecine",
-];
-
-const LEVELS = ["All", "L1", "L2", "L3", "M1", "M2"];
+import { useTranslation } from "@/hooks/use-translation";
 
 export default function CoursesPage() {
+  const { t, tSection } = useTranslation();
+  const searchT = tSection("search");
+  
   const [search, setSearch] = useState("");
   const [filiere, setFiliere] = useState("All");
   const [level, setLevel] = useState("All");
   const [selectedCourse, setSelectedCourse] = useState<{id: string, title: string} | null>(null);
+
+  const FILIERES = [
+    "All",
+    "Informatique",
+    "Mathématiques",
+    "Physique",
+    "Chimie",
+    "Biologie",
+    "Économie",
+    "Droit",
+    "Médecine",
+  ];
+
+  const LEVELS = ["All", "L1", "L2", "L3", "M1", "M2"];
 
   const { data: courses, isLoading } = useCoursesQuery();
 
@@ -50,9 +55,9 @@ export default function CoursesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Course Catalog</h1>
+        <h1 className="text-2xl font-bold">{t("nav.catalog")}</h1>
         <p className="text-muted-foreground">
-          Browse and explore available courses
+          {t("catalog.browseDescription")}
         </p>
       </div>
 
@@ -60,7 +65,7 @@ export default function CoursesPage() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search courses..."
+            placeholder={t("catalog.searchCourses")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-10"
@@ -73,7 +78,7 @@ export default function CoursesPage() {
         >
           {FILIERES.map((f) => (
             <option key={f} value={f}>
-              {f}
+              {f === "All" ? searchT.allDepartments : f}
             </option>
           ))}
         </select>
@@ -84,7 +89,7 @@ export default function CoursesPage() {
         >
           {LEVELS.map((l) => (
             <option key={l} value={l}>
-              {l}
+              {l === "All" ? searchT.allLevels : l}
             </option>
           ))}
         </select>
@@ -107,8 +112,8 @@ export default function CoursesPage() {
       ) : filteredCourses?.length === 0 ? (
         <EmptyState
           type="no-results"
-          title="No courses found"
-          description="Try adjusting your search or filters"
+          title={searchT.noResultsFound}
+          description={t("catalog.adjustSearchFilters")}
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

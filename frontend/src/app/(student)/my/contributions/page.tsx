@@ -22,8 +22,11 @@ import {
 } from "@/components/ui/dialog";
 import { useContributionsMineQuery } from "@/queries";
 import type { Contribution } from "@/types/api.types";
+import { useTranslation } from "@/hooks/use-translation";
 
 export default function MyContributionsPage() {
+  const { t, tSection } = useTranslation();
+  const contT = tSection("contributions");
   const router = useRouter();
   const { data: contributions, isLoading } = useContributionsMineQuery();
   const [selectedContribution, setSelectedContribution] = useState<Contribution | null>(null);
@@ -39,8 +42,8 @@ export default function MyContributionsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">My Contributions</h1>
-        <p className="text-muted-foreground">Track your uploaded documents</p>
+        <h1 className="text-2xl font-bold">{contT.title}</h1>
+        <p className="text-muted-foreground">{contT.description}</p>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -49,28 +52,28 @@ export default function MyContributionsPage() {
           size="sm"
           onClick={() => setFilter("all")}
         >
-          All
+          {contT.all}
         </Button>
         <Button
           variant={filter === "PENDING" ? "default" : "outline"}
           size="sm"
           onClick={() => setFilter("PENDING")}
         >
-          Pending
+          {contT.pending}
         </Button>
         <Button
           variant={filter === "APPROVED" ? "default" : "outline"}
           size="sm"
           onClick={() => setFilter("APPROVED")}
         >
-          Approved
+          {contT.approved}
         </Button>
         <Button
           variant={filter === "REJECTED" ? "default" : "outline"}
           size="sm"
           onClick={() => setFilter("REJECTED")}
         >
-          Rejected
+          {contT.rejected}
         </Button>
       </div>
 
@@ -83,10 +86,10 @@ export default function MyContributionsPage() {
       ) : filteredContributions?.length === 0 ? (
         <EmptyState
           type="contributions"
-          title="No contributions"
-          description="Start contributing to see your uploads here"
+          title={contT.noContributions}
+          description={contT.noContributionsDescription}
           action={{
-            label: "Upload Now",
+            label: contT.uploadNow,
             onClick: () => router.push("/upload"),
           }}
         />
@@ -106,17 +109,17 @@ export default function MyContributionsPage() {
                     {contribution.title}
                   </h3>
                   <p className="text-sm text-muted-foreground truncate">
-                    {contribution.description || "No description"}
+                    {contribution.description || contT.noDescription}
                   </p>
                   <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                     {contribution.is_demo_submission ? (
                       <span className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
-                        Contributor application
+                        {contT.contributorApplication}
                       </span>
                     ) : null}
                     <span className="flex items-center gap-1">
                       <Clock className="h-3 w-3" />
-                      {new Date(contribution.created_at).toLocaleDateString()}
+                      {new Date(contribution.created_at).toLocaleDateString(t("common.locale") === "ar" ? "ar-TN" : "fr-TN")}
                     </span>
                   </div>
                 </div>
@@ -145,10 +148,10 @@ export default function MyContributionsPage() {
             <DialogTitle>{selectedContribution?.title}</DialogTitle>
             <DialogDescription>
               {selectedContribution?.status === "PENDING"
-                ? "Your file is still waiting for moderation. You can preview it here, but other students cannot access it until it is approved."
+                ? contT.awaitingModeration
                 : selectedContribution?.status === "REJECTED"
-                  ? "This upload was rejected. You can still review the file and feedback here."
-                  : "Approved file preview."}
+                  ? contT.rejectedMessage
+                  : contT.approvedPreview}
             </DialogDescription>
           </DialogHeader>
 

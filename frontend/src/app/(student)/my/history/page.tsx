@@ -16,10 +16,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useStudentDashboardQuery } from "@/queries";
 import { api } from "@/lib/api";
-import type { ActivityLogItem } from "@/types/api.types";
 import { useQuery } from "@tanstack/react-query";
+import type { ActivityLogItem } from "@/types/api.types";
+import { useTranslation } from "@/hooks/use-translation";
 
 export default function HistoryPage() {
+  const { t, tSection } = useTranslation();
+  const histT = tSection("history");
   const { data: dashboard, isLoading: isDashboardLoading } =
     useStudentDashboardQuery();
   const [filter, setFilter] = useState("all");
@@ -38,8 +41,8 @@ export default function HistoryPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Study History</h1>
-        <p className="text-muted-foreground">Review your learning activity</p>
+        <h1 className="text-2xl font-bold">{histT.title}</h1>
+        <p className="text-muted-foreground">{histT.description}</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -57,7 +60,7 @@ export default function HistoryPage() {
                     dashboard?.progress?.active_streak_days || 0
                   )}
                 </div>
-                <p className="text-sm text-muted-foreground">Day Streak</p>
+                <p className="text-sm text-muted-foreground">{histT.dayStreak}</p>
               </div>
             </div>
           </CardContent>
@@ -76,7 +79,7 @@ export default function HistoryPage() {
                     (historyItems?.length ?? 0)
                   )}
                 </div>
-                <p className="text-sm text-muted-foreground">This Week</p>
+                <p className="text-sm text-muted-foreground">{histT.thisWeek}</p>
               </div>
             </div>
           </CardContent>
@@ -95,7 +98,7 @@ export default function HistoryPage() {
                     (historyItems?.length ?? 0)
                   )}
                 </div>
-                <p className="text-sm text-muted-foreground">Total Hours</p>
+                <p className="text-sm text-muted-foreground">{histT.totalHours}</p>
               </div>
             </div>
           </CardContent>
@@ -109,10 +112,10 @@ export default function HistoryPage() {
           onChange={(e) => setFilter(e.target.value)}
           className="w-40"
         >
-          <option value="all">All Types</option>
-          <option value="flashcard">Flashcards</option>
-          <option value="quiz">Quizzes</option>
-          <option value="read">Reading</option>
+          <option value="all">{histT.allTypes}</option>
+          <option value="flashcard">{histT.flashcards}</option>
+          <option value="quiz">{histT.quizzes}</option>
+          <option value="read">{histT.reading}</option>
         </Select>
       </div>
 
@@ -133,8 +136,8 @@ export default function HistoryPage() {
       ) : filteredHistory.length === 0 ? (
         <EmptyState
           type="history"
-          title="No history yet"
-          description="Start studying to see your activity here"
+          title={histT.noHistory}
+          description={histT.noHistoryDescription}
         />
       ) : (
         <div className="space-y-3">
@@ -152,7 +155,7 @@ export default function HistoryPage() {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{item.description}</p>
                     <p className="text-sm text-muted-foreground">
-                      {new Date(item.created_at).toLocaleDateString("fr-TN", {
+                      {new Date(item.created_at).toLocaleDateString(t("common.locale") === "ar" ? "ar-TN" : "fr-TN", {
                         weekday: "short",
                         month: "short",
                         day: "numeric",

@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Download, Loader2, Search, Users, MoreVertical, ShieldAlert, ShieldCheck, UserX } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Loader2, Search, Trash2, Users, MoreVertical, ShieldAlert, ShieldCheck, UserX } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { formatRole } from "@/lib/utils";
 import { StatusChip } from "@/components/ui/status-chip";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { useAdminUsersQuery, useApproveTeacherRequestMutation, useTeacherRequestsQuery, useUpdateUserMutation } from "@/queries/admin.queries";
+import { useAdminUsersQuery, useDeleteUserMutation, useUpdateUserMutation } from "@/queries/admin.queries";
+import { useTranslation } from "@/hooks/use-translation";
 
 const roleColors: Record<string, string> = {
   STUDENT: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
@@ -19,10 +21,12 @@ const roleColors: Record<string, string> = {
 };
 
 export default function AdminUsersPage() {
+  const { t, tSection } = useTranslation();
+  const adminT = tSection("admin");
+  const headerT = tSection("header");
   const { data, isLoading, isError } = useAdminUsersQuery();
-  const teacherRequestsQuery = useTeacherRequestsQuery();
   const updateMutation = useUpdateUserMutation();
-  const approveTeacherRequestMutation = useApproveTeacherRequestMutation();
+  const deleteMutation = useDeleteUserMutation();
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -62,7 +66,6 @@ export default function AdminUsersPage() {
     teachers: users.filter((user) => user.role === "TEACHER").length,
     active: users.filter((user) => user.is_active).length,
   };
-  const pendingTeacherRequests = teacherRequestsQuery.data?.items ?? [];
 
   if (isLoading) {
     return (
@@ -76,8 +79,8 @@ export default function AdminUsersPage() {
     return (
       <EmptyState
         type="error"
-        title="Users unavailable"
-        description="We couldn't load the user management data."
+        title={adminT.usersUnavailable}
+        description={adminT.couldNotLoadUsers}
       />
     );
   }
@@ -86,21 +89,21 @@ export default function AdminUsersPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">User Management</h1>
+          <h1 className="text-2xl font-bold">{adminT.userManagement}</h1>
           <p className="text-muted-foreground">
-            Review and filter real user accounts across the platform.
+            {adminT.userManagementDescription}
           </p>
         </div>
         <div className="flex gap-3">
           <Button variant="outline" asChild>
             <Link href="/admin/teachers/import">
               <ShieldCheck className="mr-2 h-4 w-4" />
-              Teacher Import
+              {adminT.teacherImport}
             </Link>
           </Button>
           <Button variant="outline">
             <Download className="mr-2 h-4 w-4" />
-            Export
+            {adminT.export}
           </Button>
         </div>
       </div>
@@ -109,83 +112,34 @@ export default function AdminUsersPage() {
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-2xl font-bold">{stats.total}</p>
-            <p className="text-sm text-muted-foreground">Total Users</p>
+            <p className="text-sm text-muted-foreground">{adminT.totalUsers}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-2xl font-bold text-blue-500">{stats.students}</p>
-            <p className="text-sm text-muted-foreground">Students</p>
+            <p className="text-sm text-muted-foreground">{t("sidebar.users")}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-2xl font-bold text-purple-500">{stats.teachers}</p>
-            <p className="text-sm text-muted-foreground">Teachers</p>
+            <p className="text-sm text-muted-foreground">{adminT.teachers}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-2xl font-bold text-green-500">{stats.active}</p>
-            <p className="text-sm text-muted-foreground">Active</p>
+            <p className="text-sm text-muted-foreground">{adminT.status}</p>
           </CardContent>
         </Card>
       </div>
-
-      <Card>
-        <CardContent className="p-4">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold">Pending Teacher Requests</h2>
-              <p className="text-sm text-muted-foreground">
-                Teachers are primarily created by admins. Legacy verification requests, if any, appear here.
-              </p>
-            </div>
-            <StatusChip status={pendingTeacherRequests.length ? "warning" : "active"} />
-          </div>
-
-          {teacherRequestsQuery.isLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading teacher requests...
-            </div>
-          ) : pendingTeacherRequests.length ? (
-            <div className="space-y-3">
-              {pendingTeacherRequests.slice(0, 5).map((request) => (
-                <div key={request.id} className="flex flex-col gap-3 rounded-lg border p-4 md:flex-row md:items-center md:justify-between">
-                  <div className="space-y-1">
-                    <p className="font-medium">{request.full_name || "Unnamed educator"}</p>
-                    <p className="text-sm text-muted-foreground">{request.email}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {request.requested_department} - {request.requested_domain}
-                    </p>
-                  </div>
-                  <Button
-                    className="min-h-11"
-                    disabled={approveTeacherRequestMutation.isPending}
-                    onClick={() => approveTeacherRequestMutation.mutate({ requestId: request.id })}
-                  >
-                    <ShieldCheck className="mr-2 h-4 w-4" />
-                    Approve Teacher
-                  </Button>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState
-              type="no-results"
-              title="No pending teacher requests"
-              description="Teachers can be onboarded directly through import and user management."
-            />
-          )}
-        </CardContent>
-      </Card>
 
       <div className="flex flex-col gap-4 sm:flex-row">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search users..."
+            placeholder={t("ui.search")}
             value={searchQuery}
             onChange={(event) => {
               setSearchQuery(event.target.value);
@@ -202,10 +156,10 @@ export default function AdminUsersPage() {
           }}
           className="min-h-11 rounded-lg border bg-background px-4 py-2 text-sm"
         >
-          <option value="all">All Roles</option>
-          <option value="student">Students</option>
-          <option value="teacher">Teachers</option>
-          <option value="admin">Admins</option>
+          <option value="all">{adminT.allRoles}</option>
+          <option value="student">{t("sidebar.users")}</option>
+          <option value="teacher">{adminT.teachers}</option>
+          <option value="admin">{t("sidebar.admins")}</option>
         </select>
         <select
           value={statusFilter}
@@ -215,9 +169,9 @@ export default function AdminUsersPage() {
           }}
           className="min-h-11 rounded-lg border bg-background px-4 py-2 text-sm"
         >
-          <option value="all">All Status</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
+          <option value="all">{adminT.allStatus}</option>
+          <option value="active">{t("status.active")}</option>
+          <option value="inactive">{t("status.inactive")}</option>
         </select>
       </div>
 
@@ -238,33 +192,57 @@ export default function AdminUsersPage() {
                           .toUpperCase()}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium">{user.full_name || "Unnamed user"}</p>
+                        <p className="font-medium">{user.full_name || t("admin.noUsersFound")}</p>
                         <p className="truncate text-xs text-muted-foreground">{user.email}</p>
                       </div>
                     </div>
                     <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                       <div>
-                        <p className="text-muted-foreground">Role</p>
+                        <p className="text-muted-foreground">{adminT.role}</p>
                         <span
                           className={`mt-1 inline-flex rounded-full px-2 py-1 text-xs font-medium ${roleColors[user.role] || roleColors.STUDENT}`}
                         >
-                          {user.role}
+                          {formatRole(user.role)}
                         </span>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Status</p>
+                        <p className="text-muted-foreground">{adminT.status}</p>
                         <div className="mt-1">
                           <StatusChip status={user.is_active ? "active" : "inactive"} />
                         </div>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Filiere</p>
+                        <p className="text-muted-foreground">{t("leaderboard.filiere")}</p>
                         <p className="mt-1">{user.filiere || "-"}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Joined</p>
+                        <p className="text-muted-foreground">{adminT.joined}</p>
                         <p className="mt-1">{new Date(user.created_at).toLocaleDateString()}</p>
                       </div>
+                    </div>
+                    <div className="mt-4 flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        disabled={updateMutation.isPending}
+                        onClick={() => updateMutation.mutate({ userId: user.id, data: { is_active: !user.is_active } })}
+                      >
+                        {user.is_active ? <UserX className="mr-2 h-4 w-4" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+                        {user.is_active ? adminT.deactivate : adminT.reactivate}
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        disabled={deleteMutation.isPending}
+                        onClick={() => {
+                          if (window.confirm(t("admin.confirmDeleteUser", { name: user.full_name || user.email }))) {
+                            deleteMutation.mutate(user.id);
+                          }
+                        }}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" /> {t("ui.delete")}
+                      </Button>
                     </div>
                   </div>
                 ))}
@@ -273,12 +251,12 @@ export default function AdminUsersPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b bg-muted/50">
-                    <th className="px-4 py-3 text-left text-sm font-medium">User</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium">Role</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium">Filiere</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium">Status</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium">Joined</th>
-                    <th className="px-4 py-3 text-right text-sm font-medium">Actions</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium">{adminT.user}</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium">{adminT.role}</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium">{t("leaderboard.filiere")}</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium">{adminT.status}</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium">{adminT.joined}</th>
+                    <th className="px-4 py-3 text-right text-sm font-medium">{headerT.reviewQueue}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -295,7 +273,7 @@ export default function AdminUsersPage() {
                               .toUpperCase()}
                           </div>
                           <div>
-                            <p className="font-medium">{user.full_name || "Unnamed user"}</p>
+                            <p className="font-medium">{user.full_name || t("admin.noUsersFound")}</p>
                             <p className="text-xs text-muted-foreground">{user.email}</p>
                           </div>
                         </div>
@@ -304,7 +282,7 @@ export default function AdminUsersPage() {
                         <span
                           className={`rounded-full px-2 py-1 text-xs font-medium ${roleColors[user.role] || roleColors.STUDENT}`}
                         >
-                          {user.role}
+                          {formatRole(user.role)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">
@@ -325,17 +303,29 @@ export default function AdminUsersPage() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => updateMutation.mutate({ userId: user.id, data: { is_active: !user.is_active }})}>
-                              {user.is_active ? <><UserX className="mr-2 h-4 w-4 text-destructive" /> Deactivate (Ban)</> : <><ShieldCheck className="mr-2 h-4 w-4 text-emerald-500" /> Reactivate</>}
+                              {user.is_active ? <><UserX className="mr-2 h-4 w-4 text-destructive" /> {adminT.deactivateBan}</> : <><ShieldCheck className="mr-2 h-4 w-4 text-emerald-500" /> {adminT.reactivate}</>}
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem disabled={user.role === 'ADMIN'} onClick={() => updateMutation.mutate({ userId: user.id, data: { role: 'ADMIN' }})}>
-                              <ShieldAlert className="mr-2 h-4 w-4 text-amber-500" /> Make Admin
+                              <ShieldAlert className="mr-2 h-4 w-4 text-amber-500" /> {adminT.makeAdmin}
                             </DropdownMenuItem>
                             <DropdownMenuItem disabled={user.role === 'TEACHER'} onClick={() => updateMutation.mutate({ userId: user.id, data: { role: 'TEACHER' }})}>
-                              <Users className="mr-2 h-4 w-4 text-purple-500" /> Make Teacher
+                              <Users className="mr-2 h-4 w-4 text-purple-500" /> {adminT.makeTeacher}
                             </DropdownMenuItem>
                             <DropdownMenuItem disabled={user.role === 'STUDENT'} onClick={() => updateMutation.mutate({ userId: user.id, data: { role: 'STUDENT' }})}>
-                              <Users className="mr-2 h-4 w-4 text-blue-500" /> Make Student
+                              <Users className="mr-2 h-4 w-4 text-blue-500" /> {adminT.makeStudent}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive"
+                              disabled={deleteMutation.isPending}
+                              onClick={() => {
+                                if (window.confirm(t("admin.confirmDeleteUser", { name: user.full_name || user.email }))) {
+                                  deleteMutation.mutate(user.id);
+                                }
+                              }}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" /> {adminT.deletePermanently}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -349,8 +339,8 @@ export default function AdminUsersPage() {
           ) : (
             <EmptyState
               type="no-results"
-              title="No users found"
-              description="Try adjusting the search or filters."
+              title={adminT.noUsersFound}
+              description={adminT.tryAdjustingFilters}
             />
           )}
         </CardContent>
@@ -359,9 +349,11 @@ export default function AdminUsersPage() {
       {filteredUsers.length > itemsPerPage ? (
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
-            {Math.min(currentPage * itemsPerPage, filteredUsers.length)} of{" "}
-            {filteredUsers.length} users
+            {t("admin.showingUsers", {
+              start: (currentPage - 1) * itemsPerPage + 1,
+              end: Math.min(currentPage * itemsPerPage, filteredUsers.length),
+              total: filteredUsers.length,
+            })}
           </p>
           <div className="flex items-center gap-2">
             <Button

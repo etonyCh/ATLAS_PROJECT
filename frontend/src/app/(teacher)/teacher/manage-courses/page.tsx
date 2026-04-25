@@ -20,8 +20,10 @@ import {
 import { StatusChip } from "@/components/ui/status-chip";
 import { useTeacherCourses } from "@/queries/courses";
 import { MaterialSelectionDialog } from "@/components/course/material-selection-dialog";
+import { useTranslation } from "@/hooks/use-translation";
 
 export default function ManageCourses() {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -77,15 +79,15 @@ export default function ManageCourses() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">My Course Materials</h1>
+          <h1 className="text-2xl font-bold">{t("teacher.myCourseMaterials")}</h1>
           <p className="text-muted-foreground">
-            These are the administrator-managed courses where you have uploaded materials.
+            {t("teacher.myCourseMaterialsDescription")}
           </p>
         </div>
         <Button asChild>
           <Link href="/teacher/courses/upload">
             <Plus className="mr-2 h-4 w-4" />
-            Upload Material
+            {t("teacher.uploadMaterial")}
           </Link>
         </Button>
       </div>
@@ -93,7 +95,7 @@ export default function ManageCourses() {
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
-          placeholder="Search your course uploads..."
+          placeholder={t("teacher.searchCourseUploads")}
           value={searchQuery}
           onChange={(event) => {
             setSearchQuery(event.target.value);
@@ -122,15 +124,15 @@ export default function ManageCourses() {
                 <div className="flex items-center gap-4 flex-wrap">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground hidden lg:flex">
                     <Users className="h-4 w-4" />
-                    Catalog course
+                    {t("course.catalog")}
                   </div>
                   <StatusChip status={course.status} />
                   <Button variant="outline" size="sm" onClick={() => setMaterialSelectionCourse({ id: course.id, title: course.title })}>
                     <Eye className="mr-2 h-4 w-4" />
-                    Manage Materials
+                    {t("teacher.manageMaterials")}
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => setSelectedCourse(course)}>
-                    Details
+                    {t("ui.view")}
                   </Button>
                   <Button variant="outline" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => setCourseToDelete(course)}>
                     <Trash2 className="h-4 w-4" />
@@ -145,13 +147,13 @@ export default function ManageCourses() {
       <Dialog open={!!courseToDelete} onOpenChange={(open) => !open && setCourseToDelete(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Uploaded Material?</DialogTitle>
+            <DialogTitle>{t("teacher.deleteUploadedMaterial")}</DialogTitle>
             <DialogDescription>
-              This will permanently delete your uploaded material for <strong>{courseToDelete?.title}</strong>. This action cannot be undone, and the material will be removed from search and storage.
+              {t("teacher.deleteMaterialDescription", { title: courseToDelete?.title })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCourseToDelete(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setCourseToDelete(null)}>{t("ui.cancel")}</Button>
             <Button
               variant="destructive"
               onClick={() => {
@@ -160,7 +162,7 @@ export default function ManageCourses() {
               }}
               disabled={deleteMutation.isPending || !courseToDelete?.contributionId}
             >
-              {deleteMutation.isPending ? "Deleting..." : "Permanently Delete"}
+              {deleteMutation.isPending ? t("ui.deleting") : t("ui.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -169,8 +171,8 @@ export default function ManageCourses() {
       {filteredCourses.length > itemsPerPage ? (
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
-            {Math.min(currentPage * itemsPerPage, filteredCourses.length)} of {filteredCourses.length} courses
+            {t("ui.showing")} {(currentPage - 1) * itemsPerPage + 1} {t("ui.to")}{" "}
+            {Math.min(currentPage * itemsPerPage, filteredCourses.length)} {t("ui.of")} {filteredCourses.length} {t("teacher.courses")}
           </p>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage === 1}>
@@ -192,16 +194,16 @@ export default function ManageCourses() {
             <>
               <DialogHeader>
                 <DialogTitle>{selectedCourse.title}</DialogTitle>
-                <DialogDescription>Administrator-managed catalog course</DialogDescription>
+                <DialogDescription>{t("teacher.adminManagedCourse")}</DialogDescription>
               </DialogHeader>
               <div className="space-y-3 py-2 text-sm">
-                <p><strong>Department:</strong> {selectedCourse.filiere}</p>
-                <p><strong>Level:</strong> {selectedCourse.level}</p>
-                <p><strong>Status:</strong> {selectedCourse.status}</p>
+                <p><strong>{t("teacher.department")}:</strong> {selectedCourse.filiere}</p>
+                <p><strong>{t("course.lessons")}:</strong> {selectedCourse.level}</p>
+                <p><strong>{t("status.status")}:</strong> {selectedCourse.status}</p>
                 {selectedCourse.description ? <p>{selectedCourse.description}</p> : null}
               </div>
               <DialogFooter>
-                <Button onClick={() => setSelectedCourse(null)}>Close</Button>
+                <Button onClick={() => setSelectedCourse(null)}>{t("ui.close")}</Button>
               </DialogFooter>
             </>
           ) : null}

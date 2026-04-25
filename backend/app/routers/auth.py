@@ -55,6 +55,10 @@ class AuthUserResponse(BaseModel):
     status: AccountStatus
     trust_score: int
     profile_completeness: int
+    push_notifications_enabled: bool = True
+    email_digest_enabled: bool = False
+    notification_types: list[str] = []
+    is_rtl: bool = False
     establishment_id: str | None = None
     verified_at: datetime | None = None
     created_at: datetime
@@ -165,6 +169,10 @@ def _user_payload(user: User) -> AuthUserResponse:
         status=user.status,
         trust_score=user.trust_score,
         profile_completeness=user.profile_completeness,
+        push_notifications_enabled=user.push_notifications_enabled,
+        email_digest_enabled=user.email_digest_enabled,
+        notification_types=user.notification_types,
+        is_rtl=user.is_rtl,
         establishment_id=str(user.establishment_id) if getattr(user, "establishment_id", None) else None,
         verified_at=getattr(user, "verified_at", None),
         created_at=getattr(user, "created_at", datetime.utcnow()),

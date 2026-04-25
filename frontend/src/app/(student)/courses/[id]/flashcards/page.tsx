@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useCourseQuery, useFlashcardDueQuery, useGenerateFlashcardsMutation, useReviewFlashcardMutation } from "@/queries";
+import { useTrackLearning } from "@/hooks/use-continue-learning";
 import type { ReviewRating } from "@/types/api.types";
 
 const reviewButtons: Array<{ label: string; rating: ReviewRating; variant: "destructive" | "secondary" | "success" }> = [
@@ -24,6 +25,9 @@ export default function FlashcardsPage() {
   const dueQuery = useFlashcardDueQuery();
   const generateMutation = useGenerateFlashcardsMutation();
   const reviewMutation = useReviewFlashcardMutation();
+
+  useTrackLearning(courseId, course?.title || "Course Material", "flashcards");
+
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
 

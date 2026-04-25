@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import desc, func, select
+from sqlalchemy import delete, desc, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +26,14 @@ from app.models.user import (
 )
 from app.schemas.pagination import build_paginated_response
 
+# Imports for user deletion cleanup
+from app.models.contribution import Contribution
+from app.models.collaboration import ForumPost, ForumReply, ForumVote, StudyGroup, StudyGroupMember, LiveSession, LearningPathJob
+from app.models.gamification import XPTransaction, UserBadge, UserStreak
+from app.models.notification import Notification
+from app.models.progress import ReadingProgress
+from app.models.annotation import DocumentAnnotation
+from app.models.intelligence import UserProfile, TopicKnowledge, UserMemory, LearningInsight
 
 router = APIRouter(tags=["Admin"])
 
@@ -628,3 +636,84 @@ async def list_establishments(
         for e in establishments
     ]
 
+
+@router.delete("/admin/users/{user_id}")
+async def delete_user(
+    user_id: UUID,
+    current_user: User = Depends(require_role("ADMIN")),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, str]:
+    """
+    Delete a user and clean up associated records.
+    
+    User-generated content (contributions, forum posts, annotations) is preserved
+    but orphaned (uploader_id/author_id set to NULL). User-specific data
+    (XP, badges, streaks, notifications, etc.) is deleted.
+    """
+    # Fetch the user to delete
+    user = await db.get(User, user_id)
+    if user is None:
+        raise atlas_error("USER_001", "User not found.", status_code=404)
+    
+    # Multi-tenant check: admin can only delete users in their establishment
+    if (
+        current_user.establishment_id
+        and user.establishment_id != current_user.establishment_id
+    ):
+        raise atlas_error("AUTH_008", "You do not have access to this user.", status_code=403)
+    
+    # Prevent self-deletion
+    if user.id == current_user.id:
+        raise atlas_error("USER_003", "You cannot delete your own account.", status_code=400)
+    
+    # 1. Orphan contributions (keep documents, remove uploader link)
+    await db.execute(
+        update(Contribution)
+        .where(Contribution.uploader_id == user_id)
+        .values(uploader_id=None)
+    )
+    
+    # 2. Orphan forum content (keep posts/replies, remove author link)
+    await db.execute(
+        update(ForumPost)
+        .where(ForumPost.author_id == user_id)
+        .values(author_id=None)
+    )
+    await db.execute(
+        update(ForumReply)
+        .where(ForumReply.author_id == user_id)
+        .values(author_id=None)
+    )
+    
+    # 3. Orphan document annotations (keep annotations, remove user link)
+    await db.execute(
+        update(DocumentAnnotation)
+        .where(DocumentAnnotation.user_id == user_id)
+        .values(user_id=None)
+    )
+    
+    # 4. Delete user-specific records that don't make sense without the user
+    await db.execute(delete(ForumVote).where(ForumVote.user_id == user_id))
+    await db.execute(delete(StudyGroupMember).where(StudyGroupMember.user_id == user_id))
+    await db.execute(delete(XPTransaction).where(XPTransaction.user_id == user_id))
+    await db.execute(delete(UserBadge).where(UserBadge.user_id == user_id))
+    await db.execute(delete(UserStreak).where(UserStreak.user_id == user_id))
+    await db.execute(delete(Notification).where(Notification.user_id == user_id))
+    await db.execute(delete(ReadingProgress).where(ReadingProgress.user_id == user_id))
+    await db.execute(delete(LiveSession).where(LiveSession.teacher_id == user_id))
+    await db.execute(delete(LearningPathJob).where(LearningPathJob.user_id == user_id))
+    await db.execute(delete(UserProfile).where(UserProfile.user_id == user_id))
+    await db.execute(delete(TopicKnowledge).where(TopicKnowledge.user_id == user_id))
+    await db.execute(delete(UserMemory).where(UserMemory.user_id == user_id))
+    await db.execute(delete(LearningInsight).where(LearningInsight.user_id == user_id))
+    
+    # 5. Delete study groups owned by this user (cascade deletes members)
+    await db.execute(delete(StudyGroup).where(StudyGroup.owner_id == user_id))
+    
+    # 6. Delete the user (cascade deletes: OTP tokens, teacher profile,
+    #    teacher request, contributor requests, flashcard decks, quiz sessions,
+    #    summaries, mind maps, RAG sessions due to cascade_delete=True or ondelete="CASCADE")
+    await db.delete(user)
+    await db.commit()
+    
+    return {"message": f"User {user_id} deleted successfully. Their contributions and documents remain but are now orphaned."}

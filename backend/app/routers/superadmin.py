@@ -379,3 +379,78 @@ async def superadmin_delete_user(
     await db.delete(user)
     await db.commit()
     return {"message": f"User {user_id} deleted successfully."}
+
+
+REPORT_TITLE_PREFIX = "Feedback received: "
+
+
+class ResolveReportRequest(BaseModel):
+    action: str = "dismiss"
+    note: str | None = None
+
+
+def _serialize_report(item):
+    return {
+        "id": str(item.id),
+        "user_id": str(item.user_id),
+        "title": item.title,
+        "message": item.message,
+        "is_read": item.is_read,
+        "contribution_id": str(item.contribution_id) if item.contribution_id else None,
+        "created_at": item.created_at.isoformat(),
+    }
+
+
+@router.get("/superadmin/reports")
+async def list_reports(
+    status: str | None = Query(default=None),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    _current_user: User = Depends(require_role("SUPERADMIN")),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    from app.models.notification import Notification
+
+    filters = [Notification.title.like(f"{REPORT_TITLE_PREFIX}%")]
+    if status:
+        normalized_status = status.upper()
+        if normalized_status == "RESOLVED":
+            filters.append(Notification.is_read.is_(True))
+        elif normalized_status == "PENDING":
+            filters.append(Notification.is_read.is_(False))
+
+    total = (
+        await db.execute(select(func.count()).select_from(Notification).where(*filters))
+    ).scalar_one()
+    result = await db.execute(
+        select(Notification)
+        .where(*filters)
+        .order_by(desc(Notification.created_at))
+        .offset(offset)
+        .limit(limit)
+    )
+    notifications = result.scalars().all()
+    items = [_serialize_report(item) for item in notifications]
+    return build_paginated_response(items, total=total, limit=limit, offset=offset)
+
+
+@router.patch("/superadmin/reports/{report_id}")
+async def resolve_report(
+    report_id: UUID,
+    payload: ResolveReportRequest,
+    _current_user: User = Depends(require_role("SUPERADMIN")),
+    db: AsyncSession = Depends(get_session),
+) -> dict[str, Any]:
+    from app.models.notification import Notification
+
+    report = await db.get(Notification, report_id)
+    if report is None or not report.title.startswith(REPORT_TITLE_PREFIX):
+        raise atlas_error("REPORT_001", "Report not found.", status_code=404)
+    report.is_read = True
+    db.add(report)
+    await db.commit()
+    return {
+        "message": f"Report marked as resolved with action '{payload.action}'.",
+        "id": str(report.id),
+        "resolved": True,
+    }

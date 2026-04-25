@@ -378,63 +378,6 @@ async def list_my_contributions(
     )
 
 
-@router.get("/admin/contributions")
-async def list_contribution_queue(
-    status: str | None = None,
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    current_user: User = Depends(require_role("TEACHER", "ADMIN")),
-    db: AsyncSession = Depends(get_session),
-) -> dict[str, Any]:
-    from app.models.user import User as DBUser, UserRole
-    filters = [Contribution.is_demo_submission.is_(False)]
-    if status:
-        filters.append(Contribution.status == status.upper())
-
-    # ADMIN users see all contributions; TEACHER users see only their department's student uploads
-    user_role_str = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
-    
-    # Filter to only show STUDENT uploads (User Request: "only files student uploaded not what i have uploaded")
-    filters.append(DBUser.role == UserRole.STUDENT)
-    
-    needs_course_join = False
-    if user_role_str == "TEACHER":
-        profile = getattr(current_user, "teacher_profile", None)
-        teacher_department_id = profile.department_id if profile else None
-        
-        if teacher_department_id is None:
-            raise atlas_error("AUTH_008", "Teacher department assignment is required to moderate contributions.", status_code=403)
-        filters.append(Course.department_id == teacher_department_id)
-        needs_course_join = True
-
-    count_query = select(func.count()).select_from(Contribution).join(DBUser, Contribution.uploader_id == DBUser.id)
-    data_query = (
-        select(Contribution)
-        .join(DBUser, Contribution.uploader_id == DBUser.id)
-        .options(selectinload(Contribution.document_versions))
-    )
-    if needs_course_join:
-        count_query = count_query.join(Course, Course.id == Contribution.course_id)
-        data_query = data_query.join(Course, Course.id == Contribution.course_id)
-
-    total = (
-        await db.execute(count_query.where(*filters))
-    ).scalar_one()
-    result = await db.execute(
-        data_query.where(*filters)
-        .order_by(desc(Contribution.created_at))
-        .offset(offset)
-        .limit(limit)
-    )
-    items = result.scalars().all()
-    return build_paginated_response(
-        [_serialize_contribution(item) for item in items],
-        total=total,
-        limit=limit,
-        offset=offset,
-    )
-
-
 @router.get("/admin/contributor-requests")
 async def list_contributor_requests(
     status: str | None = Query(default=None),
@@ -614,47 +557,6 @@ async def reject_contributor_request(
     }
 
 
-@router.patch("/admin/contributions/{contribution_id}")
-async def review_contribution(
-    contribution_id: UUID,
-    payload: ReviewContributionRequest,
-    background_tasks: BackgroundTasks,
-    current_user: User = Depends(require_role("TEACHER")),
-    db: AsyncSession = Depends(get_session),
-    redis_client: Redis = Depends(get_redis_client),
-) -> Any:
-    from app.services.doc_processing.moderation_service import execute_contribution_review
-
-    try:
-        contribution = await db.get(Contribution, contribution_id)
-        if contribution is None:
-            raise atlas_error("CONTRIBUTION_404", "Contribution not found.", status_code=404)
-        if not await _teacher_can_manage_course(db, current_user, contribution.course_id):
-            raise atlas_error("AUTH_008", "You do not have permission to review this contribution.", status_code=403)
-
-        raw_status = payload.status or payload.action
-        normalized_status = (raw_status or "").upper()
-        if normalized_status == "APPROVE":
-            normalized_status = "APPROVED"
-        elif normalized_status == "REJECT":
-            normalized_status = "REJECTED"
-        if normalized_status not in {"APPROVED", "REJECTED", "REVISION_REQUESTED"}:
-            raise atlas_error("CONTRIBUTION_003", "Invalid review status.", status_code=400)
-
-        result = await execute_contribution_review(
-            contribution_id=str(contribution_id),
-            status=normalized_status,
-            rejection_reason=payload.rejection_reason or payload.review_note,
-            admin_user=current_user,
-            session=db,
-            background_tasks=background_tasks,
-        )
-        await invalidate_cache_patterns(redis_client, "admin_dashboard:*", "leaderboard:*")
-        return result
-    except ValueError as exc:
-        raise atlas_error("CONTRIBUTION_002", str(exc), status_code=400) from exc
-
-
 @router.post("/reports")
 async def create_report(
     payload: ReportCreateRequest,
@@ -679,57 +581,6 @@ async def create_report(
     return {
         "message": "Feedback submitted successfully.",
         "id": str(notification.id),
-    }
-
-
-@router.get("/admin/reports")
-async def list_reports(
-    status: str | None = Query(default=None),
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    current_user: User = Depends(require_role("ADMIN")),
-    db: AsyncSession = Depends(get_session),
-) -> dict[str, Any]:
-    filters = [Notification.title.like(f"{REPORT_TITLE_PREFIX}%")]
-    if status:
-        normalized_status = status.upper()
-        if normalized_status == "RESOLVED":
-            filters.append(Notification.is_read.is_(True))
-        elif normalized_status == "PENDING":
-            filters.append(Notification.is_read.is_(False))
-
-    total = (
-        await db.execute(select(func.count()).select_from(Notification).where(*filters))
-    ).scalar_one()
-    result = await db.execute(
-        select(Notification)
-        .where(*filters)
-        .order_by(desc(Notification.created_at))
-        .offset(offset)
-        .limit(limit)
-    )
-    notifications = result.scalars().all()
-    items = [_serialize_report(item) for item in notifications]
-    return build_paginated_response(items, total=total, limit=limit, offset=offset)
-
-
-@router.patch("/admin/reports/{report_id}")
-async def resolve_report(
-    report_id: UUID,
-    payload: ResolveReportRequest,
-    current_user: User = Depends(require_role("ADMIN")),
-    db: AsyncSession = Depends(get_session),
-) -> dict[str, Any]:
-    report = await db.get(Notification, report_id)
-    if report is None or not report.title.startswith(REPORT_TITLE_PREFIX):
-        raise atlas_error("REPORT_001", "Report not found.", status_code=404)
-    report.is_read = True
-    db.add(report)
-    await db.commit()
-    return {
-        "message": f"Report marked as resolved with action '{payload.action}'.",
-        "id": str(report.id),
-        "resolved": True,
     }
 
 
@@ -759,9 +610,9 @@ async def delete_contribution(
         log.warning("contribution_not_found")
         raise atlas_error("CONTRIBUTION_001", "Contribution not found.", status_code=404)
 
-    # 2. Security: Only uploader or ADMIN can delete
+    # 2. Security: Only uploader, TEACHER, ADMIN, or SUPERADMIN can delete
     user_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
-    if contribution.uploader_id != current_user.id and user_role not in ("ADMIN", "SUPERADMIN"):
+    if contribution.uploader_id != current_user.id and user_role not in ("TEACHER", "ADMIN", "SUPERADMIN"):
         log.warning("permission_denied", user_id=str(current_user.id))
         raise atlas_error("AUTH_008", "You do not have permission to delete this contribution.", status_code=403)
 

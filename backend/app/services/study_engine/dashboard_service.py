@@ -120,6 +120,30 @@ async def fetch_student_dashboard_data(
 
     total_xp = await get_total_xp(session, user_id)
 
+    # Calculate weekly activity (last 7 days)
+    week_ago = datetime.utcnow() - timedelta(days=7)
+    weekly_activity_query = await session.execute(
+        select(
+            func.date(XPTransaction.created_at).label("day"),
+            func.count(XPTransaction.id).label("activities")
+        )
+        .where(
+            XPTransaction.user_id == user_id,
+            XPTransaction.created_at >= week_ago
+        )
+        .group_by(func.date(XPTransaction.created_at))
+        .order_by(func.date(XPTransaction.created_at))
+    )
+    weekly_activity_raw = weekly_activity_query.all()
+    
+    # Fill in missing days with 0
+    weekly_activity = []
+    for i in range(7):
+        day = (datetime.utcnow() - timedelta(days=6-i)).date()
+        activities = next((row.activities for row in weekly_activity_raw if row.day == day), 0)
+        day_name = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][day.weekday()]
+        weekly_activity.append({"day": day_name, "activities": activities})
+
     # Compile telemetry for the AI Engine
     telemetry_stats = {
         "due_flashcards": due_count,
@@ -145,7 +169,8 @@ async def fetch_student_dashboard_data(
         "daily_goals": ai_insights["daily_goals"],
         "recommended_courses": ai_insights["recommended_courses"],
         "weak_topics": ai_insights["weak_topics"],
-        "suggested_flashcards": ai_insights["suggested_flashcards"]
+        "suggested_flashcards": ai_insights["suggested_flashcards"],
+        "weekly_activity": weekly_activity
     }
 
     # 5. Populate Cache Layer (300 seconds / 5 min TTL)

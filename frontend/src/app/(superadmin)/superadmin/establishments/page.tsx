@@ -22,6 +22,7 @@ import {
   useCreateAdminMutation,
   useDeleteSuperadminEstablishmentMutation,
 } from "@/queries/admin.queries";
+import { useTranslation } from "@/hooks/use-translation";
 
 type EstablishmentRow = {
   id: string;
@@ -36,6 +37,8 @@ type EstablishmentRow = {
 };
 
 export default function SuperadminEstablishmentsPage() {
+  const { t, tSection } = useTranslation();
+  const superadminT = tSection("superadmin");
   const { data, isLoading, isError } = useSuperadminEstablishmentsQuery();
   const createEstablishmentMutation = useCreateEstablishmentMutation();
   const toggleAuthorizationMutation = useToggleEstablishmentAuthorizationMutation();
@@ -130,8 +133,8 @@ export default function SuperadminEstablishmentsPage() {
     return (
       <EmptyState
         type="error"
-        title="Establishments unavailable"
-        description="We couldn't load the establishment directory."
+        title={superadminT.establishmentsOverview}
+        description={superadminT.noEstablishmentsFound}
       />
     );
   }
@@ -140,14 +143,14 @@ export default function SuperadminEstablishmentsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Establishment Management</h1>
+          <h1 className="text-2xl font-bold">{superadminT.establishmentManagement}</h1>
           <p className="text-muted-foreground">
-            Review real establishment records and user totals.
+            {superadminT.establishmentManagementDescription}
           </p>
         </div>
         <Button variant="outline">
           <Download className="mr-2 h-4 w-4" />
-          Export
+          {t("admin.export")}
         </Button>
       </div>
 
@@ -156,26 +159,26 @@ export default function SuperadminEstablishmentsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Shield className="h-5 w-5" />
-              Domain Authorization
+              {superadminT.domainAuthorization}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-3 rounded-lg border p-4">
               <Input
-                label="Establishment Name"
+                label={superadminT.establishmentName}
                 value={newEstablishmentName}
                 onChange={(event) => setNewEstablishmentName(event.target.value)}
-                placeholder="University of Science"
+                placeholder={superadminT.establishmentPlaceholder}
               />
               <Input
-                label="Domain"
+                label={superadminT.domain}
                 value={newEstablishmentDomain}
                 onChange={(event) => setNewEstablishmentDomain(event.target.value)}
-                placeholder="@university.edu"
+                placeholder={superadminT.domainPlaceholder}
               />
               <Button onClick={handleCreateEstablishment} disabled={createEstablishmentMutation.isPending}>
                 <Plus className="mr-2 h-4 w-4" />
-                Add Establishment
+                {superadminT.addEstablishment}
               </Button>
             </div>
           </CardContent>
@@ -185,7 +188,7 @@ export default function SuperadminEstablishmentsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <UserPlus className="h-5 w-5" />
-              Provision Admin Account
+              {superadminT.provisionAdminAccount}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -195,7 +198,7 @@ export default function SuperadminEstablishmentsPage() {
                 value={newAdminForm.establishment_id}
                 onChange={(e) => setNewAdminForm({ ...newAdminForm, establishment_id: e.target.value })}
               >
-                <option value="">Select Establishment</option>
+                <option value="">{superadminT.selectEstablishment}</option>
                 {establishments.map((est) => (
                   <option key={est.id} value={est.id}>
                     {est.name} ({est.domain})
@@ -203,28 +206,28 @@ export default function SuperadminEstablishmentsPage() {
                 ))}
               </select>
               <Input
-                label="Full Name"
+                label={superadminT.fullName}
                 value={newAdminForm.full_name}
                 onChange={(event) => setNewAdminForm({ ...newAdminForm, full_name: event.target.value })}
-                placeholder="John Doe"
+                placeholder={superadminT.fullNamePlaceholder}
               />
               <Input
-                label="Email"
+                label={t("auth.email")}
                 type="email"
                 value={newAdminForm.email}
                 onChange={(event) => setNewAdminForm({ ...newAdminForm, email: event.target.value })}
-                placeholder="john.doe@university.edu"
+                placeholder={superadminT.emailPlaceholder}
               />
                <Input
-                label="Temporary Password"
+                label={superadminT.temporaryPassword}
                 type="password"
                 value={newAdminForm.password}
                 onChange={(event) => setNewAdminForm({ ...newAdminForm, password: event.target.value })}
-                placeholder="Secure password"
+                placeholder={superadminT.passwordPlaceholder}
               />
               <Button onClick={handleCreateAdmin} disabled={createAdminMutation.isPending}>
                 <UserPlus className="mr-2 h-4 w-4" />
-                Create Admin
+                {superadminT.createAdmin}
               </Button>
             </div>
           </CardContent>
@@ -235,7 +238,7 @@ export default function SuperadminEstablishmentsPage() {
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-2xl font-bold">{stats.total}</p>
-            <p className="text-sm text-muted-foreground">Establishments</p>
+            <p className="text-sm text-muted-foreground">{superadminT.establishments}</p>
           </CardContent>
         </Card>
         <Card>
@@ -243,7 +246,7 @@ export default function SuperadminEstablishmentsPage() {
             <p className="text-2xl font-bold text-blue-500">
               {stats.totalUsers.toLocaleString()}
             </p>
-            <p className="text-sm text-muted-foreground">Total Users</p>
+            <p className="text-sm text-muted-foreground">{superadminT.totalUsers}</p>
           </CardContent>
         </Card>
         <Card>
@@ -251,7 +254,7 @@ export default function SuperadminEstablishmentsPage() {
             <p className="text-2xl font-bold text-emerald-500">
               {stats.totalStudents.toLocaleString()}
             </p>
-            <p className="text-sm text-muted-foreground">Students</p>
+            <p className="text-sm text-muted-foreground">{superadminT.students}</p>
           </CardContent>
         </Card>
         <Card>
@@ -259,7 +262,7 @@ export default function SuperadminEstablishmentsPage() {
             <p className="text-2xl font-bold text-purple-500">
               {stats.totalTeachers.toLocaleString()}
             </p>
-            <p className="text-sm text-muted-foreground">Teachers</p>
+            <p className="text-sm text-muted-foreground">{superadminT.teachers}</p>
           </CardContent>
         </Card>
       </div>
@@ -267,7 +270,7 @@ export default function SuperadminEstablishmentsPage() {
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
-          placeholder="Search establishments..."
+          placeholder={superadminT.searchEstablishments}
           value={searchQuery}
           onChange={(event) => {
             setSearchQuery(event.target.value);
@@ -297,19 +300,19 @@ export default function SuperadminEstablishmentsPage() {
                     </div>
                     <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                       <div>
-                        <p className="text-muted-foreground">Users</p>
+                        <p className="text-muted-foreground">{superadminT.users}</p>
                         <p className="mt-1">{(establishment.users || 0).toLocaleString()}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Students</p>
+                        <p className="text-muted-foreground">{superadminT.students}</p>
                         <p className="mt-1">{(establishment.students || 0).toLocaleString()}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Teachers</p>
+                        <p className="text-muted-foreground">{superadminT.teachers}</p>
                         <p className="mt-1">{(establishment.teachers || 0).toLocaleString()}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Created</p>
+                        <p className="text-muted-foreground">{t("admin.joined")}</p>
                         <p className="mt-1">{new Date(establishment.created_at).toLocaleDateString()}</p>
                       </div>
                     </div>
@@ -321,15 +324,15 @@ export default function SuperadminEstablishmentsPage() {
                 <thead>
                   <tr className="border-b bg-muted/50">
                     <th className="px-4 py-3 text-left text-sm font-medium">
-                      Establishment
+                      {superadminT.establishments}
                     </th>
-                    <th className="px-4 py-3 text-left text-sm font-medium">Domain</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium">Authorization</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium">Users</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium">Students</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium">Teachers</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium">Created</th>
-                    <th className="px-4 py-3 text-right text-sm font-medium">Actions</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium">{superadminT.domain}</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium">{superadminT.authorization}</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium">{superadminT.users}</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium">{superadminT.students}</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium">{superadminT.teachers}</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium">{t("admin.joined")}</th>
+                    <th className="px-4 py-3 text-right text-sm font-medium">{t("header.reviewQueue")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -353,7 +356,7 @@ export default function SuperadminEstablishmentsPage() {
                           onClick={() => toggleAuthorizationMutation.mutate(establishment.id)}
                           disabled={toggleAuthorizationMutation.isPending}
                         >
-                          {establishment.is_authorized ? "Revoke" : "Authorize"}
+                          {establishment.is_authorized ? superadminT.revoke : superadminT.authorize}
                         </Button>
                       </td>
                       <td className="px-4 py-3 text-sm">
@@ -375,7 +378,7 @@ export default function SuperadminEstablishmentsPage() {
                         <div className="flex justify-end gap-2">
                           <Button variant="outline" size="sm" asChild>
                             <Link href={`/superadmin/establishments/${establishment.id}`}>
-                              Manage
+                              {superadminT.manage}
                             </Link>
                           </Button>
                           <Button 
@@ -397,8 +400,8 @@ export default function SuperadminEstablishmentsPage() {
           ) : (
             <EmptyState
               type="no-results"
-              title="No establishments found"
-              description="Try adjusting the search term."
+              title={superadminT.noEstablishmentsFound}
+              description={superadminT.tryAdjustingFilters}
             />
           )}
         </CardContent>
@@ -407,9 +410,11 @@ export default function SuperadminEstablishmentsPage() {
       {filteredEstablishments.length > itemsPerPage ? (
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
-            {Math.min(currentPage * itemsPerPage, filteredEstablishments.length)} of{" "}
-            {filteredEstablishments.length} establishments
+            {t("superadmin.showingEstablishments", {
+              start: (currentPage - 1) * itemsPerPage + 1,
+              end: Math.min(currentPage * itemsPerPage, filteredEstablishments.length),
+              total: filteredEstablishments.length,
+            })}
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -442,16 +447,17 @@ export default function SuperadminEstablishmentsPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
               <ShieldX className="h-5 w-5" />
-              Confirm Deletion
+              {superadminT.confirmDeletion}
             </DialogTitle>
             <DialogDescription className="pt-2">
-              Are you sure you want to delete <span className="font-semibold text-foreground">"{establishmentToDelete?.name}"</span>? 
-              This action is permanent and will remove all associated users, departments, and course data.
+              {t("common.confirmDelete")?.replace("{name}", establishmentToDelete?.name || "") || `Are you sure you want to delete "${establishmentToDelete?.name}"?`}
+              <br />
+              {superadminT.permanentDeletionWarning}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-4 gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setEstablishmentToDelete(null)}>
-              Cancel
+              {t("ui.cancel")}
             </Button>
             <Button 
               variant="destructive" 

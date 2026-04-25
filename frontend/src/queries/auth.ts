@@ -75,3 +75,11 @@ export function useLogoutMutation() {
     },
   });
 }
+
+export function useRegistrationOptionsQuery() {
+  return useQuery({
+    queryKey: ["auth", "registration-options"],
+    queryFn: () => authApi.getRegistrationOptions(),
+    staleTime: 60 * 60 * 1000, // Options don't change often
+  });
+}

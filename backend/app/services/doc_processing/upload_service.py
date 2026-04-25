@@ -59,6 +59,7 @@ async def upload_official_course_document(
     file,
     course_type: CourseType,
     language: CourseLanguage,
+    academic_year: str | None = None,
 ) -> Contribution:
     file_content, file_hash = await read_and_validate_upload(file)
 
@@ -81,6 +82,9 @@ async def upload_official_course_document(
         and course.department_id != current_user.teacher_profile.department_id
     ):
         raise ValueError("You can only upload content for courses in your assigned department.")
+
+    if academic_year:
+        course.academic_year = academic_year
 
     existing_contrib_query = await session.execute(
         select(Contribution).where(

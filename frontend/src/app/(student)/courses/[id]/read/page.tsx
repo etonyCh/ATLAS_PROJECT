@@ -8,6 +8,7 @@ import { BookOpen, Download } from "lucide-react";
 import { FilePreview } from "@/components/ui/file-preview";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCourseQuery, useVersionQuery } from "@/queries";
+import { useTrackLearning } from "@/hooks/use-continue-learning";
 
 export default function ReadPage() {
   const params = useParams();
@@ -17,6 +18,8 @@ export default function ReadPage() {
   
   const { data: course, isLoading: courseLoading } = useCourseQuery(courseId);
   const { data: specificVersion, isLoading: versionLoading } = useVersionQuery(versionId);
+
+  useTrackLearning(courseId, course?.title || "Course Material", "read");
 
   const isLoading = courseLoading || (!!versionId && versionLoading);
   const activeVersion = versionId ? specificVersion : course?.current_version;
