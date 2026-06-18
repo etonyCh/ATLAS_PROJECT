@@ -193,8 +193,13 @@ export function Header({ className }: HeaderProps) {
       };
     }
 
+    // TEACHER no longer has a call‑to‑action button in the header.
+    // The upload functionality is inside the manage-courses page.
+    if (user.role === "TEACHER") {
+      return null;
+    }
+
     const ctas = {
-      TEACHER: { label: labels.uploadCourse, href: "/teacher/courses/upload" },
       SUPERADMIN: { label: labels.platformOverview, href: "/superadmin" },
     };
 

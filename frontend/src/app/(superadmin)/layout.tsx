@@ -1,3 +1,10 @@
+/**
+ * @file frontend/src/app/(superadmin)/layout.tsx
+ * @description Superadmin layout wrapper containing Sidebar, Header, and internally scrolling Main content.
+ * @layer Core Logic / Styling
+ * @dependencies ["react", "@/components/layout/*", "@/lib/utils", "@/store/auth.store"]
+ */
+
 "use client";
 
 import { useState } from "react";
@@ -28,8 +35,8 @@ export default function SuperadminLayout({
         )}>
           <Header className="flex-shrink-0" />
           
-          <main className="flex-1 overflow-y-auto bg-transparent">
-            <div className="container mx-auto p-4 lg:p-6">
+          <main className="flex flex-1 flex-col overflow-y-auto bg-transparent">
+            <div className="container mx-auto flex-1 p-4 lg:p-6">
               {children}
             </div>
             <Footer variant="minimal" />

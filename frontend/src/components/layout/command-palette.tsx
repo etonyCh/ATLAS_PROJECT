@@ -89,16 +89,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         },
         group: "navigation",
       },
-      {
-        id: "nav-flashcards",
-        label: cpT.flashcards,
-        icon: Layers,
-        action: () => {
-          router.push("/my/flashcards");
-          onOpenChange(false);
-        },
-        group: "navigation",
-      },
+      // ❌ removed "nav-flashcards"
       {
         id: "nav-leaderboard",
         label: cpT.leaderboard,
@@ -192,7 +183,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         if (cmd.roles && user?.role && !cmd.roles.includes(user.role)) {
           return false;
         }
-        return cmd.label.toLowerCase().includes(query.toLowerCase());
+        return (cmd.label || "").toLowerCase().includes(query.toLowerCase());
       }),
     [commands, query, user],
   );
@@ -213,7 +204,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           group: "recent" as const,
         }))
         .filter((c: Command) =>
-          c.label.toLowerCase().includes(query.toLowerCase()),
+          (c.label || "").toLowerCase().includes(query.toLowerCase()),
         ),
     }),
     [filteredCommands, onOpenChange, query, recentCourses, router],
@@ -249,7 +240,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           <CommandInput
             value={query}
             onValueChange={setQuery}
-            placeholder={cpT.placeholder}
+            placeholder={cpT.placeholder || "Search..."}
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
           <kbd className="hidden h-5 items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] text-muted-foreground sm:inline-flex">
@@ -259,17 +250,17 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
         <CommandList className="max-h-96 overflow-y-auto p-2">
           <CommandEmpty className="px-3 py-8 text-center text-sm text-muted-foreground">
-            {cpT.noCommands}
+            {cpT.noCommands || "No commands found."}
           </CommandEmpty>
 
           {groupedCommands.navigation.length > 0 ? (
-            <CommandGroup heading={cpT.navigation}>
+            <CommandGroup heading={cpT.navigation || "Navigation"}>
               {groupedCommands.navigation.map((cmd) => {
                 const Icon = cmd.icon;
                 return (
                   <CommandItem
                     key={cmd.id}
-                    value={cmd.label}
+                    value={cmd.label || cmd.id}
                     onSelect={cmd.action}
                     className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm aria-selected:bg-muted"
                   >
@@ -284,13 +275,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           {groupedCommands.actions.length > 0 ? (
             <>
               <CommandSeparator className="my-2 h-px bg-border" />
-              <CommandGroup heading={cpT.actions}>
+              <CommandGroup heading={cpT.actions || "Actions"}>
                 {groupedCommands.actions.map((cmd) => {
                   const Icon = cmd.icon;
                   return (
                     <CommandItem
                       key={cmd.id}
-                      value={cmd.label}
+                      value={cmd.label || cmd.id}
                       onSelect={cmd.action}
                       className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm aria-selected:bg-muted"
                     >
@@ -306,11 +297,11 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           {groupedCommands.recent.length > 0 ? (
             <>
               <CommandSeparator className="my-2 h-px bg-border" />
-              <CommandGroup heading={cpT.recent}>
+              <CommandGroup heading={cpT.recent || "Recent"}>
                 {groupedCommands.recent.map((cmd: Command) => (
                   <CommandItem
                     key={cmd.id}
-                    value={cmd.label}
+                    value={cmd.label || cmd.id}
                     onSelect={cmd.action}
                     className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm aria-selected:bg-muted"
                   >

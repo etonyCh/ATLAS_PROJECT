@@ -1,3 +1,11 @@
+"""
+@file backend/app/models/contribution.py
+@description Contribution and DocumentVersion schemas.
+SOTA FIX: Added academic_year to Contribution for dynamic material versioning.
+@layer State Persistence
+@dependencies sqlmodel, uuid, datetime
+"""
+
 from enum import Enum
 from typing import Optional, List, TYPE_CHECKING
 from datetime import datetime
@@ -92,6 +100,9 @@ class Contribution(SQLModel, table=True):
     )
     course_type: CourseType = Field(default=CourseType.OTHER, index=True)
     language: CourseLanguage = Field(default=CourseLanguage.FR, index=True)
+    
+    # 🚨 SOTA FIX: Moved academic_year to the Contribution level to prevent global course overwrites
+    academic_year: Optional[str] = Field(default=None, index=True, description="E.g. '2024-2025'")
 
     # ARCHITECTURAL FIX: Temporal field required for FIFO/LIFO Queue sorting
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
@@ -171,3 +182,4 @@ class ContributionRead(ContributionCreate):
     rejection_reason: Optional[str] = None
     created_at: datetime
     quality_flag: bool
+    academic_year: Optional[str] = None

@@ -1,8 +1,14 @@
+/**
+ * @file frontend/src/app/(teacher)/teacher/dashboard/teacher-dashboard-page-client.tsx
+ * @description Client-side dashboard for the teacher portal.
+ * @layer Core Logic / UI
+ */
+
 "use client";
 
 import Link from "next/link";
 import { BookOpen, CheckCircle, Upload, Activity, TrendingUp, FileText } from "lucide-react";
-import CalendarHeatmap from "@/components/ui/calendar-heatmap";
+import { CalendarHeatmap } from "@/components/ui/calendar-heatmap";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -48,28 +54,16 @@ export function TeacherDashboardPageClient() {
     approved: course.approved_uploads,
   })) || [];
 
-  // Activity data from backend
-  const activityData = analyticsQuery.data?.weekly_trend?.slice(-7).map((item, index) => ({
+  // Activity data from backend (Area Chart)
+  const activityData = analyticsQuery.data?.weekly_trend?.slice(-7).map((item) => ({
     day: item.week,
     uploads: item.uploads,
   })) || Array.from({ length: 7 }, (_, i) => ({
     day: `W-${7 - i}`,
     uploads: 0,
   }));
-  const heatmapData = analyticsQuery.data?.weekly_trend?.slice(-28).map((item) => ({
-    date: item.week,
-    value: item.uploads + item.approved,
-    label: "activities",
-  })) || Array.from({ length: 28 }, (_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (27 - i));
-    return {
-      date: date.toISOString().split("T")[0],
-      value: 0,
-      label: "activities",
-    };
-  });
 
+  // Rely exclusively on the proper 365-day query for the CalendarHeatmap.
   const { data: dailyActivity } = useDailyActivityQuery(365);
   const calendarHeatMapData = dailyActivity ?? [];
 
@@ -109,9 +103,7 @@ export function TeacherDashboardPageClient() {
           <Button variant="outline" asChild>
              <Link href="/teacher/manage-contributions">{t("teacher.manageQueue")}</Link>
           </Button>
-          <Button asChild>
-            <Link href="/upload">{t("teacher.uploadNewMaterial")}</Link>
-          </Button>
+          {/* The "Upload New Material" button has been removed. Teachers should use the "Upload Material" button on the /teacher/manage-courses page. */}
         </div>
       </div>
 
@@ -138,11 +130,7 @@ export function TeacherDashboardPageClient() {
         ))}
       </div>
 
-      <ActivityHeatmap
-        data={heatmapData}
-        title={t("teacher.activityHeatmap")}
-        description={t("teacher.activityHeatmapDescription")}
-      />
+      {/* Exclusively rendering the fused CalendarHeatmap */}
       <CalendarHeatmap data={calendarHeatMapData} title={t("teacher.calendarHeatmap") ?? "Calendar Heatmap"} />
 
       <div className="grid gap-6 lg:grid-cols-2">

@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { Award, UserCircle2 } from "lucide-react";
+import { FileText, UserCircle2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -62,10 +62,10 @@ export default function PublicProfilePage() {
               <p className="mt-2 font-medium">{profile.filiere || "Not set"}</p>
             </div>
             <div className="rounded-2xl border p-4">
-              <p className="text-sm text-muted-foreground">XP</p>
+              <p className="text-sm text-muted-foreground">Contributions</p>
               <p className="mt-2 flex items-center gap-2 font-medium">
-                <Award className="h-4 w-4 text-primary" />
-                {profile.xp}
+                <FileText className="h-4 w-4 text-primary" />
+                {profile.stats?.contributions_count ?? 0}
               </p>
             </div>
           </div>

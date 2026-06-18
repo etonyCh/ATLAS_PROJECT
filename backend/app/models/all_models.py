@@ -12,6 +12,7 @@ from app.models.user import (
     TeacherRequestStatus,
     Establishment,
     Department,
+    UserStreak,          # ← relocated from gamification
 )
 from app.models.contribution import (
     Contribution,
@@ -22,13 +23,6 @@ from app.models.contribution import (
     DocumentPipelineStatus,
     ContributorRequest,
     ContributorRequestStatus,
-)
-from app.models.gamification import (
-    XPTransaction,
-    XPTransactionType,
-    Badge,
-    UserBadge,
-    UserStreak,
 )
 from app.models.course import Course
 from app.models.embedding import DocumentEmbedding
@@ -55,18 +49,13 @@ from app.models.intelligence import (
     LearningStyle,
 )
 from app.models.collaboration import (
-    ForumPost,
-    ForumPostStatus,
-    ForumReply,
-    ForumVote,
-    StudyGroup,
-    StudyGroupMember,
-    LiveSession,
     LearningPathJob,
     LearningPathJobStatus,
 )
 from app.models.notification import Notification
 from app.models.progress import ReadingProgress
+from app.models.major import Major
+from app.models.study_goals import DailyGoal, StudySession
 
 
 __all__ = [
@@ -89,11 +78,7 @@ __all__ = [
     "ContributorRequest",
     "ContributorRequestStatus",
     "DocumentEmbedding",
-    "XPTransaction",
-    "XPTransactionType",
-    "Badge",
-    "UserBadge",
-    "UserStreak",
+    "UserStreak",              # ← relocated
     "OTPToken",
     "OTPPurpose",
     "Course",
@@ -113,20 +98,15 @@ __all__ = [
     "DocumentAnnotation",
     "Notification",
     "ReadingProgress",
-    # US-XX: User Intelligence Layer
     "UserProfile",
     "TopicKnowledge",
     "UserMemory",
     "LearningInsight",
     "LearningSpeed",
     "LearningStyle",
-    "ForumPost",
-    "ForumPostStatus",
-    "ForumReply",
-    "ForumVote",
-    "StudyGroup",
-    "StudyGroupMember",
-    "LiveSession",
     "LearningPathJob",
     "LearningPathJobStatus",
+    "Major",
+    "DailyGoal",
+    "StudySession",
 ]

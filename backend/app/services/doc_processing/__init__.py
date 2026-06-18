@@ -1,15 +1,13 @@
 """
 Document Processing Domain Public API.
 
-This module exposes the strict public interface for the document lifecycle,
-spanning storage, OCR/ML extraction, moderation state machines, user annotations,
-and PDF export generation.
+[OMNI-ARCHITECT UPDATE]: Legacy MinIO storage and Celery OCR tasks 
+have been completely eradicated.
 """
-from .storage import minio_client, calculate_sha256
-from .ocr_tasks import process_document_ocr
+
+from .storage import calculate_sha256
+# minio_client and ocr_tasks severed.
 
 __all__ = [
-    "minio_client",
     "calculate_sha256",
-    "process_document_ocr"
 ]

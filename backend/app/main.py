@@ -1,9 +1,9 @@
 """
-ATLAS API: Main Entry Point
-Architecture: SOTA Modular Monolith (Lego Blocks)
-Lifespan: Handles resilient infrastructure bootstrapping (DB, Redis, Meilisearch)
-Security: OWASP-Hardened via custom Middleware and strict CORS
-"""
+ * @file backend/app/main.py
+ * @description FastAPI application entrypoint, middleware configuration, and lifespan orchestration.
+ * @layer Core Logic
+ * @dependencies app.core.config, app.core.logging_config, app.core.exceptions, app.db.session, app.routers.registry
+ """
 
 import logging
 import asyncio
@@ -13,7 +13,9 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-import meilisearch
+
+# Infrastructure Drivers
+from neo4j import AsyncGraphDatabase
 
 from app.core.config import settings
 from app.core.logging_config import configure_logging
@@ -29,25 +31,18 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     DEFENSIVE ARCHITECTURE: US-24 Security Hardening.
     Injects OWASP-recommended HTTP security headers.
     """
-
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
-        # Enforce HTTPS (HSTS) - Disabled in development to prevent localhost lockout
         if settings.ENVIRONMENT != "development":
             response.headers["Strict-Transport-Security"] = (
                 "max-age=31536000; includeSubDomains; preload"
             )
-        # Prevent Clickjacking
         response.headers["X-Frame-Options"] = "DENY"
-        # Prevent MIME-type sniffing
         response.headers["X-Content-Type-Options"] = "nosniff"
-        # Control referrer information
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        # Restrict powerful browser features
         response.headers["Permissions-Policy"] = (
             "geolocation=(), microphone=(), camera=(), browsing-topics=()"
         )
-        # Legacy XSS protection
         response.headers["X-XSS-Protection"] = "1; mode=block"
         return response
 
@@ -58,50 +53,44 @@ async def lifespan(app: FastAPI):
     SOTA Lifespan Management:
     Orchestrates the lifecycle of distributed infrastructure.
     """
-    # 1. Initialize Telemetry & Database
+    # 1. Initialize Telemetry & Relational Database (Postgres)
     configure_logging()
     await init_db()
 
-    # 2. Bootstrap Meilisearch (Centralized Config Alignment)
+    # 2. Bootstrap Neo4j Knowledge Graph
     try:
-        # Resolve from settings to ensure environment parity
-        meili_url = getattr(settings, "MEILI_URL", "http://localhost:7700")
-        meili_key = getattr(settings, "MEILI_MASTER_KEY", "meili_master_key")
-        meili_client = meilisearch.Client(meili_url, meili_key)
-
-        # Configure faceted search attributes for the 'documents' index
-        task = meili_client.index("documents").update_filterable_attributes(
-            ["level", "academic_year", "course_type", "language", "is_official"]
+        neo4j_driver = AsyncGraphDatabase.driver(
+            settings.NEO4J_URI,
+            auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD)
         )
-        logger.info(f"Meilisearch index bootstrapped. Task: {task.task_uid}")
+        # Validate connection
+        await neo4j_driver.verify_connectivity()
+        app.state.neo4j = neo4j_driver
+        logger.info("✅ Neo4j Knowledge Graph connected.")
     except Exception as e:
-        logger.error(f"CRITICAL: Failed to bootstrap Search Engine: {e}")
+        logger.error(f"CRITICAL: Neo4j offline: {e}")
 
-    # 3. Initialize Redis Infrastructure (Rate Limiting & Multi-Tenant Caching)
+    # 3. Initialize Redis Infrastructure (Rate Limiting & KV Cache)
     try:
         from fastapi_limiter import FastAPILimiter
         import redis.asyncio as redis
 
-        # Connection Pool 1: Identity & Rate Limiting
         redis_client = redis.from_url(
-            settings.CELERY_BROKER_URL, encoding="utf-8", decode_responses=True
+            settings.REDIS_URL, encoding="utf-8", decode_responses=True
         )
 
-        # Connection Pool 2: Dedicated Cache (US-25)
         redis_cache = redis.from_url(
             settings.REDIS_CACHE_URL, encoding="utf-8", decode_responses=True
         )
 
-        # Attach to app state for library compatibility (FastAPILimiter)
         app.state.redis = redis_client
         app.state.redis_cache = redis_cache
 
-        # Resilient Retry Logic for Container Orchestration
         for attempt in range(1, 6):
             try:
                 await redis_client.ping()
                 await FastAPILimiter.init(redis_client)
-                logger.info("Distributed Redis pools (Limiter + Cache) initialized.")
+                logger.info("✅ Redis pools (Limiter + Cache) initialized.")
                 break
             except Exception as e:
                 if attempt == 5:
@@ -117,6 +106,8 @@ async def lifespan(app: FastAPI):
 
     # 4. Graceful Shutdown Sequence
     logger.info("Shutting down infrastructure...")
+    if hasattr(app.state, "neo4j"):
+        await app.state.neo4j.close()
     if hasattr(app.state, "redis"):
         await app.state.redis.close()
     if hasattr(app.state, "redis_cache"):
@@ -132,28 +123,29 @@ app = FastAPI(
 )
 install_exception_handlers(app)
 
-# CORS Configuration (Strict Environment Gating)
+# ── CORS Configuration – explicitly allow both localhost and 127.0.0.1 ──
+# Collect allowed origins from settings (includes defaults from config)
 allowed_origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
 ]
 
-# Add any additional origins from settings
+# Extend with any additional origins from settings (e.g., comma-separated env var)
 settings_origins = getattr(settings, "BACKEND_CORS_ORIGINS", [])
 if settings_origins:
     for origin in settings_origins:
         if origin not in allowed_origins:
             allowed_origins.append(origin)
 
+# Use a regex to also match any port variations on localhost/127.0.0.1
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
-    # US-24: Robust local dev support (covers localhost/127.0.0.1 with any port)
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?$" if settings.ENVIRONMENT == "development" else None,
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],
 )
 
 app.add_middleware(SecurityHeadersMiddleware)
@@ -170,4 +162,4 @@ async def openapi_alias() -> JSONResponse:
 @app.get("/health", tags=["System"])
 def health_check():
     """Satisfies container orchestration health probes and frontend checks."""
-    return {"status": "active", "version": "1.2.0-modular"}
+    return {"status": "active", "version": "v3.0-omni-architect"}

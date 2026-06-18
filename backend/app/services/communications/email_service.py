@@ -1,3 +1,4 @@
+
 import logging
 import smtplib
 import re
@@ -14,8 +15,6 @@ logger = logging.getLogger(__name__)
 # ==========================================
 # TEMPLATE ENVIRONMENT INITIALIZATION
 # ==========================================
-# Securely load Jinja2 templates using the absolute path defined in config.py.
-# select_autoescape ensures dynamic text (like names or titles) cannot execute XSS payloads.
 try:
     template_env = Environment(
         loader=FileSystemLoader(searchpath=settings.TEMPLATES_DIR),
@@ -30,14 +29,12 @@ except Exception as e:
 def send_email(to_email: str, subject: str, html_content: str) -> bool:
     """
     Sends an email using standard SMTP (Gmail).
-    Includes a Dev Mode Fallback: Prints the email to the console if SMTP fails,
-    allowing local frontend development to continue uninterrupted.
+    STRICT MODE ENFORCED: No silent fallbacks if credentials fail.
     """
-    # Defensive check: Ensure SMTP credentials are present
     if not settings.SMTP_USER or not settings.SMTP_PASSWORD:
-        logger.warning("Email Service: SMTP credentials missing in environment configuration.")
+        logger.error("Email Service: SMTP credentials missing in environment configuration.")
         _dev_mode_fallback(to_email, subject, html_content)
-        return True  # Return True to allow registration to proceed in dev mode
+        return False # Hard fail if no config
 
     try:
         # Construct the MIME message
@@ -63,19 +60,18 @@ def send_email(to_email: str, subject: str, html_content: str) -> bool:
         return True
 
     except Exception as e:
+        # CRITICAL FIX: We log the error loudly and return False. 
+        # We no longer pretend the email sent successfully.
         logger.error(f"Email Service: SMTP error occurred during dispatch: {str(e)}")
-        # If Gmail blocks the connection during local dev, print the payload to the console
         _dev_mode_fallback(to_email, subject, html_content)
-        return True  # Allow registration to proceed so UI testing isn't blocked
+        return False
 
 
 def _dev_mode_fallback(to_email: str, subject: str, html_content: str):
     """
-    SOTA Dev Experience: If email fails to send, parse the OTP or Token and print it to the terminal.
+    Prints the email payload to the console for debugging purposes.
     """
-    # Extract the 6-digit code from the subject or body
     match_otp = re.search(r'\b\d{6}\b', subject)
-    # Extract token from the magic link
     match_token = re.search(r'token=([A-Za-z0-9_-]+)', html_content)
     
     print("\n" + "="*60)
@@ -88,7 +84,7 @@ def _dev_mode_fallback(to_email: str, subject: str, html_content: str):
         print(f"MAGIC LINK TOKEN: >>> {match_token.group(1)} <<<")
         print(f"FULL URL: http://localhost:3000/auth/activate/teacher?token={match_token.group(1)}")
     elif match_otp:
-        print(f"OTP CODE: >>> {match_otp.group(0)} <<< (Copy this into the React UI)")
+        print(f"OTP CODE: >>> {match_otp.group(0)} <<<")
     else:
         print("CONTENT: [Code/Token Hidden - Check HTML Body]")
         
@@ -96,11 +92,7 @@ def _dev_mode_fallback(to_email: str, subject: str, html_content: str):
 
 
 def send_otp_email(to_email: str, otp_code: str) -> bool:
-    """
-    US-03: Dispatches the OTP verification email using the 'otp_verification.html' template.
-    """
     if not template_env:
-        logger.error("Email Service: Cannot send OTP. Template environment is offline.")
         return False
 
     subject = f"{otp_code} is your ATLAS verification code"
@@ -119,21 +111,13 @@ def send_otp_email(to_email: str, otp_code: str) -> bool:
             current_year=datetime.now().year
         )
         return send_email(to_email=to_email, subject=subject, html_content=html_content)
-    
-    except TemplateNotFound:
-        logger.error("Email Service: Template 'otp_verification.html' not found in templates directory.")
-        return False
     except Exception as e:
         logger.error(f"Email Service: Error rendering OTP template: {e}")
         return False
 
 
 def send_teacher_invitation_email(to_email: str, otp_code: str, teacher_name: str, department_name: str) -> bool:
-    """
-    US-05 (Updated): Dispatches the Teacher Onboarding invitation using 'teacher_invitation.html'.
-    """
     if not template_env:
-        logger.error("Email Service: Cannot send invitation. Template environment is offline.")
         return False
 
     subject = "Invitation to join ATLAS - Teacher Onboarding"
@@ -150,21 +134,13 @@ def send_teacher_invitation_email(to_email: str, otp_code: str, teacher_name: st
             current_year=datetime.now().year
         )
         return send_email(to_email=to_email, subject=subject, html_content=html_content)
-        
-    except TemplateNotFound:
-        logger.error("Email Service: Template 'teacher_invitation.html' not found.")
-        return False
     except Exception as e:
         logger.error(f"Email Service: Error rendering Teacher Invitation template: {e}")
         return False
 
 
 def send_contribution_status_email(to_email: str, title: str, status: str, reason: str = None) -> bool:
-    """
-    US-11: Student Notification for Status Changes using 'contribution_status.html'.
-    """
     if not template_env:
-        logger.error("Email Service: Cannot send status update. Template environment is offline.")
         return False
 
     subject = f"Update on your contribution: {title}"
@@ -178,21 +154,13 @@ def send_contribution_status_email(to_email: str, title: str, status: str, reaso
             current_year=datetime.now().year
         )
         return send_email(to_email=to_email, subject=subject, html_content=html_content)
-        
-    except TemplateNotFound:
-        logger.error("Email Service: Template 'contribution_status.html' not found.")
-        return False
     except Exception as e:
         logger.error(f"Email Service: Error rendering Contribution Status template: {e}")
         return False
 
 
 def send_admin_new_contribution_email(to_email: str, title: str, uploader_name: str) -> bool:
-    """
-    US-11: Alerts moderators of a new document using 'admin_new_contribution.html'.
-    """
     if not template_env:
-        logger.error("Email Service: Cannot send admin alert. Template environment is offline.")
         return False
 
     subject = f"Action Required: New Contribution Pending Review - {title}"
@@ -208,10 +176,6 @@ def send_admin_new_contribution_email(to_email: str, title: str, uploader_name: 
             current_year=datetime.now().year
         )
         return send_email(to_email=to_email, subject=subject, html_content=html_content)
-        
-    except TemplateNotFound:
-        logger.error("Email Service: Template 'admin_new_contribution.html' not found.")
-        return False
     except Exception as e:
         logger.error(f"Email Service: Error rendering Admin Contribution template: {e}")
         return False

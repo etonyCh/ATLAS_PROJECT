@@ -1,3 +1,11 @@
+/**
+ * @file frontend/src/lib/api.ts
+ * @description API wrapper and centralized endpoints for Next.js.
+ * SOTA FIX: Hardened `ragApi.streamMessage` to correctly parse Server-Sent Events (SSE)
+ * ensuring True Real-Time Token Streaming to the UI without freezing.
+ * @layer Core Logic
+ */
+
 import axios, {
   AxiosError,
   AxiosResponse,
@@ -47,8 +55,6 @@ import type {
   UploadResponse,
   Summary,
   Mindmap,
-  ForumPost,
-  ForumReply,
   Report,
   Annotation,
   TeacherAnalytics,
@@ -127,6 +133,7 @@ function normalizeCourse(course: Partial<Course>): Course {
     contribution_id: course.contribution_id,
     department_id: course.department_id,
     department_name: course.department_name ?? null,
+    major_id: course.major_id ?? null,
     filiere: course.filiere ?? null,
     niveau: course.niveau ?? course.level ?? null,
     level: course.level ?? course.niveau ?? null,
@@ -164,7 +171,6 @@ const axiosInstance = axios.create({
 
 let accessToken: string | null = null;
 
-// Restore token from localStorage on module load
 if (typeof window !== "undefined") {
   const stored = localStorage.getItem("atlas_access_token");
   if (stored) accessToken = stored;
@@ -430,14 +436,7 @@ export const authApi = {
     }),
 };
 
-// ---------------------------------------------------------------------------
-// Files API — Presigned URL endpoints for SOTA PDF Previewer
-// ---------------------------------------------------------------------------
 export const filesApi = {
-  /**
-   * Generic preview URL by contribution ID (supports all backend-previewable types).
-   * Backward-compatible alias: getPdfViewUrl.
-   */
   getPreviewUrl: (contributionId: string): Promise<{
     url: string;
     expires_at: string;
@@ -446,10 +445,6 @@ export const filesApi = {
     file_size: number;
   }> => api.get(`/files/pdf-view-url/${contributionId}`),
 
-  /**
-   * Generic preview URL by storage path (supports all backend-previewable types).
-   * Backward-compatible alias: getPdfViewUrlByPath.
-   */
   getPreviewUrlByPath: (storagePath: string): Promise<{
     url: string;
     expires_at: string;
@@ -458,9 +453,6 @@ export const filesApi = {
     file_size: number;
   }> => api.get(`/files/pdf-view-url-by-path?path=${encodeURIComponent(storagePath)}`),
 
-  /**
-   * Backward compatibility wrapper.
-   */
   getPdfViewUrl: (contributionId: string): Promise<{
     url: string;
     expires_at: string;
@@ -469,9 +461,6 @@ export const filesApi = {
     file_size: number;
   }> => filesApi.getPreviewUrl(contributionId),
 
-  /**
-   * Backward compatibility wrapper.
-   */
   getPdfViewUrlByPath: (storagePath: string): Promise<{
     url: string;
     expires_at: string;
@@ -514,6 +503,19 @@ export const coursesApi = {
   getStats: (courseId: string): Promise<CourseStats> =>
     api.get<CourseStats>(`/courses/${courseId}/stats`),
 
+  getMyAssets: (
+    courseId: string,
+    documentVersionId: string
+  ): Promise<{
+    flashcards: { exists: boolean; id: string | null };
+    quiz: { exists: boolean; id: string | null };
+    summary: { exists: boolean; id: string | null };
+    mindmap: { exists: boolean; id: string | null };
+  }> => 
+  api.get(`/courses/${courseId}/my-assets?document_version_id=${documentVersionId}`),
+
+
+
   getCatalog: (): Promise<Course[]> =>
     api.get<Partial<Course>[]>(`/courses/catalog`).then((courses) =>
       courses.map((course) => normalizeCourse(course)),
@@ -543,8 +545,23 @@ export const coursesApi = {
   delete: (courseId: string): Promise<{ message: string }> =>
     api.delete<{ message: string }>(`/courses/${courseId}`),
 
-  upload: (formData: FormData): Promise<UploadResponse> =>
-    api.postFormData<UploadResponse>("/courses/upload", formData),
+  upload: (data: {
+    major_id: string;
+    course_id: string;               // changed from course_title
+    course_type: string;
+    language: string;
+    academic_year: string;
+    file: File;
+  }): Promise<UploadResponse> => {
+    const formData = new FormData();
+    formData.append("major_id", data.major_id);
+    formData.append("course_id", data.course_id);         // changed
+    formData.append("course_type", data.course_type);
+    formData.append("language", data.language);
+    formData.append("academic_year", data.academic_year);
+    formData.append("file", data.file);
+    return api.postFormData<UploadResponse>("/courses/upload", formData);
+  },
 
   getMyUploads: (): Promise<Course[]> =>
     api
@@ -712,9 +729,7 @@ export const ragApi = {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              ...(accessToken
-                ? { Authorization: `Bearer ${accessToken}` }
-                : {}),
+              ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
             },
             body: JSON.stringify({ content }),
             signal: controller.signal,
@@ -736,19 +751,26 @@ export const ragApi = {
           if (done) break;
 
           buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || "";
+          
+          // Split strictly by SSE standard double newline delimiter
+          const chunks = buffer.split("\n\n");
+          
+          // The last chunk might be incomplete (stream cut mid-transmission), keep it in buffer
+          buffer = chunks.pop() || "";
 
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
+          for (const chunk of chunks) {
+            // Strip the standard SSE "data: " prefix
+            const dataPrefix = "data: ";
+            if (chunk.startsWith(dataPrefix)) {
+              const jsonStr = chunk.slice(dataPrefix.length);
               try {
-                const event = JSON.parse(line.slice(6)) as RAGStreamEvent;
+                const event = JSON.parse(jsonStr) as RAGStreamEvent;
                 onEvent(event);
                 if (event.type === "done" || event.type === "error") {
                   return;
                 }
               } catch {
-                // Skip malformed JSON
+                // Silently skip malformed chunks to maintain stream resilience
               }
             }
           }
@@ -1107,7 +1129,6 @@ export const dashboardApi = {
   },
 };
 
-// New analytics API for calendar heatmap (daily activity per user)
 export const analyticsApi = {
   dailyActivity: (days: number = 365): Promise<{ date: string; value: number }[]> =>
     api.get<{ date: string; value: number }[]>(`/analytics/daily-activity?days=${days}`),
@@ -1152,8 +1173,11 @@ export const adminApi = {
   ): Promise<TeacherImportResult> =>
     api.postFormData("/admin/teachers/import", formData),
 
-  listDepartments: (): Promise<Department[]> =>
-    api.get<Department[]>("/admin/departments"),
+  
+  listDepartments: (includeArchived?: boolean) => {
+    const url = includeArchived ? "/admin/departments?include_archived=true" : "/admin/departments";
+    return api.get<Department[]>(url);
+  },
 
   createDepartment: (data: { name: string; allowed_levels: string[] }): Promise<Department> =>
     api.post<Department>("/admin/departments", data),
@@ -1166,10 +1190,10 @@ export const adminApi = {
   deleteDepartment: (departmentId: string): Promise<{ message: string }> =>
     api.delete<{ message: string }>(`/admin/departments/${departmentId}`),
 
-  listCatalogCourses: (): Promise<Course[]> =>
-    api
-      .get<Partial<Course>[]>("/admin/catalog/courses")
-      .then((courses) => courses.map((course) => normalizeCourse(course))),
+  listCatalogCourses: (includeArchived?: boolean) => {
+    const url = includeArchived ? "/admin/catalog/courses?include_archived=true" : "/admin/catalog/courses";
+    return api.get(url);
+  },
 
   createCatalogCourse: (data: {
     title: string;
@@ -1179,6 +1203,8 @@ export const adminApi = {
     course_type: string;
     language: string;
     academic_year?: string;
+    major_id?: string;
+    filiere?: string | null;
   }): Promise<Course> =>
     api.post<Partial<Course>>("/admin/catalog/courses", data).then(normalizeCourse),
 
@@ -1193,6 +1219,8 @@ export const adminApi = {
       academic_year?: string;
       language?: string;
       is_deleted?: boolean;
+      major_id?: string;
+      filiere?: string | null;
     },
   ): Promise<Course> =>
     api.patch<Partial<Course>>(`/admin/catalog/courses/${courseId}`, data).then(normalizeCourse),
@@ -1258,27 +1286,38 @@ export const adminApi = {
     data: { action: "warn" | "remove" | "dismiss"; note?: string },
   ): Promise<{ message: string }> =>
     api.patch<{ message: string }>(`/admin/reports/${reportId}`, data),
-};
 
-export const annotationsApi = {
-  create: (data: {
-    doc_version_id: string;
-    page_number: number;
-    x_percent: number;
-    y_percent: number;
-    width_percent?: number;
-    height_percent?: number;
-    content: string;
-    color?: string;
-  }): Promise<Annotation> => api.post<Annotation>("/annotations", data),
+  // ── Major CRUD ──
+  listMajors: (params?: {
+    department_id?: string;
+    level?: string;
+  }): Promise<{
+    id: string;
+    name: string;
+    department_id: string;
+    level: string;
+    created_at: string;
+  }[]> => {
+    const searchParams = new URLSearchParams();
+    if (params?.department_id) searchParams.append("department_id", params.department_id);
+    if (params?.level) searchParams.append("level", params.level);
+    const query = searchParams.toString();
+    return api.get(`/admin/majors${query ? `?${query}` : ""}`);
+  },
 
-  list: (docVersionId: string): Promise<PaginatedResponse<Annotation>> =>
-    api.get<PaginatedResponse<Annotation>>(
-      `/annotations?doc_version_id=${docVersionId}`,
-    ),
+  createMajor: (data: {
+    name: string;
+    department_id: string;
+    level: string;
+  }) => api.post("/admin/majors", data),
 
-  delete: (annotationId: string): Promise<{ message: string }> =>
-    api.delete<{ message: string }>(`/annotations/${annotationId}`),
+  updateMajor: (majorId: string, data: {
+    name?: string;
+    department_id?: string;
+    level?: string;
+  }) => api.patch(`/admin/majors/${majorId}`, data),
+
+  deleteMajor: (majorId: string) => api.delete(`/admin/majors/${majorId}`),
 };
 
 
@@ -1377,12 +1416,6 @@ export class WebSocketClient {
 }
 
 export const wsClient = new WebSocketClient();
-
-export function createForumWebSocket(courseId: string): WebSocketClient {
-  const client = new WebSocketClient();
-  client.connect(`/ws/forum/${courseId}`);
-  return client;
-}
 
 export function createNotificationsWebSocket(userId: string): WebSocketClient {
   const client = new WebSocketClient();

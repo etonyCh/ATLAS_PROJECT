@@ -1,24 +1,42 @@
+/**
+ * @file frontend/src/app/(student)/courses/[id]/flashcards/page.tsx
+ * @description Course-specific Flashcards Study Page.
+ * SOTA FIX: Auto‑detects existing decks; auto‑generates if none exist.
+ * @layer Core Logic
+ */
+
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { Brain, FlipVertical, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
-import { useCourseQuery, useFlashcardDueQuery, useGenerateFlashcardsMutation, useReviewFlashcardMutation } from "@/queries";
+import {
+  useCourseQuery,
+  useFlashcardDueQuery,
+  useGenerateFlashcardsMutation,
+  useReviewFlashcardMutation,
+} from "@/queries";
+import { useQuery } from "@tanstack/react-query";
 import { useTrackLearning } from "@/hooks/use-continue-learning";
+import { coursesApi } from "@/lib/api";
 import type { ReviewRating } from "@/types/api.types";
 
-const reviewButtons: Array<{ label: string; rating: ReviewRating; variant: "destructive" | "secondary" | "success" }> = [
+const reviewButtons: Array<{
+  label: string;
+  rating: ReviewRating;
+  variant: "destructive" | "secondary" | "success";
+}> = [
   { label: "Again", rating: "AGAIN", variant: "destructive" },
   { label: "Hard", rating: "HARD", variant: "secondary" },
   { label: "Good", rating: "GOOD", variant: "secondary" },
   { label: "Easy", rating: "EASY", variant: "success" },
 ];
 
-export default function FlashcardsPage() {
+export default function CourseFlashcardsPage() {
   const params = useParams();
   const courseId = params.id as string;
   const { data: course, isLoading: isCourseLoading } = useCourseQuery(courseId);
@@ -31,24 +49,52 @@ export default function FlashcardsPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
 
+  // ── Get the current course document version id ──
+  const documentVersionId =
+    course?.current_version_id ?? course?.current_version?.id ?? null;
+
+  // ── Fetch user‑scoped asset metadata ──
+  const { data: myAssets, isLoading: isAssetMetaLoading } = useQuery({
+  queryKey: ["my-assets", courseId, documentVersionId],
+  queryFn: async () => {
+    try {
+      return await coursesApi.getMyAssets(courseId, documentVersionId!);
+    } catch {
+      return {
+        flashcards: { exists: false, id: null },
+        quiz: { exists: false, id: null },
+        summary: { exists: false, id: null },
+        mindmap: { exists: false, id: null },
+      };
+    }
+  },
+  enabled: !!documentVersionId,
+  retry: false,
+});
   const cards = dueQuery.data?.items || [];
   const currentCard = cards[currentIndex];
-  const isLoading = isCourseLoading || dueQuery.isLoading;
+  const isLoading = isCourseLoading || dueQuery.isLoading || isAssetMetaLoading;
 
-  const heading = useMemo(
-    () => course?.title || "this course",
-    [course],
-  );
+  // ── Determine if a deck already exists ──
+  const deckExists = myAssets?.flashcards?.exists === true;
+
+  const heading = useMemo(() => course?.title || "this course", [course]);
 
   const resetCardState = () => {
     setIsFlipped(false);
   };
 
-  const handleGenerate = async () => {
+  // ── Generation helper (automatically called when no deck exists) ──
+  const triggerGeneration = async () => {
     await generateMutation.mutateAsync({ courseId });
     await dueQuery.refetch();
     setCurrentIndex(0);
     resetCardState();
+  };
+
+  // ── Manual generate handler (for regenerate button if needed) ──
+  const handleGenerate = async () => {
+    await triggerGeneration();
   };
 
   const handleReview = async (rating: ReviewRating) => {
@@ -62,8 +108,34 @@ export default function FlashcardsPage() {
     resetCardState();
   };
 
-  if (isLoading) {
-    return <Skeleton className="h-[480px] w-full" />;
+  // ── AUTO‑GENERATION: if metadata loaded, no deck exists, and not already generating ──
+  useEffect(() => {
+    if (
+      !isAssetMetaLoading &&
+      myAssets &&
+      !deckExists &&
+      !generateMutation.isPending &&
+      !dueQuery.isFetching
+    ) {
+      triggerGeneration();
+    }
+  }, [
+    isAssetMetaLoading,
+    myAssets,
+    deckExists,
+    generateMutation.isPending,
+    dueQuery.isFetching,
+  ]);
+
+  // ── UI STATES ──
+
+  // Loading skeleton / spinner
+  if (isLoading || generateMutation.isPending) {
+    return (
+      <div className="flex items-center justify-center h-[480px] w-full">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
   }
 
   return (
@@ -75,19 +147,26 @@ export default function FlashcardsPage() {
             Review flashcards generated from {heading}.
           </p>
         </div>
-        <Button onClick={handleGenerate} disabled={generateMutation.isPending}>
-          {generateMutation.isPending ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Generating
-            </>
-          ) : (
-            <>
-              <Brain className="h-4 w-4" />
-              Generate Flashcards
-            </>
-          )}
-        </Button>
+        {/* Regenerate button – only visible when deck already exists */}
+        {deckExists && (
+          <Button
+            onClick={handleGenerate}
+            disabled={generateMutation.isPending}
+            variant="outline"
+          >
+            {generateMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Regenerating…
+              </>
+            ) : (
+              <>
+                <Brain className="h-4 w-4" />
+                Regenerate Flashcards
+              </>
+            )}
+          </Button>
+        )}
       </div>
 
       {currentCard ? (
@@ -145,9 +224,20 @@ export default function FlashcardsPage() {
       ) : (
         <EmptyState
           type="flashcards"
-          title="No due flashcards yet"
-          description="Generate flashcards for this course to start reviewing real study cards."
-          action={{ label: "Generate Flashcards", onClick: handleGenerate }}
+          title={deckExists ? "All caught up!" : "No due flashcards yet"}
+          description={
+            deckExists
+              ? "You’ve reviewed all cards. Well done! Come back later or regenerate for a fresh deck."
+              : "Generating flashcards for this course…"
+          }
+          action={
+            deckExists
+              ? {
+                  label: "Regenerate Flashcards",
+                  onClick: handleGenerate,
+                }
+              : undefined
+          }
         />
       )}
     </div>

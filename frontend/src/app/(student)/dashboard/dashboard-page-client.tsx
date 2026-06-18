@@ -15,12 +15,12 @@ import {
   Activity,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-// Heatmap removed for students; heatmap is available for teachers/admin only
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useStudentDashboardQuery } from "@/queries";
 import { useAuthStore } from "@/store/auth.store";
 import { useTranslation } from "@/hooks/use-translation";
+import { Award } from "lucide-react";
 import {
   RadialBarChart,
   RadialBar,
@@ -54,7 +54,6 @@ export function StudentDashboardPageClient() {
   const completion = overview?.progress?.overall_completion_percentage || 0;
   const todayStudyMinutes = overview?.progress?.today_study_minutes || 0;
 
-  // Generate mock streak data for visualization
   const streakData = Array.from({ length: 7 }, (_, i) => ({
     day: [
       t("teacher.sun"),
@@ -68,14 +67,12 @@ export function StudentDashboardPageClient() {
     hours: i < streak ? Math.random() * 3 + 1 : 0,
   }));
 
-  // Generate topic performance data for radar chart
   const topicData = overview?.weak_topics?.slice(0, 5).map((topic, i) => ({
     subject: topic.topic_name.substring(0, 10),
     accuracy: topic.accuracy_percentage,
     fullMark: 100,
   })) || [{ subject: 'Math', accuracy: 75, fullMark: 100 }];
 
-  // Generate weekly activity data
   const weeklyActivity = overview?.weekly_activity || Array.from({ length: 7 }, (_, i) => ({
     day: [
       t("teacher.sun"),
@@ -89,7 +86,6 @@ export function StudentDashboardPageClient() {
     activities: 0,
   }));
 
-  // Heatmap data intentionally not loaded on student dashboard
   const heatmapData: Array<{ date: string; value: number }> = [];
 
   return (
@@ -336,7 +332,8 @@ export function StudentDashboardPageClient() {
               {t("dashboard.flashcardsDue")}
             </CardTitle>
             <Button variant="ghost" size="sm" asChild>
-              <Link href="/my/flashcards">
+              {/* Changed: goes directly to the global study page */}
+              <Link href="/my/flashcards/study">
                 {t("dashboard.studyNow")} <ArrowRight className="ms-1 h-4 w-4" />
               </Link>
             </Button>
@@ -346,7 +343,7 @@ export function StudentDashboardPageClient() {
               {overview.suggested_flashcards.slice(0, 4).map((deck) => (
                 <Link
                   key={deck.deck_id}
-                  href={`/my/flashcards?deck=${deck.deck_id}`}
+                  href={`/my/flashcards/study?deck_id=${deck.deck_id}`}
                   className="group relative overflow-hidden rounded-lg border p-4 transition-all hover:bg-muted/50 hover:shadow-md"
                 >
                   <div className="absolute top-0 inset-inline-end-0 h-16 w-16 ltr:translate-x-8 rtl:-translate-x-8 -translate-y-8 rounded-full bg-primary/10 group-hover:bg-primary/20 transition-colors" />

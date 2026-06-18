@@ -8,7 +8,6 @@ import {
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { ServiceWorkerRegistration } from "@/components/service-worker";
-import { Footer } from "@/components/layout/footer";
 
 const inter = Inter({
   subsets: ["latin", "latin-ext"],

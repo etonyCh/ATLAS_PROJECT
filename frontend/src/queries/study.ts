@@ -8,14 +8,6 @@ import {
 } from "@/lib/api";
 import type { QuizSubmitRequest, ReviewRating } from "@/types/api.types";
 
-export function useFlashcardDecksQuery() {
-  return useQuery({
-    queryKey: ["flashcards", "decks"],
-    queryFn: () => flashcardsApi.listDecks(),
-    staleTime: 2 * 60 * 1000,
-  });
-}
-
 export function useFlashcardDeckQuery(deckId: string) {
   return useQuery({
     queryKey: ["flashcards", "deck", deckId],

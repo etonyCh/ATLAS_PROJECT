@@ -1,3 +1,10 @@
+/**
+ * @file frontend/src/app/(admin)/layout.tsx
+ * @description Admin layout wrapper containing Sidebar, Header, and internally scrolling Main content.
+ * @layer Core Logic / Styling
+ * @dependencies ["react", "@/components/layout/*", "@/lib/utils", "@/store/auth.store"]
+ */
+
 "use client";
 
 import { useState } from "react";
@@ -29,10 +36,14 @@ export default function AdminLayout({
         )}>
           <Header className="flex-shrink-0" />
           
-          <main className="flex-1 overflow-y-auto bg-transparent">
-            <div className="container mx-auto p-4 pb-20 lg:p-6 lg:pb-6">
+          {/* Made <main> a flex column container.
+            The wrapper around {children} gets flex-1 to push the footer down.
+          */}
+          <main className="flex flex-1 flex-col overflow-y-auto bg-transparent">
+            <div className="container mx-auto flex-1 p-4 pb-20 lg:p-6 lg:pb-6">
               {children}
             </div>
+            {/* The footer will now stay at the bottom of the scroll container */}
             <Footer variant="minimal" />
           </main>
           

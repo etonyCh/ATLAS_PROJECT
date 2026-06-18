@@ -1,3 +1,9 @@
+/**
+ * @file frontend/src/components/ui/heatmap.tsx
+ * @description Renders activity and contribution heatmaps using a standard GitHub-style layout.
+ * @layer Core Logic / UI
+ */
+
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,23 +50,26 @@ export function ActivityHeatmap({
         )}
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-7 gap-1">
-          {data.map((day, index) => (
-            <div
-              key={index}
-              className={`aspect-square rounded-sm ${getIntensityColor(day.value)} transition-colors cursor-help`}
-              title={`${day.date}: ${day.value} ${day.label || "activities"}`}
-            />
-          ))}
+        {/* SOTA FIX: Switched to grid-rows-7 with grid-flow-col and fixed dimensions */}
+        <div className="overflow-x-auto pb-2 custom-scrollbar">
+          <div className="grid grid-rows-7 grid-flow-col gap-1.5 w-fit">
+            {data.map((day, index) => (
+              <div
+                key={index}
+                className={`w-4 h-4 sm:w-5 sm:h-5 rounded-sm ${getIntensityColor(day.value)} transition-colors cursor-help`}
+                title={`${day.date}: ${day.value} ${day.label || "activities"}`}
+              />
+            ))}
+          </div>
         </div>
-        <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+        <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
           <span>Less</span>
-          <div className="flex gap-1">
-            <div className={`w-3 h-3 rounded-sm ${minColor}`} />
-            <div className="w-3 h-3 rounded-sm bg-emerald-100 dark:bg-emerald-900/40" />
-            <div className="w-3 h-3 rounded-sm bg-emerald-200 dark:bg-emerald-900/60" />
-            <div className="w-3 h-3 rounded-sm bg-emerald-300 dark:bg-emerald-900/80" />
-            <div className={`w-3 h-3 rounded-sm ${maxColor}`} />
+          <div className="flex gap-1.5">
+            <div className={`w-3 h-3 sm:w-4 sm:h-4 rounded-sm ${minColor}`} />
+            <div className="w-3 h-3 sm:w-4 sm:h-4 rounded-sm bg-emerald-100 dark:bg-emerald-900/40" />
+            <div className="w-3 h-3 sm:w-4 sm:h-4 rounded-sm bg-emerald-200 dark:bg-emerald-900/60" />
+            <div className="w-3 h-3 sm:w-4 sm:h-4 rounded-sm bg-emerald-300 dark:bg-emerald-900/80" />
+            <div className={`w-3 h-3 sm:w-4 sm:h-4 rounded-sm ${maxColor}`} />
           </div>
           <span>More</span>
         </div>
@@ -92,37 +101,40 @@ export function ContributionHeatmap({ data, title }: ContributionHeatmapProps) {
         </p>
       </CardHeader>
       <CardContent>
-        <div className="space-y-2">
-          <div className="grid grid-cols-7 gap-1">
-            {data.map((day, index) => {
-              const intensity = day.contributions / maxContributions;
-              return (
-                <div
-                  key={index}
-                  className={`aspect-square rounded-sm transition-all ${
-                    day.contributions === 0
-                      ? "bg-muted"
-                      : intensity < 0.25
-                      ? "bg-blue-200 dark:bg-blue-900/40"
-                      : intensity < 0.5
-                      ? "bg-blue-300 dark:bg-blue-900/60"
-                      : intensity < 0.75
-                      ? "bg-blue-400 dark:bg-blue-900/80"
-                      : "bg-blue-500"
-                  }`}
-                  title={`${day.date}: ${day.contributions} contributions`}
-                />
-              );
-            })}
+        <div className="space-y-4">
+          {/* SOTA FIX: Switched to grid-rows-7 with grid-flow-col and fixed dimensions */}
+          <div className="overflow-x-auto pb-2 custom-scrollbar">
+            <div className="grid grid-rows-7 grid-flow-col gap-1.5 w-fit">
+              {data.map((day, index) => {
+                const intensity = day.contributions / maxContributions;
+                return (
+                  <div
+                    key={index}
+                    className={`w-4 h-4 sm:w-5 sm:h-5 rounded-sm transition-all cursor-help ${
+                      day.contributions === 0
+                        ? "bg-muted"
+                        : intensity < 0.25
+                        ? "bg-blue-200 dark:bg-blue-900/40"
+                        : intensity < 0.5
+                        ? "bg-blue-300 dark:bg-blue-900/60"
+                        : intensity < 0.75
+                        ? "bg-blue-400 dark:bg-blue-900/80"
+                        : "bg-blue-500"
+                    }`}
+                    title={`${day.date}: ${day.contributions} contributions`}
+                  />
+                );
+              })}
+            </div>
           </div>
           <div className="flex items-center justify-between text-xs">
-            <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-sm bg-blue-500" />
+            <div className="flex items-center gap-4">
+              <span className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-sm bg-blue-500" />
                 <span>Approved</span>
               </span>
-              <span className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-sm bg-amber-400" />
+              <span className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-sm bg-amber-400" />
                 <span>Pending</span>
               </span>
             </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Moon, Sun, Bell, Shield, Palette, Monitor, Loader2, AlertTriangle } from "lucide-react";
+import { Moon, Sun, Bell, Shield, Palette, Monitor, Loader2, AlertTriangle, Mic } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -23,6 +23,7 @@ import { useAuthStore } from "@/store/auth.store";
 import { useRTL, useTheme } from "@/hooks/use-rtl";
 import { useTranslation } from "@/hooks/use-translation";
 import { authApi } from "@/lib/api";
+import { useVoiceSettingsStore, TutorVoice } from "@/store/voice-settings.store";
 
 export default function SettingsPage() {
   const { user, setUser } = useAuthStore();
@@ -34,11 +35,11 @@ export default function SettingsPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Sync isRTL from backend if it differs
+  const { voice, setVoice } = useVoiceSettingsStore();
+
   useEffect(() => {
     if (user && user.is_rtl !== isRTL) {
-      // If we want to strictly follow backend, we could call toggleRTL here
-      // But typically we want to follow the store which is persisted in localStorage
+      // Backend sync not forced here, store is authority
     }
   }, [user, isRTL]);
 
@@ -49,7 +50,6 @@ export default function SettingsPage() {
     try {
       const updatedUser = await authApi.updateProfile({ [field]: value });
       setUser(updatedUser);
-      // toast.success("Settings updated");
     } catch (error) {
       console.error("Failed to update settings:", error);
     } finally {
@@ -160,7 +160,44 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Notifications */}
+        {/* AI Tutor Voice — Updated with Charon */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Mic className="h-5 w-5" />
+              AI Tutor Voice
+            </CardTitle>
+            <CardDescription>
+              Choose the personality of your study companion
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Voice</label>
+              <div className="flex gap-2">
+                <Button
+                  variant={voice === "Zephyr" ? "default" : "outline"}
+                  className="flex-1"
+                  onClick={() => setVoice("Zephyr")}
+                >
+                  ♀ Zephyr
+                </Button>
+                <Button
+                  variant={voice === "Charon" ? "default" : "outline"}
+                  className="flex-1"
+                  onClick={() => setVoice("Charon")}
+                >
+                  ♂ Charon
+                </Button>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Zephyr is a bright, cheerful female voice. Charon is a deep, warm, masculine voice — calm and trustworthy like Miles. Change takes effect on the next tutor connection.
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Notifications (unchanged) */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -234,7 +271,7 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Security */}
+        {/* Security (unchanged) */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-destructive">
@@ -293,7 +330,7 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* About */}
+        {/* About (unchanged) */}
         <Card>
           <CardHeader>
             <CardTitle>About ATLAS</CardTitle>

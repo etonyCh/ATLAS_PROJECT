@@ -18,7 +18,6 @@ from app.core.exceptions import atlas_error
 from app.core.redis import get_redis_client
 from app.db.session import get_session
 from app.dependencies import get_current_user, require_role
-from app.models.gamification import XPTransaction, XPTransactionType
 from app.models.user import User, UserRole
 from app.schemas.pagination import build_paginated_response
 from app.models.contribution import (
@@ -29,13 +28,10 @@ from app.models.contribution import (
     DocumentVersion,
 )
 from app.models.course import Course
-from app.models.gamification import XPTransaction, XPTransactionType
-from app.models.user import User, UserRole
 from app.models.rag import RAGSession
 from app.models.study_tools import FlashcardDeck, QuizSession, MindMap, Summary
 from app.models.annotation import DocumentAnnotation
 from app.models.all_models import Notification, ReadingProgress
-from app.services.study_engine import gamification_service
 
 
 router = APIRouter(tags=["Contributions"])
@@ -67,20 +63,6 @@ class ContributorRequestReviewRequest(BaseModel):
 
 REPORT_TITLE_PREFIX = "Feedback received: "
 logger = logging.getLogger(__name__)
-
-
-def _remove_from_meilisearch(doc_id: str) -> None:
-    """Best-effort purge of a document from MeiliSearch."""
-    try:
-        import meilisearch
-
-        client = meilisearch.Client(
-            os.getenv("MEILI_URL", "http://localhost:7700"),
-            os.getenv("MEILI_MASTER_KEY", "meili_master_key"),
-        )
-        client.index("documents").delete_document(doc_id)
-    except Exception as exc:
-        logger.warning("meilisearch_purge_failed doc_id=%s error=%s", doc_id, exc)
 
 
 def _serialize_contribution(item: Contribution) -> dict[str, Any]:
@@ -218,35 +200,19 @@ async def create_contribution(
             description=description,
             course_id=course_id,
             file=file,
+            background_tasks=background_tasks,
         )
     except ValueError as exc:
         raise atlas_error("CONTRIBUTION_001", str(exc), status_code=400) from exc
 
-    # Award +10 XP to student on contribution submission (dedup-safe)
-    existing_xp = await db.execute(
-        select(XPTransaction).where(
-            XPTransaction.user_id == current_user.id,
-            XPTransaction.transaction_type == XPTransactionType.UPLOAD,
-            XPTransaction.reference_id == result.id,
-        )
-    )
-    if not existing_xp.scalars().first():
-        xp = XPTransaction(
-            user_id=current_user.id,
-            amount=10,
-            transaction_type=XPTransactionType.UPLOAD,
-            reference_id=result.id,
-            description=f"Submitted contribution: {title}",
-        )
-        db.add(xp)
-        await db.commit()
-
+    # XP awarding removed — contribution submission is enough.
     await invalidate_cache_patterns(redis_client, "admin_dashboard:*")
     return result
 
 
 @router.post("/contributor-requests")
 async def create_contributor_request(
+    background_tasks: BackgroundTasks,
     title: str = Form(...),
     description: str | None = Form(default=None),
     course_id: UUID = Form(...),
@@ -290,6 +256,7 @@ async def create_contributor_request(
             description=description,
             course_id=course_id,
             file=file,
+            background_tasks=background_tasks,
             is_demo_submission=True,
         )
     except ValueError as exc:
@@ -477,15 +444,7 @@ async def approve_contributor_request(
     student.contributor_badge_awarded_at = student.contributor_badge_awarded_at or datetime.utcnow()
     student.trust_score = max(student.trust_score, 25)
 
-    await gamification_service.award_badge(
-        db,
-        user_id=student.id,
-        code="COMMUNITY_CONTRIBUTOR",
-        name="Community Contributor",
-        description="Earned contributor privileges by submitting a quality demo document.",
-        icon="shield-check",
-    )
-
+    # Badge awarding removed (gamification system eliminated)
     db.add(request)
     db.add(student)
     await db.commit()
@@ -594,83 +553,55 @@ async def delete_contribution(
 ) -> dict[str, bool]:
     """
     Granular hard delete: removes a single contribution and its related data permanently.
-    Teachers can use this to 'un-upload' a subject.
+    Only purges PostgreSQL relational data (Vectors managed by Cognitive Core).
     """
     import structlog
-    from sqlalchemy import delete
-    from app.core.qdrant_client import get_qdrant_manager, COLLECTION_DOCUMENTS
-    from app.services.doc_processing.storage import minio_client
+    from sqlalchemy import delete, cast
+    from sqlalchemy.dialects.postgresql import ARRAY, UUID as PG_UUID
+
+    from app.models.embedding import DocumentEmbedding
 
     log = structlog.get_logger().bind(action="delete_contribution", contribution_id=str(contribution_id))
     log.info("delete_request_received")
-    
-    # 1. Fetch contribution
+
     contribution = await db.get(Contribution, contribution_id)
     if contribution is None:
         log.warning("contribution_not_found")
         raise atlas_error("CONTRIBUTION_001", "Contribution not found.", status_code=404)
 
-    # 2. Security: Only uploader, TEACHER, ADMIN, or SUPERADMIN can delete
     user_role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
     if contribution.uploader_id != current_user.id and user_role not in ("TEACHER", "ADMIN", "SUPERADMIN"):
         log.warning("permission_denied", user_id=str(current_user.id))
         raise atlas_error("AUTH_008", "You do not have permission to delete this contribution.", status_code=403)
 
-    # 3. Get all related document versions
     result = await db.execute(
         select(DocumentVersion).where(DocumentVersion.contribution_id == contribution_id)
     )
     versions = result.scalars().all()
     version_ids = [v.id for v in versions]
-    storage_paths = [v.storage_path for v in versions if v.storage_path]
 
     if version_ids:
         log.info("cleaning_up_versions", version_count=len(version_ids))
+        safe_version_ids = cast(version_ids, ARRAY(PG_UUID(as_uuid=True)))
 
-        # Delete from Qdrant (semantic embeddings)
-        try:
-            qdrant = get_qdrant_manager()
-            for v_id in version_ids:
-                qdrant.delete_document_embeddings(
-                    collection_name=COLLECTION_DOCUMENTS,
-                    document_version_id=str(v_id)
-                )
-            log.info("qdrant_embeddings_purged")
-        except Exception as e:
-            log.error("qdrant_cleanup_failed", error=str(e))
+        # Use overlap for array columns
+        await db.execute(delete(FlashcardDeck).where(FlashcardDeck.document_version_ids.overlap(safe_version_ids)))
+        await db.execute(delete(QuizSession).where(QuizSession.document_version_ids.overlap(safe_version_ids)))
+        await db.execute(delete(MindMap).where(MindMap.document_version_ids.overlap(safe_version_ids)))
+        await db.execute(delete(Summary).where(Summary.document_version_ids.overlap(safe_version_ids)))
+        await db.execute(delete(RAGSession).where(RAGSession.document_version_ids.overlap(safe_version_ids)))
 
-        # Purge from MeiliSearch (lexical index)
-        for v_id in version_ids:
-            background_tasks.add_task(_remove_from_meilisearch, str(v_id))
-        log.info("meilisearch_purge_queued")
-
-        # Delete from MinIO (physical files)
-        for path in storage_paths:
-            try:
-                minio_client.delete_file(path)
-            except Exception as e:
-                log.error("minio_cleanup_failed", file_path=path, error=str(e))
-        log.info("minio_files_deleted", count=len(storage_paths))
-
-        # Delete related study tools/progress/annotations
-        await db.execute(delete(FlashcardDeck).where(FlashcardDeck.document_version_id.in_(version_ids)))
-        await db.execute(delete(QuizSession).where(QuizSession.document_version_id.in_(version_ids)))
-        await db.execute(delete(MindMap).where(MindMap.document_version_id.in_(version_ids)))
-        await db.execute(delete(Summary).where(Summary.document_version_id.in_(version_ids)))
-        await db.execute(delete(RAGSession).where(RAGSession.document_version_id.in_(version_ids)))
+        # Scalar columns can still use in_
         await db.execute(delete(DocumentAnnotation).where(DocumentAnnotation.document_version_id.in_(version_ids)))
         await db.execute(delete(ReadingProgress).where(ReadingProgress.document_version_id.in_(version_ids)))
-        
-        from app.models.embedding import DocumentEmbedding
         await db.execute(delete(DocumentEmbedding).where(DocumentEmbedding.document_version_id.in_(version_ids)))
 
-    # 4. Final DB removal
-    # Delete related DocumentVersion rows to satisfy FK constraints
+    # Final DB removal
     await db.execute(delete(DocumentVersion).where(DocumentVersion.contribution_id == contribution_id))
     await db.execute(delete(Contribution).where(Contribution.id == contribution_id))
     await db.commit()
-    
+
     await invalidate_cache_patterns(redis_client, "admin_dashboard:*", "course_meta:*")
     log.info("contribution_fully_deleted")
-    
+
     return {"success": True}

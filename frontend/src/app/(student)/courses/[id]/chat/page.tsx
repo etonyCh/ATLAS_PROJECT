@@ -12,7 +12,7 @@ export default function ChatPage() {
   const { data: course, isLoading, isError } = useCourseQuery(courseId);
 
   if (isLoading) {
-    return <Skeleton className="h-[calc(100vh-220px)] w-full" />;
+    return <Skeleton className="h-full w-full" />;
   }
 
   if (isError || !course) {
@@ -26,7 +26,8 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-220px)] overflow-hidden rounded-xl border">
+    // 🚨 SOTA FIX: Let the parent flex layout determine the height; min-h-0 prevents overflow
+    <div className="h-full min-h-0 overflow-hidden rounded-xl border">
       <AIToolsTabPanel tool="chat" course={course} className="h-full" />
     </div>
   );

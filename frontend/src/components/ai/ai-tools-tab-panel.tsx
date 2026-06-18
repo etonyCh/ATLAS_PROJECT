@@ -1,6 +1,28 @@
+/**
+ * @file frontend/src/components/ai/ai-tools-tab-panel.tsx
+ * @description AI Tools UI.
+ * SOTA FIX: Auto-generate asset on mount when no cached version exists.
+ * SOTA FIX: Use dedicated APIs for all asset types (summary, mindmap, quiz) to match flashcard pattern.
+ * @layer Core Logic
+ */
+
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
+import { flushSync } from "react-dom";
+import { useSearchParams } from "next/navigation";
+import { useTheme } from "next-themes";
+import dagre from "dagre";
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  Panel,
+} from "@xyflow/react";
+
 import {
   BadgeCheck,
   Copy,
@@ -24,13 +46,14 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { useCreateRagSessionMutation } from "@/queries";
 import {
   useGenerateFlashcardsMutation,
-  useDocumentAssetManifestQuery,
   useGenerateQuizMutation,
 } from "@/queries/study";
 import {
-  documentAssetsApi,
+  coursesApi,
   flashcardsApi,
   quizApi,
+  summariesApi,
+  mindmapsApi,
   ragApi,
 } from "@/lib/api";
 import type {
@@ -42,6 +65,8 @@ import type {
   RAGStreamEvent,
   Summary,
 } from "@/types/api.types";
+
+import { useMutation, useQuery } from "@tanstack/react-query";
 
 export type AIToolType = "chat" | "summary" | "flashcards" | "quiz" | "mindmap";
 
@@ -105,7 +130,137 @@ type ToolResult =
   | { kind: "quiz"; data: QuizDetail }
   | { kind: "mindmap"; data: Mindmap };
 
+const nodeWidth = 280;
+const nodeHeight = 80;
+
+const getLayoutedElements = (nodes: any[], edges: any[], direction = "TB") => {
+  const dagreGraph = new dagre.graphlib.Graph();
+  dagreGraph.setDefaultEdgeLabel(() => ({}));
+
+  dagreGraph.setGraph({ rankdir: direction, nodesep: 80, ranksep: 120 });
+
+  nodes.forEach((node) => {
+    dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
+  });
+
+  edges.forEach((edge) => {
+    dagreGraph.setEdge(edge.source, edge.target);
+  });
+
+  dagre.layout(dagreGraph);
+
+  const newNodes = nodes.map((node) => {
+    const nodeWithPosition = dagreGraph.node(node.id);
+    return {
+      ...node,
+      targetPosition: "top",
+      sourcePosition: "bottom",
+      position: {
+        x: nodeWithPosition.x - nodeWidth / 2,
+        y: nodeWithPosition.y - nodeHeight / 2,
+      },
+      style: {
+        ...node.style,
+        background: "hsl(var(--card))",
+        color: "hsl(var(--card-foreground))",
+        borderColor: "hsl(var(--border))",
+        borderWidth: "1px",
+        borderStyle: "solid",
+        borderRadius: "0.5rem",
+        padding: "16px",
+        fontWeight: "500",
+        fontSize: "14px",
+        boxShadow: "0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)",
+        width: nodeWidth,
+        textAlign: "center",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+      },
+    };
+  });
+
+  const newEdges = edges.map((edge) => ({
+    ...edge,
+    type: "smoothstep",
+    animated: true,
+    style: { stroke: "hsl(var(--primary))", strokeWidth: 2 },
+  }));
+
+  return { nodes: newNodes, edges: newEdges };
+};
+
+export function MindMapVisualizer({
+  initialNodes,
+  initialEdges,
+}: {
+  initialNodes: any[];
+  initialEdges: any[];
+}) {
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const { nodes: layoutedNodes, edges: layoutedEdges } = useMemo(
+    () => getLayoutedElements(initialNodes || [], initialEdges || []),
+    [initialNodes, initialEdges]
+  );
+
+  const [nodes, setNodes, onNodesChange] = useNodesState(layoutedNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(layoutedEdges);
+
+  useEffect(() => {
+    const { nodes: newNodes, edges: newEdges } = getLayoutedElements(
+      initialNodes || [],
+      initialEdges || []
+    );
+    setNodes(newNodes);
+    setEdges(newEdges);
+  }, [initialNodes, initialEdges, setNodes, setEdges]);
+
+  if (!mounted) {
+    return (
+      <div className="flex h-[600px] w-full items-center justify-center rounded-xl border bg-muted/10">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  const flowTheme = resolvedTheme === "dark" ? "dark" : "light";
+
+  return (
+    <div className="relative h-[600px] w-full overflow-hidden rounded-xl border bg-muted/10">
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        fitView
+        fitViewOptions={{ padding: 0.4 }}
+        minZoom={0.1}
+        colorMode={flowTheme}
+      >
+        <Background color="hsl(var(--muted-foreground))" gap={16} />
+        <Controls className="border fill-foreground bg-background" />
+        <MiniMap
+          nodeColor="hsl(var(--primary))"
+          maskColor="hsl(var(--background))"
+          className="rounded-md border bg-background"
+        />
+        <Panel position="top-right">
+          <BadgeCheck className="h-5 w-5 text-emerald-500 opacity-50" />
+        </Panel>
+      </ReactFlow>
+    </div>
+  );
+}
+
 function getMindmapNodeLabel(node: Record<string, unknown>): string {
+  if (node.data && typeof (node.data as any).label === "string")
+    return (node.data as any).label;
   const keys = ["label", "title", "text", "name", "id"];
   for (const key of keys) {
     const value = node[key];
@@ -122,7 +277,7 @@ function getCourseDocumentVersionId(course: Course | null): string | null {
 }
 
 function normalizeSummaryContent(
-  summary: Summary["content"],
+  summary: Summary["content"]
 ): { text: string; title?: string } {
   if (typeof summary === "string") {
     return { text: summary };
@@ -132,7 +287,10 @@ function normalizeSummaryContent(
     typeof summary.overview === "string" ? summary.overview : "";
   const keyConcepts = Array.isArray(summary.key_concepts)
     ? summary.key_concepts
-        .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        .filter(
+          (item): item is string =>
+            typeof item === "string" && item.trim().length > 0
+        )
         .map((item) => `- ${item}`)
         .join("\n")
     : "";
@@ -151,29 +309,25 @@ function normalizeSummaryContent(
   return { text: sections.filter(Boolean).join("\n\n") };
 }
 
-function toSummaryResult(documentVersionId: string, cache: Awaited<ReturnType<typeof documentAssetsApi.get>>): Summary {
-  return {
-    id: cache.id,
-    format: cache.profile.toUpperCase(),
-    target_lang: cache.target_lang,
-    content: cache.content,
-    created_at: cache.updated_at,
-  };
-}
-
-function toMindmapResult(documentVersionId: string, cache: Awaited<ReturnType<typeof documentAssetsApi.get>>): Mindmap {
-  const content = cache.content;
-  return {
-    id: cache.id,
-    title:
-      typeof content.title === "string" && content.title.trim()
-        ? content.title
-        : `Mind map ${documentVersionId.slice(0, 8)}`,
-    target_lang: cache.target_lang,
-    nodes: Array.isArray(content.nodes) ? (content.nodes as Mindmap["nodes"]) : [],
-    edges: Array.isArray(content.edges) ? (content.edges as Mindmap["edges"]) : [],
-    created_at: cache.updated_at,
-  };
+/** Safely normalise quiz options into a string array for copy/download. */
+function safeOptionsArray(options: unknown): string[] {
+  if (Array.isArray(options)) {
+    return options.map((o, i) =>
+      typeof o === "string"
+        ? o
+        : (o as any)?.key
+          ? `${(o as any).key}: ${(o as any).value}`
+          : `Option ${i + 1}`
+    );
+  }
+  if (typeof options === "string") {
+    try {
+      const parsed = JSON.parse(options);
+      if (Array.isArray(parsed)) return safeOptionsArray(parsed);
+    } catch {}
+    return [options];
+  }
+  return [];
 }
 
 function buildCopyContent(result: ToolResult): string {
@@ -184,14 +338,14 @@ function buildCopyContent(result: ToolResult): string {
       return result.data.cards
         .map(
           (card, index) =>
-            `${index + 1}. ${card.question}\nAnswer: ${card.answer}`,
+            `${index + 1}. ${card.question}\nAnswer: ${card.answer}`
         )
         .join("\n\n");
     case "quiz":
       return result.data.questions
         .map((question, index) => {
-          const options = question.options
-            .map((option, optionIndex) => `${optionIndex + 1}. ${option}`)
+          const options = safeOptionsArray(question.options)
+            .map((opt, oi) => `${oi + 1}. ${opt}`)
             .join("\n");
           return `${index + 1}. ${question.question}\n${options}`;
         })
@@ -299,14 +453,20 @@ function ResultContent({ result }: { result: ToolResult }) {
               </p>
               <p className="mt-2 font-medium">{question.question}</p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                {question.options.map((option, optionIndex) => (
-                  <div
-                    key={`${question.id}-${optionIndex}`}
-                    className="rounded-md border bg-muted/30 px-3 py-2 text-sm"
-                  >
-                    {option}
-                  </div>
-                ))}
+                {Array.isArray(question.options)
+                  ? question.options.map((option: any, optionIndex: number) => (
+                      <div
+                        key={`${question.id}-${optionIndex}`}
+                        className="rounded-md border bg-muted/30 px-3 py-2 text-sm"
+                      >
+                        {typeof option === "string"
+                          ? option
+                          : option?.key
+                            ? `${option.key}: ${option.value}`
+                            : JSON.stringify(option)}
+                      </div>
+                    ))
+                  : null}
               </div>
             </div>
           ))}
@@ -316,26 +476,31 @@ function ResultContent({ result }: { result: ToolResult }) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-lg border bg-muted/30 p-4">
-        <p className="text-sm text-muted-foreground">Mind Map</p>
-        <h3 className="text-lg font-semibold">{result.data.title}</h3>
-        <p className="text-sm text-muted-foreground">
-          {result.data.nodes.length} nodes and {result.data.edges.length} edges
-        </p>
+    <div className="space-y-4 flex h-full w-full flex-col">
+      <div className="flex items-center justify-between rounded-lg border bg-muted/30 p-4">
+        <div>
+          <p className="text-sm text-muted-foreground">
+            Interactive Knowledge Graph
+          </p>
+          <h3 className="text-lg font-semibold">{result.data.title}</h3>
+          <p className="text-sm text-muted-foreground">
+            {result.data.nodes.length} concepts and {result.data.edges.length}{" "}
+            relationships
+          </p>
+        </div>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {result.data.nodes.slice(0, 8).map((node, index) => (
-          <div key={index} className="rounded-lg border p-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Node {index + 1}
-            </p>
-            <p className="mt-2 font-medium">
-              {getMindmapNodeLabel(node as Record<string, unknown>)}
-            </p>
-          </div>
-        ))}
-      </div>
+
+      {result.data.nodes.length > 0 ? (
+        <MindMapVisualizer
+          initialNodes={result.data.nodes}
+          initialEdges={result.data.edges}
+        />
+      ) : (
+        <EmptyState
+          title="Graph Visualization Error"
+          description="The AI failed to generate structural coordinates for this concept."
+        />
+      )}
     </div>
   );
 }
@@ -346,10 +511,19 @@ function ChatPanel({ course }: ChatPanelProps) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentStreamContent, setCurrentStreamContent] = useState("");
   const [currentSources, setCurrentSources] = useState<RAGMessage["sources"]>(
-    [],
+    []
   );
 
+  const searchParams = useSearchParams();
   const createSession = useCreateRagSessionMutation(course?.id || "");
+  const scrollViewportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const viewport = scrollViewportRef.current;
+    if (viewport) {
+      viewport.scrollTop = viewport.scrollHeight;
+    }
+  }, [messages, currentStreamContent]);
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || !course || isStreaming) return;
@@ -372,7 +546,14 @@ function ChatPanel({ course }: ChatPanelProps) {
       let sessionId = "";
 
       if (!createSession.data?.id) {
-        const session = await createSession.mutateAsync();
+        const versionsParam = searchParams.get("versions");
+        const versionIds = versionsParam ? versionsParam.split(",") : [];
+
+        const session = await (createSession.mutateAsync as any)(
+          versionIds.length > 0
+            ? { document_version_ids: versionIds }
+            : undefined
+        );
         sessionId = session.id;
       } else {
         sessionId = createSession.data.id;
@@ -385,7 +566,9 @@ function ChatPanel({ course }: ChatPanelProps) {
         const streamHandler = (event: RAGStreamEvent) => {
           if (event.type === "token" && event.content) {
             fullContent += event.content;
-            setCurrentStreamContent(fullContent);
+            flushSync(() => {
+              setCurrentStreamContent(fullContent);
+            });
           }
 
           if (event.type === "sources" && event.sources) {
@@ -428,7 +611,7 @@ function ChatPanel({ course }: ChatPanelProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <ScrollArea className="flex-1 p-4">
+      <div ref={scrollViewportRef} className="flex-1 overflow-y-auto p-4">
         {messages.length === 0 && !isStreaming ? (
           <EmptyState type="chat" className="h-full" />
         ) : (
@@ -438,7 +621,7 @@ function ChatPanel({ course }: ChatPanelProps) {
                 key={msg.id}
                 className={cn(
                   "flex gap-3",
-                  msg.role === "user" && "flex-row-reverse",
+                  msg.role === "user" && "flex-row-reverse"
                 )}
               >
                 <div
@@ -446,7 +629,7 @@ function ChatPanel({ course }: ChatPanelProps) {
                     "max-w-[80%] rounded-lg px-4 py-2",
                     msg.role === "user"
                       ? "bg-primary text-primary-foreground"
-                      : "bg-muted",
+                      : "bg-muted"
                   )}
                 >
                   <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
@@ -492,7 +675,7 @@ function ChatPanel({ course }: ChatPanelProps) {
             )}
           </div>
         )}
-      </ScrollArea>
+      </div>
 
       {isStreaming && (
         <div className="border-t px-4 py-2">
@@ -537,21 +720,76 @@ function ToolPanel({ tool, course, className }: ToolPanelProps) {
   const [result, setResult] = useState<ToolResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isHydratingCached, setIsHydratingCached] = useState(false);
+
+  const searchParams = useSearchParams();
+
   const generateFlashcards = useGenerateFlashcardsMutation();
   const generateQuiz = useGenerateQuizMutation();
-  const manifestQuery = useDocumentAssetManifestQuery(documentVersionId || "");
-  const sourceAssetType = assetTypeMap[tool];
 
-  const hasCachedAsset =
-    Boolean(
-      sourceAssetType &&
-        manifestQuery.data?.items.some((item) => item.asset_type === sourceAssetType),
-    );
+  // Existence check (same as before, handles errors gracefully)
+  const { data: myAssets, isLoading: isAssetMetaLoading } = useQuery({
+    queryKey: ["my-assets", course?.id, documentVersionId],
+    queryFn: async () => {
+      try {
+        return await coursesApi.getMyAssets(course!.id, documentVersionId!);
+      } catch {
+        return {
+          flashcards: { exists: false, id: null },
+          quiz: { exists: false, id: null },
+          summary: { exists: false, id: null },
+          mindmap: { exists: false, id: null },
+        };
+      }
+    },
+    enabled: !!course?.id && !!documentVersionId,
+    retry: false,
+  });
 
+  // Hydrate cached result when assets already exist
   useEffect(() => {
-    if (!documentVersionId || result || isHydratingCached) return;
-    if (tool !== "summary" && tool !== "mindmap") return;
-    if (!hasCachedAsset) return;
+    if (!documentVersionId || !myAssets || result || isHydratingCached) return;
+    let assetId: string | null = null;
+    let fetchFn: (() => Promise<ToolResult>) | null = null;
+
+    if (
+      tool === "flashcards" &&
+      myAssets.flashcards.exists &&
+      myAssets.flashcards.id
+    ) {
+      assetId = myAssets.flashcards.id;
+      fetchFn = async () => {
+        const deck = await flashcardsApi.getDeck(assetId!);
+        return { kind: "flashcards" as const, data: deck };
+      };
+    } else if (tool === "quiz" && myAssets.quiz.exists && myAssets.quiz.id) {
+      assetId = myAssets.quiz.id;
+      fetchFn = async () => {
+        const quiz = await quizApi.getQuiz(assetId!);
+        return { kind: "quiz" as const, data: quiz };
+      };
+    } else if (
+      tool === "summary" &&
+      myAssets.summary.exists &&
+      myAssets.summary.id
+    ) {
+      assetId = myAssets.summary.id;
+      fetchFn = async () => {
+        const summary = await summariesApi.get(assetId!);
+        return { kind: "summary" as const, data: summary };
+      };
+    } else if (
+      tool === "mindmap" &&
+      myAssets.mindmap.exists &&
+      myAssets.mindmap.id
+    ) {
+      assetId = myAssets.mindmap.id;
+      fetchFn = async () => {
+        const mindmap = await mindmapsApi.get(assetId!);
+        return { kind: "mindmap" as const, data: mindmap };
+      };
+    }
+
+    if (!assetId || !fetchFn) return;
 
     let cancelled = false;
     setIsHydratingCached(true);
@@ -559,24 +797,12 @@ function ToolPanel({ tool, course, className }: ToolPanelProps) {
 
     const run = async () => {
       try {
-        const cache = await documentAssetsApi.get(
-          documentVersionId,
-          tool.toUpperCase() as "SUMMARY" | "MINDMAP",
-        );
-        if (cancelled) return;
-        if (tool === "summary") {
-          setResult({ kind: "summary", data: toSummaryResult(documentVersionId, cache) });
-        } else {
-          setResult({ kind: "mindmap", data: toMindmapResult(documentVersionId, cache) });
-        }
+        const loaded = await fetchFn!();
+        if (!cancelled) setResult(loaded);
       } catch (error) {
-        if (!cancelled) {
-          console.error(error);
-        }
+        if (!cancelled) console.error(error);
       } finally {
-        if (!cancelled) {
-          setIsHydratingCached(false);
-        }
+        if (!cancelled) setIsHydratingCached(false);
       }
     };
 
@@ -584,7 +810,27 @@ function ToolPanel({ tool, course, className }: ToolPanelProps) {
     return () => {
       cancelled = true;
     };
-  }, [documentVersionId, hasCachedAsset, isHydratingCached, result, tool]);
+  }, [documentVersionId, myAssets, isHydratingCached, result, tool]);
+
+  // AUTO-GENERATION: If asset does not exist, generate immediately
+  useEffect(() => {
+    if (!documentVersionId || !myAssets || result) return;
+    if (isGenerating || isHydratingCached) return;
+
+    let shouldAutoGenerate = false;
+    if (tool === "flashcards" && !myAssets.flashcards.exists)
+      shouldAutoGenerate = true;
+    else if (tool === "quiz" && !myAssets.quiz.exists)
+      shouldAutoGenerate = true;
+    else if (tool === "summary" && !myAssets.summary.exists)
+      shouldAutoGenerate = true;
+    else if (tool === "mindmap" && !myAssets.mindmap.exists)
+      shouldAutoGenerate = true;
+
+    if (!shouldAutoGenerate) return;
+
+    handleGenerate();
+  }, [documentVersionId, myAssets, result, isGenerating, isHydratingCached, tool]);
 
   const handleGenerate = async () => {
     if (!course) return;
@@ -592,45 +838,46 @@ function ToolPanel({ tool, course, className }: ToolPanelProps) {
     setIsGenerating(true);
     setErrorMessage(null);
 
+    const versionsParam = searchParams.get("versions");
+    const documentVersionIds = versionsParam ? versionsParam.split(",") : [];
+
     try {
       if (tool === "flashcards") {
         const generation = await generateFlashcards.mutateAsync({
           courseId: course.id,
+          ...(documentVersionIds.length > 0 && {
+            document_version_ids: documentVersionIds,
+          }),
         });
         const deck = await flashcardsApi.getDeck(generation.job_id);
         setResult({ kind: "flashcards", data: deck });
       } else if (tool === "quiz") {
         const generation = await generateQuiz.mutateAsync({
           courseId: course.id,
+          ...(documentVersionIds.length > 0 && {
+            document_version_ids: documentVersionIds,
+          }),
         });
         const quiz = await quizApi.getQuiz(generation.job_id);
         setResult({ kind: "quiz", data: quiz });
       } else if (tool === "summary") {
-        if (!documentVersionId) {
-          throw new Error("No document version available for summary generation.");
-        }
-        const cache = await documentAssetsApi.generate(documentVersionId, {
-          asset_type: "SUMMARY",
-          target_lang: "fr",
-          profile: "executive",
-        });
-        const summary = toSummaryResult(documentVersionId, cache);
+        if (!documentVersionId)
+          throw new Error("No document version available.");
+        const generation = await summariesApi.generate(course.id, "EXECUTIVE", "fr");
+        const summary = await summariesApi.get(generation.job_id);
         setResult({ kind: "summary", data: summary });
       } else {
-        if (!documentVersionId) {
-          throw new Error("No document version available for mind map generation.");
-        }
-        const cache = await documentAssetsApi.generate(documentVersionId, {
-          asset_type: "MINDMAP",
-          target_lang: "fr",
-        });
-        const mindmap = toMindmapResult(documentVersionId, cache);
+        // mindmap
+        if (!documentVersionId)
+          throw new Error("No document version available.");
+        const generation = await mindmapsApi.generate(course.id, "fr");
+        const mindmap = await mindmapsApi.get(generation.job_id);
         setResult({ kind: "mindmap", data: mindmap });
       }
     } catch (error) {
       console.error(error);
       setErrorMessage(
-        `Failed to generate ${config.label.toLowerCase()}. Please try again.`,
+        `Failed to generate ${config.label.toLowerCase()}. Please try again.`
       );
     } finally {
       setIsGenerating(false);
@@ -669,12 +916,10 @@ function ToolPanel({ tool, course, className }: ToolPanelProps) {
                   <div className="flex items-center gap-2">
                     <config.icon className="h-5 w-5 text-primary" />
                     <span className="font-medium">{config.label}</span>
-                    {hasCachedAsset ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
-                        <BadgeCheck className="h-3.5 w-3.5" />
-                        {tool === "flashcards" || tool === "quiz" ? "Source cached" : "Cached"}
-                      </span>
-                    ) : null}
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
+                      <BadgeCheck className="h-3.5 w-3.5" />
+                      Cached
+                    </span>
                   </div>
                   <div className="flex gap-2">
                     <Button variant="ghost" size="icon" onClick={handleCopy}>
@@ -694,7 +939,10 @@ function ToolPanel({ tool, course, className }: ToolPanelProps) {
                       disabled={isGenerating}
                     >
                       <RefreshCw
-                        className={cn("h-4 w-4", isGenerating && "animate-spin")}
+                        className={cn(
+                          "h-4 w-4",
+                          isGenerating && "animate-spin"
+                        )}
                       />
                     </Button>
                   </div>
@@ -702,6 +950,10 @@ function ToolPanel({ tool, course, className }: ToolPanelProps) {
                 <ResultContent result={result} />
               </CardContent>
             </Card>
+          </div>
+        ) : isGenerating || isHydratingCached ? (
+          <div className="flex h-full items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : (
           <div className="flex h-full flex-col items-center justify-center text-center">
@@ -712,15 +964,10 @@ function ToolPanel({ tool, course, className }: ToolPanelProps) {
             <p className="mb-6 max-w-sm text-muted-foreground">
               {config.emptyDescription}
             </p>
-            {hasCachedAsset ? (
-              <p className="mb-3 inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
-                <BadgeCheck className="h-3.5 w-3.5" />
-                {tool === "flashcards" || tool === "quiz"
-                  ? "Cached document source is ready for faster generation"
-                  : "Cached result available for this document"}
-              </p>
-            ) : null}
-            <Button onClick={handleGenerate} disabled={!course || isGenerating}>
+            <Button
+              onClick={handleGenerate}
+              disabled={!course || isGenerating}
+            >
               {isGenerating || isHydratingCached ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -729,11 +976,7 @@ function ToolPanel({ tool, course, className }: ToolPanelProps) {
               ) : (
                 <>
                   <Sparkles className="mr-2 h-4 w-4" />
-                  {hasCachedAsset
-                    ? tool === "flashcards" || tool === "quiz"
-                      ? `Generate ${config.label}`
-                      : `Open ${config.label}`
-                    : `Generate ${config.label}`}
+                  Generate {config.label}
                 </>
               )}
             </Button>
@@ -800,7 +1043,7 @@ export function AIToolsSidebar({
                 "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
                 activeTab === tab.id
                   ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted",
+                  : "hover:bg-muted"
               )}
             >
               <Icon className="h-4 w-4" />

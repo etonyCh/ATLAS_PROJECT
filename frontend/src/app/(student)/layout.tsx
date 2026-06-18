@@ -1,3 +1,11 @@
+/**
+ * @file frontend/src/app/(student)/layout.tsx
+ * @description Student layout wrapper containing Sidebar, Header, and internally scrolling Main content.
+ * SOTA FIX: Added min-h-0 to flex child so chat/scroll areas respect parent height.
+ * @layer Core Logic / Styling
+ * @dependencies ["react", "next/navigation", "@/components/layout/*", "@/lib/utils", "@/store/auth.store"]
+ */
+
 "use client";
 
 import { useState } from "react";
@@ -35,8 +43,9 @@ export default function StudentLayout({
         )}>
           <Header className="flex-shrink-0" />
           
-          <main className="flex-1 overflow-y-auto bg-transparent">
-            <div className="container mx-auto p-4 pb-20 lg:p-6 lg:pb-6">
+          <main className="flex flex-1 flex-col overflow-y-auto bg-transparent">
+            {/* 🚨 SOTA FIX: min-h-0 ensures flex children can shrink and overflow correctly */}
+            <div className="container mx-auto flex-1 min-h-0 p-4 pb-20 lg:p-6 lg:pb-6">
               {children}
             </div>
             {!isLearningPage && <Footer variant="minimal" />}

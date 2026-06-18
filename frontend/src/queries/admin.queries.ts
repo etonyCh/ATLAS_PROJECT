@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { adminApi, superadminApi } from "@/lib/api";
+import { adminApi, superadminApi, api } from "@/lib/api";
 
 export function useAdminUsersQuery() {
   return useQuery({
@@ -17,18 +17,19 @@ export function useTeacherRequestsQuery() {
   });
 }
 
-export function useAdminDepartmentsQuery() {
+export function useAdminDepartmentsQuery(includeArchived: boolean = false) {
   return useQuery({
-    queryKey: ["admin", "departments"],
-    queryFn: () => adminApi.listDepartments(),
+    queryKey: ["admin", "departments", { includeArchived }],
+    queryFn: () => adminApi.listDepartments(includeArchived),
     staleTime: 5 * 60 * 1000,
   });
 }
 
-export function useAdminCatalogCoursesQuery() {
+
+export function useAdminCatalogCoursesQuery(includeArchived: boolean = false) {
   return useQuery({
-    queryKey: ["admin", "catalog", "courses"],
-    queryFn: () => adminApi.listCatalogCourses(),
+    queryKey: ["admin", "catalog", "courses", { includeArchived }],
+    queryFn: () => adminApi.listCatalogCourses(includeArchived),
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -191,6 +192,8 @@ export function useCreateCatalogCourseMutation() {
       course_type: string;
       language: string;
       academic_year?: string;
+      major_id?: string;
+      filiere?: string | null;
     }) => adminApi.createCatalogCourse(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "catalog", "courses"] });
@@ -216,6 +219,8 @@ export function useUpdateCatalogCourseMutation() {
         academic_year?: string;
         language?: string;
         is_deleted?: boolean;
+        major_id?: string;
+        filiere?: string | null;
       };
     }) => adminApi.updateCatalogCourse(courseId, data),
     onSuccess: () => {
@@ -301,6 +306,47 @@ export function useDeleteSuperadminUserMutation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["superadmin", "users"] });
       queryClient.invalidateQueries({ queryKey: ["superadmin", "dashboard", "stats"] });
+    },
+  });
+}
+
+// ────────────── Major hooks ──────────────
+export function useAdminMajorsQuery(params?: { department_id?: string; level?: string; include_archived?: boolean }) {
+  return useQuery({
+    queryKey: ["admin", "majors", params],
+    queryFn: () => adminApi.listMajors(params),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useCreateMajorMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { name: string; department_id: string; level: string }) =>
+      adminApi.createMajor(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "majors"] });
+    },
+  });
+}
+
+export function useUpdateMajorMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ majorId, data }: { majorId: string; data: { name?: string; department_id?: string; level?: string; is_deleted?: boolean } }) =>
+      api.patch(`/admin/majors/${majorId}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "majors"] });
+    },
+  });
+}
+
+export function useDeleteMajorMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (majorId: string) => adminApi.deleteMajor(majorId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "majors"] });
     },
   });
 }

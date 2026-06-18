@@ -1,3 +1,4 @@
+
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
@@ -6,15 +7,12 @@ import pyotp
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
-# SOTA FIX: Using our robust security module configured with bcrypt cost=12
 from app.core import security
 from app.core.config import settings
 from app.models.user import OTPToken, OTPPurpose, User
 
-# ARCHITECTURAL FIX: Cross-domain import pointing to the new Communications Bounded Context
 from app.services.communications.email_service import send_otp_email, send_teacher_invitation_email
 
-# ARCHITECTURAL ENFORCEMENT: Bind logger explicitly to the IAM domain for security auditing
 logger = logging.getLogger("app.services.iam.otp_service")
 
 
@@ -22,14 +20,9 @@ def _generate_otp_code() -> str:
     """
     Generates a cryptographically secure 6-digit OTP code.
     Utilizes HMAC-SHA1 via PyOTP (HOTP) to meet US-03 strict specifications.
-    
-    Architectural Note: To maintain schema compatibility without storing the 
-    plaintext base32 secret, we generate the HOTP string here and persist its 
-    bcrypt hash in the database.
     """
     secret = pyotp.random_base32()
     hotp = pyotp.HOTP(secret, digits=6, digest='sha1')
-    # Use counter 0 as a secure generation seed per HOTP specification
     return hotp.at(0)
 
 
@@ -45,7 +38,6 @@ async def create_email_otp(
     """
     code = _generate_otp_code()
     
-    # Dynamically assign limits based on Purpose (US-04 Enforcement)
     if purpose == OTPPurpose.PASSWORD_RESET:
         resolved_ttl = ttl_minutes or settings.PASSWORD_RESET_OTP_EXPIRE_MINUTES
         max_attempts = settings.PASSWORD_RESET_MAX_ATTEMPTS
@@ -53,7 +45,6 @@ async def create_email_otp(
         resolved_ttl = ttl_minutes or settings.OTP_EXPIRE_MINUTES
         max_attempts = 5
 
-    # SOTA FIX: Utilizing the injected bcrypt implementation
     hashed_code = security.get_password_hash(code)
     
     token = OTPToken(
@@ -68,11 +59,8 @@ async def create_email_otp(
     
     try:
         session.add(token)
-        # We flush instead of commit. This keeps the transaction open and 
-        # prevents the `user` object from expiring.
         await session.flush()
         
-        # ALWAYS log the OTP prominently in backend logs for visibility during testing
         banner = (
             f"\n{'='*60}\n"
             f"🚀🚀🚀 ATLAS OTP GENERATED (STUDENT/USER) 🚀🚀🚀\n"
@@ -83,12 +71,9 @@ async def create_email_otp(
         print(banner)
         logger.warning(banner)
 
-        # SOTA FIX: Bypass real SMTP in local development to prevent 500 errors
-        if getattr(settings, "ENVIRONMENT", "development") == "development":
-            email_sent = True
-        else:
-            # Dispatch real email in production.
-            email_sent = send_otp_email(user.email, code)
+        # FIX: Always attempt to send the email. The email_service.py has its own fallback
+        # if credentials are missing. This allows local testing with real SMTP.
+        email_sent = send_otp_email(user.email, code)
         
         if not email_sent:
             logger.error(f"Failed to send OTP email to {user.email}")
@@ -96,7 +81,6 @@ async def create_email_otp(
             
         return code
     except Exception as e:
-        # Do not rollback here; let the caller control the transaction boundary.
         logger.error(f"Error creating OTP for user {user.id}: {str(e)}")
         return None
 
@@ -109,11 +93,8 @@ async def create_teacher_onboarding_otp(
 ) -> Optional[str]:
     """
     Generates a strict, single-use onboarding OTP for a newly imported teacher.
-    Enforces US-05 constraints: Config-driven TTL and max_attempts=1.
     """
     code = _generate_otp_code()
-    
-    # SOTA FIX: Utilizing the injected bcrypt implementation
     hashed_code = security.get_password_hash(code)
     
     token = OTPToken(
@@ -122,7 +103,7 @@ async def create_teacher_onboarding_otp(
         otp_code_hash=hashed_code,
         expires_at=datetime.utcnow() + timedelta(minutes=settings.TEACHER_OTP_EXPIRE_MINUTES),
         attempts=0,
-        max_attempts=1, # STRICT: Single-use, no multiple attempts per US-05
+        max_attempts=1, 
         is_used=False
     )
     
@@ -130,7 +111,6 @@ async def create_teacher_onboarding_otp(
         session.add(token)
         await session.flush()
         
-        # ALWAYS log the OTP prominently in backend logs for visibility during testing
         banner = (
             f"\n{'='*60}\n"
             f"🚀🚀🚀 ATLAS OTP GENERATED (TEACHER) 🚀🚀🚀\n"
@@ -141,20 +121,17 @@ async def create_teacher_onboarding_otp(
         print(banner)
         logger.warning(banner)
 
-        # SOTA FIX: Bypass real SMTP in local development to prevent 500 errors
-        if getattr(settings, "ENVIRONMENT", "development") == "development":
-            email_sent = True
-        else:
-            email_sent = send_teacher_invitation_email(
-                to_email=user.email,
-                otp_code=code,
-                teacher_name=teacher_name,
-                department_name=department_name
-            )
+        # FIX: Always attempt to send the email.
+        email_sent = send_teacher_invitation_email(
+            to_email=user.email,
+            otp_code=code,
+            teacher_name=teacher_name,
+            department_name=department_name
+        )
             
-            if not email_sent:
-                logger.error(f"Failed to send teacher onboarding OTP to {user.email}")
-                return None
+        if not email_sent:
+            logger.error(f"Failed to send teacher onboarding OTP to {user.email}")
+            return None
             
         return code
     except Exception as e:
@@ -185,17 +162,12 @@ async def verify_email_otp_result(
 ) -> dict[str, str | bool]:
     """
     Validates an OTP against the database records.
-    Enforces dynamic max_attempts limits based on schema, expiration, and state transitions.
-    Includes row-level locking (with_for_update) to prevent race conditions.
     """
-    # 1. Identify User
     res = await session.execute(select(User).where(User.email == email))
     user = res.scalars().first()
     if not user:
         return {"ok": False, "reason": "INVALID_OTP"}
 
-    # 2. Retrieve the most recent, non-consumed token for the specified purposes
-    # with_for_update() strictly prevents concurrent attempt-increment bypasses
     query = (
         select(OTPToken)
         .where(OTPToken.user_id == user.id)
@@ -213,7 +185,6 @@ async def verify_email_otp_result(
         logger.warning(f"Verification failed: No active token found for {email}")
         return {"ok": False, "reason": "INVALID_OTP"}
 
-    # 3. Security Validation Suite: Attempts & Expiration dynamically driven by schema
     if token.attempts >= token.max_attempts:
         logger.warning(f"Verification failed: Max attempts ({token.max_attempts}) exceeded for {email}")
         return {"ok": False, "reason": "OTP_MAX_ATTEMPTS"}
@@ -222,8 +193,6 @@ async def verify_email_otp_result(
         logger.warning(f"Verification failed: Token expired for {email}")
         return {"ok": False, "reason": "OTP_EXPIRED"}
         
-    # 4. Cryptographic Verification
-    # SOTA FIX: Utilizing bcrypt check via security.verify_password
     if not security.verify_password(code, token.otp_code_hash):
         token.attempts += 1
         session.add(token)
@@ -231,20 +200,17 @@ async def verify_email_otp_result(
         logger.warning(f"Verification failed: Invalid code for {email}. Attempt {token.attempts}/{token.max_attempts}.")
         return {"ok": False, "reason": "INVALID_OTP"}
 
-    # 5. State Transition
     try:
         token.is_used = True
         token.consumed_at = datetime.utcnow()
         session.add(token)
         
-        # Conditionally update user state based on the specific token purpose
         if token.purpose in (OTPPurpose.ACCOUNT_ACTIVATION, OTPPurpose.TEACHER_ONBOARDING):
             user.is_active = True
             user.is_verified = True
-            user.verified_at = datetime.utcnow() # Cryptographic audit trail
+            user.verified_at = datetime.utcnow()
             session.add(user)
         
-        # Flush the updates to the transaction block.
         await session.flush() 
         
         logger.info(f"User {email} successfully verified via OTP for {token.purpose.name}.")

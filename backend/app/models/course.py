@@ -7,15 +7,12 @@ import sqlalchemy as sa
 from sqlalchemy import Column, String
 from sqlalchemy.dialects.postgresql import ARRAY
 
-# Defensive Forward Referencing to prevent Circular Imports
 if TYPE_CHECKING:
-    from .user import Department
     from .contribution import Contribution
-
+    from .user import Department
+    from .major import Major  # new
 
 class CourseLevel(str, enum.Enum):
-    """Defensive strictly typed levels to prevent invalid DB entries."""
-
     L1 = "L1"
     L2 = "L2"
     L3 = "L3"
@@ -24,10 +21,7 @@ class CourseLevel(str, enum.Enum):
     DOCTORAT = "Doctorat"
     OTHER = "OTHER"
 
-
 class CourseType(str, enum.Enum):
-    """Resource types matching US-06 taxonomy."""
-
     LECTURE = "LECTURE"
     TD = "TD"
     TP = "TP"
@@ -35,46 +29,29 @@ class CourseType(str, enum.Enum):
     SUMMARY = "SUMMARY"
     OTHER = "OTHER"
 
-
 class CourseLanguage(str, enum.Enum):
-    """Supported languages for courses."""
-
     FR = "FR"
     EN = "EN"
     AR = "AR"
-
 
 class Course(SQLModel, table=True):
     id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4, primary_key=True)
     title: str = Field(index=True)
     description: Optional[str] = None
 
-    # US-06 Complete Taxonomy: niveau, type, année, langue
     level: CourseLevel = Field(default=CourseLevel.OTHER, index=True)
-    academic_year: str = Field(
-        index=True, description="Strict format expectation: YYYY-YYYY, e.g., 2025-2026"
-    )
-
-    # US-08: Auto-tagging output from KeyBERT
-    # FIX: Moved 'description' to Field() instead of Column()
-    tags: Optional[List[str]] = Field(
-        default=None,
-        description="Top 5 keywords extracted by KeyBERT",
-        sa_column=Column(ARRAY(String)),
-    )
+    academic_year: str = Field(index=True)
+    tags: Optional[List[str]] = Field(default=None, sa_column=Column(ARRAY(String)))
 
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    is_deleted: bool = Field(
-        default=False, index=True, description="Soft-delete flag for the course"
-    )
+    is_deleted: bool = Field(default=False, index=True)
 
-    # US-06 Taxonomy: département
-    department_id: Optional[uuid.UUID] = Field(
-        sa_column=sa.Column(sa.ForeignKey("department.id", ondelete="CASCADE"), index=True)
-    )
+    department_id: Optional[uuid.UUID] = Field(sa_column=sa.Column(sa.ForeignKey("department.id", ondelete="CASCADE"), index=True))
     department: Optional["Department"] = Relationship(back_populates="courses")
 
-    # US-12: Bidirectional relationship with cascade delete to remove all data when course is deleted
-    contributions: List["Contribution"] = Relationship(
-        back_populates="course", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
-    )
+    major_id: Optional[uuid.UUID] = Field(default=None, foreign_key="major.id", index=True, nullable=True)  # new
+    filiere: Optional[str] = Field(default=None, index=True, description="Denormalized major name for legacy use")  # new
+
+    major: Optional["Major"] = Relationship()  # new
+
+    contributions: List["Contribution"] = Relationship(back_populates="course", sa_relationship_kwargs={"cascade": "all, delete-orphan"})

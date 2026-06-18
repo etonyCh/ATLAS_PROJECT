@@ -1,3 +1,10 @@
+/**
+ * @file frontend/src/types/api.types.ts
+ * @description Centralized TypeScript definitions for the ATLAS API contracts.
+ * @layer Core Logic
+ * @dependencies None
+ */
+
 export type UserRole = "STUDENT" | "TEACHER" | "ADMIN" | "SUPERADMIN";
 
 export type AccountStatus = "ACTIVE" | "PENDING_VERIFICATION" | "SUSPENDED";
@@ -77,17 +84,17 @@ export interface Department {
   establishment_id: string;
   allowed_levels?: string[];
   created_at: string;
+  is_deleted?: boolean;
 }
 
-export interface RegistrationDepartmentOption {
+// ── NEW: Major interface (missing, now added) ──
+export interface Major {
   id: string;
   name: string;
-  levels: string[];
-}
-
-export interface RegistrationOptionsResponse {
-  departments: RegistrationDepartmentOption[];
-  levels: string[];
+  department_id: string;
+  level: string;
+  created_at: string;
+  is_deleted?: boolean;
 }
 
 export interface Establishment {
@@ -101,6 +108,19 @@ export interface Establishment {
   teachers?: number;
   admins?: number;
   created_at: string;
+}
+
+export interface RegistrationDepartmentOption {
+  id: string;
+  name: string;
+  establishment_id: string;
+  levels: string[];
+}
+
+export interface RegistrationOptionsResponse {
+  universities: Establishment[];
+  departments: RegistrationDepartmentOption[];
+  levels: string[];
 }
 
 export interface LoginRequest {
@@ -122,6 +142,8 @@ export interface RegisterRequest {
   filiere?: string;
   niveau?: StudentLevel;
   level?: StudentLevel; // Alias for niveau for backward compatibility
+  establishment_id?: string;
+  major_id?: string;
 }
 
 export interface TeacherRequestCreate {
@@ -186,9 +208,10 @@ export interface Course {
   contribution_id?: string;
   department_id?: string;
   department_name?: string | null;
+  major_id?: string | null;
   filiere: string | null;
   niveau: StudentLevel | null;
-  level?: StudentLevel | null; // Alias for niveau
+  level?: StudentLevel | null;
   type?: string;
   course_type?: string;
   language?: string | null;
@@ -608,14 +631,6 @@ export interface XRayMetadata {
   chunk_text: string;
 }
 
-export interface Vote {
-  id: string;
-  user_id: string;
-  target_type: "post" | "reply";
-  target_id: string;
-  value: 1 | -1;
-}
-
 export interface Report {
   id: string;
   type?: string;
@@ -696,21 +711,16 @@ export interface UserProfile {
   role: UserRole;
   filiere: string | null;
   level_label?: StudentLevel | null;
-  xp: number;
-  level: number;
   establishment_name: string | null;
   created_at: string;
   stats: {
-    badges_count: number;
     contributions_count: number;
     approved_contributions_count: number;
-    forum_posts_count: number;
     study_assets_count: number;
   };
-  badges: Badge[];
   recent_activity: Array<{
     id: string;
-    type: "CONTRIBUTION" | "FORUM_POST" | "XP";
+    type: "CONTRIBUTION";
     title: string;
     description: string;
     created_at: string;
@@ -765,73 +775,11 @@ export interface GenerationStatus {
   error?: string;
 }
 
-export interface StudyGroup {
-  id: string;
-  name: string;
-  module: string;
-  module_id?: string;
-  description?: string;
-  owner_id: string;
-  owner_name?: string;
-  member_count: number;
-  max_members: number;
-  is_public: boolean;
-  invite_code?: string;
-  created_at: string;
-  last_active?: string;
-}
-
-export interface StudyGroupMember {
-  id: string;
-  group_id: string;
-  user_id: string;
-  user_name?: string;
-  role: "owner" | "member";
-  joined_at: string;
-}
-
-export interface SharedNote {
-  id: string;
-  group_id: string;
-  user_id: string;
-  user_name?: string;
+export interface InstantCourseResult {
+  course_id: string;
   title: string;
-  content: string;
-  updated_at: string;
-  is_pinned: boolean;
-}
-
-export interface GroupChatMessage {
-  id: string;
-  group_id: string;
-  user_id: string;
-  user_name?: string;
-  content: string;
-  created_at: string;
-  is_system?: boolean;
-}
-
-export interface LiveSession {
-  id: string;
-  title: string;
-  description?: string;
-  course_id?: string;
-  host_id: string;
-  host_name?: string;
-  status: "scheduled" | "live" | "ended";
-  scheduled_at?: string;
-  started_at?: string;
-  ended_at?: string;
-  max_participants?: number;
-  participant_count?: number;
-  recording_url?: string;
-}
-
-export interface LiveSessionParticipant {
-  id: string;
-  session_id: string;
-  user_id: string;
-  user_name?: string;
-  joined_at: string;
-  is_presenter?: boolean;
+  level: string;
+  department_name: string;
+  academic_year: string;
+  description: string;
 }

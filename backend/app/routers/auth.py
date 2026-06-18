@@ -1,7 +1,15 @@
+"""
+ * @file backend/app/routers/auth.py
+ * @description Handles authentication, JWT lifecycle, public registration options, and OTP orchestration.
+ * @layer Core Logic / State Persistence
+ * @dependencies app.models.user, app.services.iam, app.models.major
+ """
+
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from typing import Any
+from uuid import UUID   # <-- added missing import
 
 from fastapi import APIRouter, Depends, Request, Response, status
 from pydantic import BaseModel, EmailStr, Field, model_validator
@@ -27,7 +35,7 @@ from app.models.user import (
     UserCreate,
     UserRole,
 )
-
+from app.models.major import Major
 
 router = APIRouter(tags=["Auth"])
 
@@ -88,6 +96,7 @@ class RegisterRequest(BaseModel):
     filiere: str | None = None
     level: StudentLevel | None = None
     niveau: StudentLevel | None = None
+    establishment_id: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -100,15 +109,33 @@ class RegisterRequest(BaseModel):
         return data
 
 
+class RegistrationUniversityOption(BaseModel):
+    id: str
+    name: str
+    domain: str
+    is_authorized: bool
+    created_at: datetime
+
+
 class RegistrationDepartmentOption(BaseModel):
     id: str
     name: str
-    levels: list[str]
+    establishment_id: str
+    # levels field removed – levels are now derived from majors only
+
+
+class RegistrationMajorOption(BaseModel):
+    id: str
+    name: str
+    department_id: str
+    level: str
 
 
 class RegistrationOptionsResponse(BaseModel):
+    universities: list[RegistrationUniversityOption]
     departments: list[RegistrationDepartmentOption]
-    levels: list[str]
+    levels: list[str]                     # derived from majors, not departments
+    majors: list[RegistrationMajorOption]
 
 
 class TeacherRequestCreate(BaseModel):
@@ -216,11 +243,24 @@ async def register(
             status_code=400,
         )
 
+    if payload.establishment_id:
+        est_result = await db.execute(select(Establishment).where(Establishment.id == payload.establishment_id))
+        est = est_result.scalar_one_or_none()
+        if not est:
+            raise atlas_error(
+                "EST_001",
+                "Selected university was not found.",
+                field="establishment_id",
+                status_code=400,
+            )
+
     if payload.filiere:
-        department_result = await db.execute(
-            select(Department).where(Department.name == payload.filiere)
-        )
-        department = department_result.scalar_one_or_none()
+        stmt = select(Department).where(Department.name == payload.filiere)
+        if payload.establishment_id:
+            stmt = stmt.where(Department.establishment_id == payload.establishment_id)
+            
+        department_result = await db.execute(stmt)
+        department = department_result.scalars().first()
         if department is None:
             raise atlas_error(
                 "DEPT_001",
@@ -228,24 +268,26 @@ async def register(
                 field="filiere",
                 status_code=400,
             )
-        if payload.level and payload.level.value not in (department.allowed_levels or []):
+        
+        if payload.establishment_id and str(department.establishment_id) != payload.establishment_id:
             raise atlas_error(
-                "AUTH_011",
-                "Selected level is not enabled for this department.",
-                field="level",
+                "AUTH_012",
+                "Selected department does not belong to the chosen university.",
+                field="filiere",
                 status_code=400,
             )
+        # REMOVED allowed_levels check – levels are now only on majors
 
-    # Auto-link Teacher to Establishment by domain and set status
     status_val = AccountStatus.ACTIVE
-    est_id = None
+    est_id = payload.establishment_id
+    
     if payload.role == UserRole.TEACHER:
         status_val = AccountStatus.PENDING_VERIFICATION
         domain = payload.email.split("@")[-1]
         est_result = await db.execute(select(Establishment).where(Establishment.domain == domain))
         est = est_result.scalar_one_or_none()
         if est:
-            est_id = est.id
+            est_id = str(est.id)
 
     user = User(
         email=payload.email,
@@ -284,7 +326,6 @@ async def register(
         "message": "Registration successful. Please verify your OTP.",
     }
 
-
 @router.post("/teacher-request", status_code=status.HTTP_201_CREATED, dependencies=[Depends(limiter(3, 60))])
 async def create_teacher_request(
     _payload: TeacherRequestCreate,
@@ -301,30 +342,92 @@ async def create_teacher_request(
 async def registration_options(
     db: AsyncSession = Depends(get_session),
 ) -> RegistrationOptionsResponse:
-    result = await db.execute(select(Department).order_by(Department.name.asc()))
-    departments = result.scalars().all()
+    est_result = await db.execute(
+        select(Establishment)
+        .where(Establishment.is_authorized == True)
+        .order_by(Establishment.name.asc())
+    )
+    universities = est_result.scalars().all()
+    
+    dept_result = await db.execute(select(Department).order_by(Department.name.asc()))
+    departments = dept_result.scalars().all()
 
-    department_payload = [
-        RegistrationDepartmentOption(
-            id=str(department.id),
-            name=department.name,
-            levels=list(department.allowed_levels or []),
+    majors_result = await db.execute(
+        select(Major).order_by(Major.level, Major.name)
+    )
+    majors = majors_result.scalars().all()
+
+    university_payload = [
+        RegistrationUniversityOption(
+            id=str(u.id),
+            name=u.name,
+            domain=u.domain,
+            is_authorized=u.is_authorized,
+            created_at=u.created_at,
         )
-        for department in departments
+        for u in universities
     ]
 
-    all_levels = sorted(
-        {
-            level
-            for department in departments
-            for level in (department.allowed_levels or [])
-        }
-    )
+    # Department payload no longer includes 'levels' – levels derived from majors
+    department_payload = [
+        RegistrationDepartmentOption(
+            id=str(d.id),
+            name=d.name,
+            establishment_id=str(d.establishment_id),
+        )
+        for d in departments
+    ]
+
+    # Compute unique levels from all majors (string representation)
+    all_levels = sorted({
+        m.level.value if hasattr(m.level, "value") else str(m.level)
+        for m in majors
+    })
+
+    major_payload = [
+        RegistrationMajorOption(
+            id=str(m.id),
+            name=m.name,
+            department_id=str(m.department_id),
+            level=m.level.value if hasattr(m.level, "value") else str(m.level),
+        )
+        for m in majors
+    ]
 
     return RegistrationOptionsResponse(
+        universities=university_payload,
         departments=department_payload,
         levels=all_levels,
+        majors=major_payload,
     )
+
+
+@router.get("/majors/{department_id}", response_model=list[RegistrationMajorOption])
+async def get_majors_for_registration(
+    department_id: str,
+    db: AsyncSession = Depends(get_session),
+):
+    """Public endpoint: list majors for a department (used by registration/upload forms)."""
+    try:
+        dept_uuid = UUID(department_id)
+    except ValueError:
+        raise atlas_error("MAJOR_001", "Invalid department ID.", status_code=400)
+
+    result = await db.execute(
+        select(Major)
+        .where(Major.department_id == dept_uuid)
+        .order_by(Major.level, Major.name)
+    )
+    majors = result.scalars().all()
+    return [
+        RegistrationMajorOption(
+            id=str(m.id),
+            name=m.name,
+            department_id=str(m.department_id),
+            level=m.level.value if hasattr(m.level, "value") else str(m.level),
+        )
+        for m in majors
+    ]
 
 
 @router.post("/verify-otp")
@@ -334,9 +437,6 @@ async def verify_otp(
 ) -> dict[str, Any]:
     from app.services.iam import otp_service
 
-    # SOTA FIX: If the frontend requests TEACHER_ONBOARDING (usually on the educator activation page),
-    # we must fall back to checking ACCOUNT_ACTIVATION as well. This is because standard self-registration
-    # at /register issues an ACCOUNT_ACTIVATION token universally, while /resend-otp issues TEACHER_ONBOARDING.
     purposes = (payload.purpose,)
     if payload.purpose == OTPPurpose.TEACHER_ONBOARDING:
         purposes = (payload.purpose, OTPPurpose.ACCOUNT_ACTIVATION)
@@ -385,11 +485,6 @@ async def activate_teacher(
     payload: TeacherActivationRequest,
     db: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
-    """
-    US-05: Finalizes teacher onboarding via secure token verification.
-    Sets the permanent password and activates the account atomically.
-    """
-    # 1. Lookup the profile by token
     result = await db.execute(
         select(TeacherProfile).where(TeacherProfile.invite_token == payload.token)
     )
@@ -398,11 +493,9 @@ async def activate_teacher(
     if not profile:
         raise atlas_error("AUTH_012", "Invalid or expired invitation token.", status_code=400)
         
-    # 2. Check Expiration
     if profile.invite_expires_at and profile.invite_expires_at < datetime.utcnow():
         raise atlas_error("AUTH_012", "This invitation token has expired. Please contact your admin for a new link.", status_code=400)
         
-    # 3. Fetch and Update User
     result = await db.execute(select(User).where(User.id == profile.user_id))
     user = result.scalar_one_or_none()
     
@@ -414,7 +507,6 @@ async def activate_teacher(
     user.is_verified = True
     user.status = AccountStatus.ACTIVE
     
-    # 4. Burn the token
     profile.invite_token = None
     profile.invite_expires_at = None
     

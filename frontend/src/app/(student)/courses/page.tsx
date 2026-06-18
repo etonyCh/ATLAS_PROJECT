@@ -1,98 +1,36 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import { useMemo, useState } from "react";
 import {
   GraduationCap,
-  Search,
   BookOpen,
-  Users,
   TrendingUp,
+  Users,
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MaterialSelectionDialog } from "@/components/course/material-selection-dialog";
-import { useCoursesQuery } from "@/queries/courses";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
-
+import { useCoursesQuery } from "@/queries/courses";
 import { useTranslation } from "@/hooks/use-translation";
 
 export default function CoursesPage() {
-  const { t, tSection } = useTranslation();
-  const searchT = tSection("search");
-  
-  const [search, setSearch] = useState("");
-  const [filiere, setFiliere] = useState("All");
-  const [level, setLevel] = useState("All");
-  const [selectedCourse, setSelectedCourse] = useState<{id: string, title: string} | null>(null);
+  const { t } = useTranslation();
+  const [selectedCourse, setSelectedCourse] = useState<{ id: string; title: string } | null>(null);
 
-  const FILIERES = [
-    "All",
-    "Informatique",
-    "Mathématiques",
-    "Physique",
-    "Chimie",
-    "Biologie",
-    "Économie",
-    "Droit",
-    "Médecine",
-  ];
+  const { data: coursesRaw, isLoading } = useCoursesQuery();
 
-  const LEVELS = ["All", "L1", "L2", "L3", "M1", "M2"];
-
-  const { data: courses, isLoading } = useCoursesQuery();
-
-  const filteredCourses = courses?.filter((course) => {
-    const matchesSearch =
-      search === "" ||
-      course.title.toLowerCase().includes(search.toLowerCase());
-    const matchesFiliere = filiere === "All" || course.filiere === filiere;
-    const matchesLevel = level === "All" || course.level === level;
-    return matchesSearch && matchesFiliere && matchesLevel;
-  });
+  // 🔥 Defensive filter – remove any ghost entries with missing/empty titles
+  const courses = useMemo(
+    () => (coursesRaw || []).filter(c => c.id && c.title?.trim()),
+    [coursesRaw]
+  );
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">{t("nav.catalog")}</h1>
-        <p className="text-muted-foreground">
-          {t("catalog.browseDescription")}
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-4 sm:flex-row">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder={t("catalog.searchCourses")}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        <select
-          value={filiere}
-          onChange={(e) => setFiliere(e.target.value)}
-          className="w-full sm:w-40 border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-        >
-          {FILIERES.map((f) => (
-            <option key={f} value={f}>
-              {f === "All" ? searchT.allDepartments : f}
-            </option>
-          ))}
-        </select>
-        <select
-          value={level}
-          onChange={(e) => setLevel(e.target.value)}
-          className="w-full sm:w-32 border border-input rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-        >
-          {LEVELS.map((l) => (
-            <option key={l} value={l}>
-              {l === "All" ? searchT.allLevels : l}
-            </option>
-          ))}
-        </select>
+        <p className="text-muted-foreground">{t("catalog.browseDescription")}</p>
       </div>
 
       {isLoading ? (
@@ -109,17 +47,17 @@ export default function CoursesPage() {
             </Card>
           ))}
         </div>
-      ) : filteredCourses?.length === 0 ? (
+      ) : courses.length === 0 ? (
         <EmptyState
           type="no-results"
-          title={searchT.noResultsFound}
+          title={t("search.noResultsFound")}
           description={t("catalog.adjustSearchFilters")}
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredCourses?.map((course) => (
-            <div 
-              key={course.id} 
+          {courses.map((course) => (
+            <div
+              key={course.id}
               className="cursor-pointer"
               onClick={() => setSelectedCourse({ id: course.id, title: course.title })}
             >
@@ -135,9 +73,7 @@ export default function CoursesPage() {
                       </span>
                     )}
                   </div>
-                  <CardTitle className="mt-3 line-clamp-2">
-                    {course.title}
-                  </CardTitle>
+                  <CardTitle className="mt-3 line-clamp-2">{course.title}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {course.description && (

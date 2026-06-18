@@ -2,65 +2,120 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertCircle, Check, FileText, Loader2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileDropzone } from "@/components/ui/file-dropzone";
-import { coursesApi } from "@/lib/api";
-import { useCourseCatalogQuery } from "@/queries/courses";
+import { coursesApi, authApi, api } from "@/lib/api";
 import { useTranslation } from "@/hooks/use-translation";
 
-const CURRENT_ACADEMIC_YEAR = "2025-2026";
+const getDefaultAcademicYear = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  return month >= 7 ? `${year}-${year + 1}` : `${year - 1}-${year}`;
+};
 
 export default function TeacherCourseUploadPage() {
   const { t } = useTranslation();
   const router = useRouter();
+
   const uploadMutation = useMutation({
-    mutationFn: (data: FormData) => coursesApi.upload(data),
+    mutationFn: (data: {
+      major_id: string;
+      course_id: string;
+      course_type: string;
+      language: string;
+      academic_year: string;
+      file: File;
+    }) => coursesApi.upload(data),
   });
-  const catalogQuery = useCourseCatalogQuery();
 
   const [file, setFile] = useState<File | null>(null);
+  const [departmentId, setDepartmentId] = useState("");
+  const [majorId, setMajorId] = useState("");
   const [selectedCourseId, setSelectedCourseId] = useState("");
   const [courseType, setCourseType] = useState("LECTURE");
   const [language, setLanguage] = useState("FR");
+  const [academicYear, setAcademicYear] = useState(getDefaultAcademicYear());
   const [error, setError] = useState("");
 
-  const selectedCourse = useMemo(
-    () => (catalogQuery.data ?? []).find((course) => course.id === selectedCourseId),
-    [catalogQuery.data, selectedCourseId],
-  );
+  const { data: regOptions } = useQuery({
+    queryKey: ["auth", "registration-options"],
+    queryFn: () => authApi.getRegistrationOptions(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const departments = regOptions?.departments ?? [];
 
-  const handleFileSelect = useCallback((selectedFile: File) => {
-    setFile(selectedFile);
-  }, []);
+  const { data: majorsData, isLoading: majorsLoading } = useQuery({
+    queryKey: ["auth", "majors", departmentId],
+    queryFn: async () => {
+      if (!departmentId) return [];
+      return await api.get<
+        { id: string; name: string; department_id: string; level: string }[]
+      >(`/auth/majors/${departmentId}`);
+    },
+    enabled: Boolean(departmentId),
+    staleTime: 2 * 60 * 1000,
+  });
+  const availableMajors = majorsData ?? [];
+
+  const { data: existingCourses, isLoading: coursesLoading } = useQuery({
+    queryKey: ["courses", "major", majorId],
+    queryFn: async () => {
+      if (!majorId) return [];
+      return await api.get<{ id: string; title: string }[]>(`/courses?major_id=${majorId}`);
+    },
+    enabled: Boolean(majorId),
+    staleTime: 60 * 1000,
+  });
+
+  // ── Filter out ghost / untitled entries ─────────────────────
+  const validCourses = useMemo(
+    () => (existingCourses || []).filter((c) => c.id && c.title?.trim()),
+    [existingCourses],
+  );
+  // ─────────────────────────────────────────────────────────────
+
+  const handleFileSelect = useCallback((selectedFile: File) => setFile(selectedFile), []);
+
+  const handleDepartmentChange = (newDeptId: string) => {
+    setDepartmentId(newDeptId);
+    setMajorId("");
+    setSelectedCourseId("");
+  };
+
+  const handleMajorChange = (newMajorId: string) => {
+    setMajorId(newMajorId);
+    setSelectedCourseId("");
+  };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError("");
 
-    if (!selectedCourseId) {
-      setError(t("teacher.uploadSelectCourseError"));
-      return;
+    if (!departmentId) { setError("Please select a department"); return; }
+    if (!majorId) { setError(t("teacher.selectMajorError") || "Please select a major"); return; }
+    if (!selectedCourseId) { setError("Please select a course"); return; }
+    if (!file) { setError(t("teacher.uploadSelectFileError") || "Please select a file"); return; }
+    if (!academicYear || !/^\d{4}-\d{4}$/.test(academicYear)) {
+      setError("Please enter a valid academic year (e.g., 2024-2025)"); return;
     }
-    if (!file) {
-      setError(t("teacher.uploadSelectFileError"));
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append("course_id", selectedCourseId);
-    formData.append("course_type", courseType);
-    formData.append("language", language);
-    formData.append("academic_year", CURRENT_ACADEMIC_YEAR);
-    formData.append("file", file);
 
     try {
-      await uploadMutation.mutateAsync(formData);
+      await uploadMutation.mutateAsync({
+        major_id: majorId,
+        course_id: selectedCourseId,
+        course_type: courseType,
+        language,
+        academic_year: academicYear,
+        file,
+      });
       router.push("/teacher/manage-courses");
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("teacher.uploadFailed"));
+      setError(err instanceof Error ? err.message : t("teacher.uploadFailed") || "Upload failed");
     }
   };
 
@@ -68,9 +123,7 @@ export default function TeacherCourseUploadPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">{t("teacher.uploadCourseMaterial")}</h1>
-        <p className="text-muted-foreground">
-          {t("teacher.uploadDescription")}
-        </p>
+        <p className="text-muted-foreground">{t("teacher.uploadDescription")}</p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -78,51 +131,98 @@ export default function TeacherCourseUploadPage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>{t("teacher.selectCourse")}</CardTitle>
-                <CardDescription>{t("teacher.selectCourseDescription")}</CardDescription>
+                <CardTitle>{t("teacher.selectCourseInfo") || "Course Details"}</CardTitle>
+                <CardDescription>
+                  {t("teacher.selectCourseInfoDescription") || "Choose the department, major, and existing course."}
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {error ? (
+                {error && (
                   <div className="flex items-center gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    {error}
+                    <AlertCircle className="h-4 w-4" /> {error}
                   </div>
-                ) : null}
+                )}
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">{t("course.course")}</label>
+                  <label className="text-sm font-medium">
+                    {t("leaderboard.department")} <span className="text-destructive">*</span>
+                  </label>
                   <select
                     className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                    value={selectedCourseId}
-                    onChange={(event) => setSelectedCourseId(event.target.value)}
+                    value={departmentId}
+                    onChange={(e) => handleDepartmentChange(e.target.value)}
                     required
                   >
-                    <option value="">{t("teacher.selectConfiguredCourse")}</option>
-                    {(catalogQuery.data ?? []).map((course) => (
-                      <option key={course.id} value={course.id}>
-                        {course.title} - {course.filiere ?? course.department_name ?? t("teacher.department")} - {course.level ?? "-"}
+                    <option value="">Select a department</option>
+                    {departments.map((dept) => (
+                      <option key={dept.id} value={dept.id}>{dept.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">
+                    {t("teacher.major") || "Major"} <span className="text-destructive">*</span>
+                  </label>
+                  <select
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    value={majorId}
+                    onChange={(e) => handleMajorChange(e.target.value)}
+                    disabled={!departmentId || majorsLoading}
+                    required
+                  >
+                    <option value="">
+                      {!departmentId
+                        ? "Select a department first"
+                        : majorsLoading
+                        ? "Loading majors…"
+                        : availableMajors.length === 0
+                        ? "No majors found for this department"
+                        : "Select a major"}
+                    </option>
+                    {availableMajors.map((major) => (
+                      <option key={major.id} value={major.id}>
+                        {major.name} ({major.level})
                       </option>
                     ))}
                   </select>
                 </div>
 
-                {selectedCourse ? (
-                  <div className="rounded-lg border bg-muted/30 p-4 text-sm">
-                    <p className="font-medium">{selectedCourse.title}</p>
-                    <p className="text-muted-foreground">
-                      {selectedCourse.filiere ?? selectedCourse.department_name ?? t("teacher.department")} | {selectedCourse.level ?? "-"} | {selectedCourse.academic_year ?? "-"}
-                    </p>
-                    {selectedCourse.description ? <p className="mt-2 text-muted-foreground">{selectedCourse.description}</p> : null}
-                  </div>
-                ) : null}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">
+                    {t("teacher.courseTitle") || "Course"} <span className="text-destructive">*</span>
+                  </label>
+                  <select
+                    className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                    value={selectedCourseId}
+                    onChange={(e) => setSelectedCourseId(e.target.value)}
+                    disabled={!majorId || coursesLoading}
+                    required
+                  >
+                    <option value="">
+                      {!majorId
+                        ? "Select a major first"
+                        : coursesLoading
+                        ? "Loading courses…"
+                        : validCourses.length === 0
+                        ? "No courses available for this major"
+                        : "Select a course"}
+                    </option>
+                    {validCourses.map((course) => (
+                      <option key={course.id} value={course.id}>
+                        {course.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-3">
                   <div className="space-y-2">
                     <label className="text-sm font-medium">{t("teacher.documentType")}</label>
                     <select
                       className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                       value={courseType}
-                      onChange={(event) => setCourseType(event.target.value)}
+                      onChange={(e) => setCourseType(e.target.value)}
                     >
                       <option value="LECTURE">{t("teacher.lectureNotes")} (Cours)</option>
                       <option value="TD">{t("teacher.worksheet")} (TD)</option>
@@ -137,12 +237,24 @@ export default function TeacherCourseUploadPage() {
                     <select
                       className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                       value={language}
-                      onChange={(event) => setLanguage(event.target.value)}
+                      onChange={(e) => setLanguage(e.target.value)}
                     >
                       <option value="FR">{t("teacher.french")} (Français)</option>
                       <option value="EN">{t("teacher.english")} (Anglais)</option>
                       <option value="AR">{t("teacher.arabic")} (العربية)</option>
                     </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Academic Year</label>
+                    <Input
+                      type="text"
+                      placeholder="YYYY-YYYY"
+                      value={academicYear}
+                      onChange={(e) => setAcademicYear(e.target.value)}
+                      pattern="\d{4}-\d{4}"
+                      title="Format: YYYY-YYYY (e.g. 2024-2025)"
+                      required
+                    />
                   </div>
                 </div>
               </CardContent>
@@ -184,16 +296,14 @@ export default function TeacherCourseUploadPage() {
               </CardContent>
             </Card>
 
-            <Button type="submit" className="w-full" disabled={uploadMutation.isPending || catalogQuery.isLoading}>
+            <Button type="submit" className="w-full" disabled={uploadMutation.isPending}>
               {uploadMutation.isPending ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {t("teacher.uploading")}
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t("teacher.uploading")}
                 </>
               ) : (
                 <>
-                  <Upload className="mr-2 h-4 w-4" />
-                  {t("teacher.uploadMaterial")}
+                  <Upload className="mr-2 h-4 w-4" /> {t("teacher.uploadMaterial")}
                 </>
               )}
             </Button>

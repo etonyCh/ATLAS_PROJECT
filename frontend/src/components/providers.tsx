@@ -1,3 +1,10 @@
+/**
+ * @file frontend/src/components/providers.tsx
+ * @description Global application providers.
+ * SOTA FIX: Eradicated the `<div style={{ visibility: "hidden" }}>` anti-pattern. NextThemes handles hydration automatically via script injection.
+ * @layer Configuration
+ */
+
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -51,7 +58,6 @@ export function Providers({
 }: { 
   children: React.ReactNode;
 }) {
-  const [mounted, setMounted] = useState(false);
   const [lang, setLang] = useState<Language>("fr");
   
   const [queryClient] = useState(
@@ -71,7 +77,6 @@ export function Providers({
     setLang(initial);
     document.documentElement.lang = initial;
     document.documentElement.dir = initial === "ar" ? "rtl" : "ltr";
-    setMounted(true);
   }, []);
 
   const handleSetLang = (nextLang: Language) => {
@@ -86,13 +91,13 @@ export function Providers({
     <LanguageContext.Provider value={{ lang, setLang: handleSetLang, initialLang: lang }}>
       <NextThemesProvider
         attribute="class"
-        defaultTheme="light"
+        defaultTheme="system"
         enableSystem
         disableTransitionOnChange
       >
         <QueryClientProvider client={queryClient}>
           <ThemeSync />
-          {mounted ? children : <div style={{ visibility: "hidden" }}>{children}</div>}
+          {children}
         </QueryClientProvider>
       </NextThemesProvider>
     </LanguageContext.Provider>

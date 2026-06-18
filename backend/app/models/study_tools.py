@@ -1,3 +1,10 @@
+"""
+@file backend/app/models/study_tools.py
+@description Study Tool Models (Flashcards, Quizzes, Mindmaps).
+SOTA FIX: Upgraded to multi-document arrays to support full-subject generation.
+@layer State Persistence
+"""
+
 import uuid
 import secrets
 from typing import Optional, List, Dict, Any
@@ -5,7 +12,7 @@ from datetime import datetime
 from sqlmodel import SQLModel, Field, Relationship
 from enum import Enum
 from sqlalchemy import Column
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, ARRAY, UUID as PG_UUID
 
 class DifficultyLevel(str, Enum):
     EASY = "EASY"
@@ -20,7 +27,6 @@ class SummaryFormat(str, Enum):
     STRUCTURED = "STRUCTURED" # Hierarchical plan
     COMPARATIVE = "COMPARATIVE" # Diff between 2 versions
 
-
 class AcademicAssetType(str, Enum):
     FLASHCARDS = "FLASHCARDS"
     QUIZ = "QUIZ"
@@ -29,14 +35,19 @@ class AcademicAssetType(str, Enum):
 
 class FlashcardDeck(SQLModel, table=True):
     """
-    Groups flashcards generated from a specific document.
+    Groups flashcards generated from documents.
+    Upgraded for Multi-Document support.
     """
     id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4, primary_key=True)
     student_id: uuid.UUID = Field(foreign_key="user.id", index=True, ondelete="CASCADE")
-    document_version_id: uuid.UUID = Field(foreign_key="documentversion.id", index=True, ondelete="CASCADE")
-    title: str
     
-    # OWASP Security: Use cryptographically secure token for sharing to prevent enumeration
+    # 🚨 SOTA FIX: Array of UUIDs
+    document_version_ids: Optional[List[uuid.UUID]] = Field(
+        default_factory=list, 
+        sa_column=Column(ARRAY(PG_UUID(as_uuid=True)))
+    )
+    
+    title: str
     share_token: Optional[str] = Field(
         default_factory=lambda: secrets.token_urlsafe(16), 
         unique=True, 
@@ -45,7 +56,6 @@ class FlashcardDeck(SQLModel, table=True):
     card_count: int = Field(default=0)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
-    # Enforce strict garbage collection for orphans
     cards: List["Flashcard"] = Relationship(
         back_populates="deck", 
         sa_relationship_kwargs={"cascade": "all, delete-orphan"}
@@ -61,9 +71,8 @@ class Flashcard(SQLModel, table=True):
     answer: str
     difficulty: DifficultyLevel = Field(default=DifficultyLevel.MEDIUM)
     
-    # SM-2 Algorithm Fields
-    next_review_at: datetime = Field(default_factory=datetime.utcnow, index=True) # Indexed for fast due-date queries
-    last_reviewed_at: Optional[datetime] = Field(default=None) # Defensive: Prevent rapid double-submissions/race conditions
+    next_review_at: datetime = Field(default_factory=datetime.utcnow, index=True) 
+    last_reviewed_at: Optional[datetime] = Field(default=None) 
     interval: int = Field(default=0)
     ease_factor: float = Field(default=2.5)
     repetitions: int = Field(default=0)
@@ -73,16 +82,21 @@ class Flashcard(SQLModel, table=True):
 class QuizSession(SQLModel, table=True):
     """
     Tracks a student's attempt at an AI-generated quiz.
-    Enhanced for US-17 Exam Simulation.
+    Upgraded for Multi-Document Exam Simulation.
     """
     id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4, primary_key=True)
     student_id: uuid.UUID = Field(foreign_key="user.id", index=True, ondelete="CASCADE")
-    document_version_id: uuid.UUID = Field(foreign_key="documentversion.id", index=True, ondelete="CASCADE")
+    
+    # 🚨 SOTA FIX: Array of UUIDs
+    document_version_ids: Optional[List[uuid.UUID]] = Field(
+        default_factory=list, 
+        sa_column=Column(ARRAY(PG_UUID(as_uuid=True)))
+    )
+    
     score: Optional[float] = None
     total_questions: int = Field(default=0)
     time_limit_minutes: int = Field(default=30)
     
-    # State tracking
     is_completed: bool = Field(default=False, index=True)
     submitted_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
@@ -95,37 +109,38 @@ class QuizSession(SQLModel, table=True):
 class Question(SQLModel, table=True):
     """
     Individual AI-generated quiz question.
-    Enhanced for US-17 to store student responses and targeted AI feedback.
     """
     id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4, primary_key=True)
     quiz_session_id: uuid.UUID = Field(foreign_key="quizsession.id", index=True, ondelete="CASCADE")
     
-    # Generation Payload Data
-    question_text: str = Field(alias="question") # Mapped alias to support frontend 'question' key easily
-    question_type: str  # e.g., "MCQ", "TF", "FILL", "MATCH"
+    question_text: str = Field(alias="question") 
+    question_type: str  
     options: List[str] = Field(default_factory=list, sa_column=Column(JSONB))
     correct_answer: str
     explanation: Optional[str] = None
     source_page: Optional[int] = None
 
-    # US-17: Post-Submission Evaluation Data
     student_answer: Optional[str] = None
     is_correct: Optional[bool] = Field(default=None, index=True)
-    ai_feedback: Optional[str] = None # Detailed feedback for missed questions
+    ai_feedback: Optional[str] = None 
 
     quiz_session: Optional[QuizSession] = Relationship(back_populates="questions")
 
 class MindMap(SQLModel, table=True):
     """
     Stores the JSON representation of an AI-generated concept map.
-    US-18: Enhanced with multilingual targeting and title context.
     """
     id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4, primary_key=True)
     student_id: uuid.UUID = Field(foreign_key="user.id", index=True, ondelete="CASCADE")
-    document_version_id: uuid.UUID = Field(foreign_key="documentversion.id", index=True, ondelete="CASCADE")
+    
+    # 🚨 SOTA FIX: Array of UUIDs
+    document_version_ids: Optional[List[uuid.UUID]] = Field(
+        default_factory=list, 
+        sa_column=Column(ARRAY(PG_UUID(as_uuid=True)))
+    )
     
     title: Optional[str] = Field(default=None)
-    target_lang: str = Field(default="fr", index=True) # Multilingual support
+    target_lang: str = Field(default="fr", index=True) 
     
     nodes_json: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSONB))
     edges_json: List[Dict[str, Any]] = Field(default_factory=list, sa_column=Column(JSONB))
@@ -133,30 +148,28 @@ class MindMap(SQLModel, table=True):
 
 class Summary(SQLModel, table=True):
     """
-    US-18: Stores AI-generated summaries across multiple formats.
+    Stores AI-generated summaries across multiple formats.
     """
     id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4, primary_key=True)
     student_id: uuid.UUID = Field(foreign_key="user.id", index=True, ondelete="CASCADE")
-    document_version_id: uuid.UUID = Field(foreign_key="documentversion.id", index=True, ondelete="CASCADE")
+    
+    # 🚨 SOTA FIX: Array of UUIDs
+    document_version_ids: Optional[List[uuid.UUID]] = Field(
+        default_factory=list, 
+        sa_column=Column(ARRAY(PG_UUID(as_uuid=True)))
+    )
     
     format: SummaryFormat = Field(default=SummaryFormat.EXECUTIVE, index=True)
-    target_lang: str = Field(default="fr", index=True) # Multilingual support
-    
-    # JSONB safely handles raw string arrays (Executive), nested dicts (Structured), or diff schemas (Comparative)
+    target_lang: str = Field(default="fr", index=True) 
     content: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
-    
     created_at: datetime = Field(default_factory=datetime.utcnow)
-
 
 class AcademicAssetCache(SQLModel, table=True):
     """
     Document-scoped cache for generated academic assets.
-
-    This becomes the stable generation layer underneath user-specific study
-    sessions so repeated requests for the same document do not hit the LLM
-    unnecessarily.
+    NOTE: Left as a single document_version_id because physical caching 
+    is done at the individual document level, then aggregated dynamically.
     """
-
     id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4, primary_key=True)
     document_version_id: uuid.UUID = Field(
         foreign_key="documentversion.id",

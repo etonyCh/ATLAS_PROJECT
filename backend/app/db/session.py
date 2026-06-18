@@ -1,3 +1,10 @@
+"""
+* @file backend/app/db/session.py
+ * @description Database session manager and startup bootstrapper.
+ * @layer Core Logic / State Persistence
+ * @dependencies app.core.config, app.core.security
+"""
+
 import asyncio
 import logging
 import uuid
@@ -19,6 +26,9 @@ logger = logging.getLogger(__name__)
 # Core asynchronous engine instance
 engine = create_async_engine(settings.SQLALCHEMY_DATABASE_URI, echo=True, future=True)
 
+# Expose the async session factory for standalone scripts (e.g., Meilisearch sync)
+async_sessionmaker = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
 
 DEFAULT_ADMIN_EMAIL = "admin@atlas.tn"
 DEFAULT_ADMIN_PASSWORD = "Admin123!"
@@ -31,11 +41,6 @@ async def _ensure_default_admin(conn) -> None:
     """
     Guarantee that the bootstrap admin always exists with the default
     credentials required by the platform owner.
-
-    This is intentionally self-healing:
-    - creates the atlas.tn establishment if missing
-    - creates the admin if missing
-    - resets the admin password/flags/role on every startup
     """
     now = datetime.utcnow()
 
@@ -47,11 +52,12 @@ async def _ensure_default_admin(conn) -> None:
 
     if establishment_id is None:
         establishment_id = str(uuid.uuid4())
+        # [OMNI-ARCHITECT FIX]: Injected the missing is_authorized column required by the schema
         await conn.execute(
             text(
                 """
-                INSERT INTO establishment (id, name, domain, created_at)
-                VALUES (:id, :name, :domain, :created_at)
+                INSERT INTO establishment (id, name, domain, created_at, is_authorized)
+                VALUES (:id, :name, :domain, :created_at, true)
                 """
             ),
             {
@@ -79,13 +85,17 @@ async def _ensure_default_admin(conn) -> None:
                     id, email, hashed_password, full_name, role, status,
                     establishment_id, trust_score, profile_completeness,
                     is_active, is_verified, verified_at, onboarding_completed,
-                    is_contributor, created_at
+                    is_contributor, created_at,
+                    push_notifications_enabled, email_digest_enabled,
+                    notification_types, is_rtl
                 )
                 VALUES (
                     :id, :email, :hashed_password, :full_name, 'ADMIN', 'ACTIVE',
                     :establishment_id, 100, 100,
                     true, true, :verified_at, true,
-                    true, :created_at
+                    true, :created_at,
+                    true, false,
+                    '["contributions", "achievements", "reminders", "leaderboard"]'::jsonb, false
                 )
                 """
             ),
@@ -142,21 +152,17 @@ async def _ensure_default_admin(conn) -> None:
 async def init_db(max_retries: int = 5, delay_seconds: int = 5):
     """
     Initialize the database connection and schema with resilient retry logic.
-    This prevents the application from crashing if the database container is still booting.
     """
     for attempt in range(1, max_retries + 1):
         try:
             logger.info(f"Attempting database connection ({attempt}/{max_retries})...")
             
             async with engine.begin() as conn:
-                # Auto-generate schema (Note: Alembic is typically preferred for migrations in production, 
-                # but this ensures the baseline exists for local development/testing).
-                # Vector storage now lives in Qdrant, so no pgvector extension is required.
                 await conn.run_sync(SQLModel.metadata.create_all)
                 await _ensure_default_admin(conn)
                 
             logger.info("Database connection established and initialized successfully.")
-            return  # Exit the retry loop upon success
+            return
             
         except (OperationalError, OSError) as e:
             logger.warning(f"Database connection failed on attempt {attempt}: {e}")
@@ -170,10 +176,6 @@ async def init_db(max_retries: int = 5, delay_seconds: int = 5):
 async def get_session() -> AsyncSession:
     """
     Dependency injection function for FastAPI endpoints.
-    Yields an active database session for the request lifecycle.
     """
-    async_session = sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False
-    )
-    async with async_session() as session:
+    async with async_sessionmaker() as session:
         yield session

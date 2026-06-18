@@ -1,23 +1,25 @@
-from typing import Optional, List
+"""
+@file backend/app/models/embedding.py
+@description Legacy compatibility model for document chunks.
+@layer State Persistence
+"""
+
+from typing import Optional
 from datetime import datetime
 import uuid
 from sqlmodel import SQLModel, Field, Relationship
-import sqlalchemy as sa
 
 class DocumentEmbedding(SQLModel, table=True):
     """
     Legacy compatibility model.
 
-    The platform now stores embeddings in Qdrant, but some existing code paths
-    still reference this SQLModel relationship/table during startup and cleanup.
-    Keep the model importable without requiring the PostgreSQL pgvector extension.
+    The platform now stores embeddings in Qdrant. This model is kept strictly
+    to satisfy existing foreign key relationships in `DocumentVersion` during
+    cleanup and migration, but no longer stores vector data locally.
     """
 
     id: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4, primary_key=True)
     document_version_id: uuid.UUID = Field(foreign_key="documentversion.id", index=True)
-
-    # Legacy storage fallback only. Primary vector storage now lives in Qdrant.
-    vector: Optional[List[float]] = Field(default=None, sa_column=sa.Column(sa.JSON()))
 
     chunk_index: int = 0
     chunk_text: Optional[str] = None

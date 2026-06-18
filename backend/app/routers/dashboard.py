@@ -15,12 +15,12 @@ from app.db.session import get_session
 from app.dependencies import require_role
 from app.models.all_models import Notification
 from app.models.annotation import DocumentAnnotation
-from app.models.collaboration import ForumPost, ForumReply
 from app.models.contribution import Contribution, DocumentVersion
 from app.models.course import Course
-from app.models.gamification import XPTransaction
 from app.models.study_tools import FlashcardDeck, QuizSession
 from app.models.user import Department, User
+from app.models.study_goals import StudySession  # new: for active study activity
+
 router = APIRouter(tags=["Dashboard"])
 REPORT_TITLE_PREFIX = "Feedback received: "
 
@@ -36,150 +36,13 @@ async def daily_activity(
             func.date(Contribution.created_at).label("date"),
             func.count(Contribution.id).label("value"),
         )
-        .where(Contribution.user_id == current_user.id, Contribution.created_at >= start_date)
+        .where(Contribution.uploader_id == current_user.id, Contribution.created_at >= start_date)
         .group_by(func.date(Contribution.created_at))
         .order_by(func.date(Contribution.created_at))
     )
     rows = result.all()
     data = [ {"date": r.date.isoformat(), "value": int(r.value)} for r in rows ]
     return data
-
-
-@router.get("/students/me/dashboard")
-async def student_dashboard(
-    current_user: User = Depends(require_role("STUDENT")),
-    db: AsyncSession = Depends(get_session),
-) -> dict[str, Any]:
-    # Basic stats
-    quiz_count = (
-        await db.execute(select(func.count(QuizSession.id)).where(QuizSession.student_id == current_user.id))
-    ).scalar_one()
-    deck_count = (
-        await db.execute(select(func.count(FlashcardDeck.id)).where(FlashcardDeck.student_id == current_user.id))
-    ).scalar_one()
-    xp_total = (
-        await db.execute(select(func.coalesce(func.sum(XPTransaction.amount), 0)).where(XPTransaction.user_id == current_user.id))
-    ).scalar_one()
-
-    # Calculate streak (consecutive days with activity)
-    streak_result = await db.execute(
-        select(func.count(func.distinct(func.date(XPTransaction.created_at))))
-        .where(
-            XPTransaction.user_id == current_user.id,
-            XPTransaction.created_at >= datetime.now() - timedelta(days=30)
-        )
-    )
-    active_streak_days = streak_result.scalar_one() or 0
-
-    # Get recent XP transactions for activity
-    recent_xp = await db.execute(
-        select(XPTransaction)
-        .where(XPTransaction.user_id == current_user.id)
-        .order_by(desc(XPTransaction.created_at))
-        .limit(10)
-    )
-    recent_activity = [
-        {
-            "id": str(xp.id),
-            "type": xp.transaction_type,
-            "amount": xp.amount,
-            "description": xp.description,
-            "created_at": xp.created_at.isoformat() if xp.created_at else None,
-        }
-        for xp in recent_xp.scalars().all()
-    ]
-
-    # Get recommended courses based on the user's level and, when possible,
-    # the department name stored in the student's filiere field.
-    recommended_courses_query = (
-        select(Course, Department.name.label("department_name"))
-        .outerjoin(Department, Department.id == Course.department_id)
-        .where(Course.level == current_user.level)
-    )
-    if current_user.filiere:
-        recommended_courses_query = recommended_courses_query.where(
-            Department.name == current_user.filiere
-        )
-
-    recommended_courses_result = await db.execute(
-        recommended_courses_query.order_by(desc(Course.created_at)).limit(4)
-    )
-    recommended_courses = [
-        {
-            "course_id": str(course.id),
-            "title": course.title,
-            "filiere": department_name,
-            "level": course.level.value if hasattr(course.level, "value") else course.level,
-            "description": course.description,
-        }
-        for course, department_name in recommended_courses_result.all()
-    ]
-
-    # Get user's flashcard decks with due cards
-    flashcard_decks_result = await db.execute(
-        select(FlashcardDeck)
-        .where(FlashcardDeck.student_id == current_user.id)
-        .order_by(desc(FlashcardDeck.created_at))
-        .limit(3)
-    )
-    suggested_flashcards = [
-        {
-            "deck_id": str(deck.id),
-            "title": deck.title,
-            "card_count": deck.card_count if hasattr(deck, 'card_count') else 0,
-        }
-        for deck in flashcard_decks_result.scalars().all()
-    ]
-
-    return {
-        "user": {
-            "id": str(current_user.id),
-            "full_name": current_user.full_name,
-            "filiere": current_user.filiere,
-            "level": current_user.level,
-        },
-        "stats": {
-            "quizzes_taken": int(quiz_count or 0),
-            "flashcard_decks": int(deck_count or 0),
-            "xp_total": int(xp_total or 0),
-        },
-        "overview": {
-            "greeting": f"Welcome back, {current_user.full_name or 'Student'}!",
-            "progress": {
-                "active_streak_days": min(active_streak_days, 30),  # Cap at 30 for display
-                "overall_completion_percentage": min(int(xp_total or 0) % 100, 100),
-            },
-            "daily_goals": [
-                {"label": "Study 30 min", "completed": active_streak_days > 0, "progress": min(active_streak_days * 10, 100)},
-                {"label": "Review flashcards", "completed": deck_count > 0, "progress": 50 if deck_count > 0 else 0},
-                {"label": "Take a quiz", "completed": quiz_count > 0, "progress": 30 if quiz_count > 0 else 0},
-            ],
-            "recent_activity": recent_activity,
-            "recommended_courses": recommended_courses,
-            "weak_topics": [],  # Placeholder - would need ML/analysis to populate
-            "suggested_flashcards": suggested_flashcards,
-        },
-    }
-
-
-@router.get("/students/me/history")
-async def student_history(
-    current_user: User = Depends(require_role("STUDENT")),
-    db: AsyncSession = Depends(get_session),
-) -> list[dict[str, Any]]:
-    result = await db.execute(
-        select(XPTransaction).where(XPTransaction.user_id == current_user.id).order_by(desc(XPTransaction.created_at)).limit(100)
-    )
-    rows = result.scalars().all()
-    return [
-        {
-            "id": str(item.id),
-            "type": item.transaction_type,
-            "amount": item.amount,
-            "created_at": item.created_at,
-        }
-        for item in rows
-    ]
 
 
 @router.get("/teacher/analytics")
@@ -192,7 +55,6 @@ async def teacher_analytics(
     month_start = now - timedelta(days=30)
     quarter_start = now - timedelta(days=90)
 
-    # Base contribution stats
     summary_row = (
         await db.execute(
             select(
@@ -207,7 +69,6 @@ async def teacher_analytics(
         )
     ).one()
 
-    # Document version stats (versions only, views/downloads deprecated over missing models)
     doc_stats = (
         await db.execute(
             select(
@@ -218,7 +79,6 @@ async def teacher_analytics(
         )
     ).one()
 
-    # Student engagement: annotations on teacher's documents
     annotation_count = (
         await db.execute(
             select(func.count(DocumentAnnotation.id))
@@ -228,21 +88,10 @@ async def teacher_analytics(
         )
     ).scalar_one()
 
-    # Forum activity by teacher
-    forum_posts = (
-        await db.execute(
-            select(func.count(ForumPost.id))
-            .where(ForumPost.author_id == current_user.id)
-        )
-    ).scalar_one()
-    forum_replies = (
-        await db.execute(
-            select(func.count(ForumReply.id))
-            .where(ForumReply.author_id == current_user.id)
-        )
-    ).scalar_one()
+    # Legacy forum stats removed; returned as 0
+    forum_posts = 0
+    forum_replies = 0
 
-    # Weekly trend data (last 12 weeks)
     weeks = 12
     trend_data = []
     for i in range(weeks):
@@ -267,7 +116,6 @@ async def teacher_analytics(
             "approved": int(trend_row[1] or 0),
         })
 
-    # Top courses with engagement metrics
     top_courses_rows = (
         await db.execute(
             select(
@@ -285,7 +133,6 @@ async def teacher_analytics(
         )
     ).all()
 
-    # Calculate engagement rate (approved / total)
     total_uploads = int(summary_row[0] or 0)
     approved_uploads = int(summary_row[2] or 0)
     engagement_rate = (approved_uploads / total_uploads * 100) if total_uploads > 0 else 0.0
@@ -344,7 +191,6 @@ async def teacher_course_analytics(
         )
     ).scalars().all()
 
-    # Document version stats
     doc_stats = (
         await db.execute(
             select(
@@ -355,7 +201,6 @@ async def teacher_course_analytics(
         )
     ).one()
 
-    # Student annotations on course documents
     annotation_count = (
         await db.execute(
             select(func.count(DocumentAnnotation.id))
@@ -365,7 +210,6 @@ async def teacher_course_analytics(
         )
     ).scalar_one()
 
-    # Unique students who engaged with course materials
     unique_students = (
         await db.execute(
             select(func.count(func.distinct(DocumentAnnotation.user_id)))
@@ -375,15 +219,9 @@ async def teacher_course_analytics(
         )
     ).scalar_one()
 
-    # Forum posts for this course
-    forum_posts = (
-        await db.execute(
-            select(func.count(ForumPost.id))
-            .where(ForumPost.course_id == course_id)
-        )
-    ).scalar_one()
+    # Legacy forum posts removed; set to 0
+    forum_posts = 0
 
-    # Study tools activity
     flashcard_decks = 0
     quiz_sessions = 0
     if document_version_ids:
@@ -429,12 +267,10 @@ async def admin_dashboard(
     week_start = now - timedelta(days=7)
     month_start = now - timedelta(days=30)
 
-    # Basic totals
     total_users = (await db.execute(select(func.count(User.id)))).scalar_one()
     total_courses = (await db.execute(select(func.count(Course.id)))).scalar_one()
     total_contributions = (await db.execute(select(func.count(Contribution.id)))).scalar_one()
 
-    # Status breakdown
     pending_contributions = (
         await db.execute(select(func.count(Contribution.id)).where(Contribution.status == "PENDING"))
     ).scalar_one()
@@ -445,7 +281,6 @@ async def admin_dashboard(
         await db.execute(select(func.count(Contribution.id)).where(Contribution.status == "REJECTED"))
     ).scalar_one()
 
-    # Time-based activity
     new_users_7d = (
         await db.execute(select(func.count(User.id)).where(User.created_at >= week_start))
     ).scalar_one()
@@ -456,7 +291,6 @@ async def admin_dashboard(
         await db.execute(select(func.count(Course.id)).where(Course.created_at >= week_start))
     ).scalar_one()
 
-    # Reports and moderation
     total_reports = (
         await db.execute(
             select(func.count(Notification.id)).where(Notification.title.like(f"{REPORT_TITLE_PREFIX}%"))
@@ -471,36 +305,32 @@ async def admin_dashboard(
         )
     ).scalar_one()
 
-    # Study tools activity
     total_quizzes = (await db.execute(select(func.count(QuizSession.id)))).scalar_one()
     total_flashcard_decks = (await db.execute(select(func.count(FlashcardDeck.id)))).scalar_one()
     quiz_sessions_7d = (
         await db.execute(select(func.count(QuizSession.id)).where(QuizSession.created_at >= week_start))
     ).scalar_one()
 
-    # Forum activity
-    total_forum_posts = (await db.execute(select(func.count(ForumPost.id)))).scalar_one()
-    forum_posts_7d = (
-        await db.execute(select(func.count(ForumPost.id)).where(ForumPost.created_at >= week_start))
-    ).scalar_one()
+    # Legacy forum stats removed; set to 0
+    total_forum_posts = 0
+    forum_posts_7d = 0
 
-    # User engagement metrics
+    # Active users: distinct users with a StudySession in the last 7 days
     active_users_7d = (
         await db.execute(
-            select(func.count(func.distinct(XPTransaction.user_id)))
-            .where(XPTransaction.created_at >= week_start)
+            select(func.count(func.distinct(StudySession.user_id)))
+            .where(StudySession.started_at >= week_start)
         )
     ).scalar_one()
 
-    # Weekly activity trend (last 7 days)
     weekly_activity = []
     for i in range(7):
         day_end = now - timedelta(days=i)
         day_begin = day_end - timedelta(days=1)
         day_users = (
             await db.execute(
-                select(func.count(func.distinct(XPTransaction.user_id)))
-                .where(XPTransaction.created_at >= day_begin, XPTransaction.created_at < day_end)
+                select(func.count(func.distinct(StudySession.user_id)))
+                .where(StudySession.started_at >= day_begin, StudySession.started_at < day_end)
             )
         ).scalar_one()
         day_contributions = (
@@ -515,38 +345,35 @@ async def admin_dashboard(
             "users": int(day_users or 0),
             "contributions": int(day_contributions or 0),
         })
-    weekly_activity.reverse()  # Most recent last
+    weekly_activity.reverse()
 
-    # Breakdown by role
     user_role_rows = (
         await db.execute(select(User.role, func.count(User.id)).group_by(User.role))
     ).all()
 
-    # Contribution status breakdown
     contribution_status_rows = (
         await db.execute(
             select(Contribution.status, func.count(Contribution.id)).group_by(Contribution.status)
         )
     ).all()
 
-    # Top active users by XP (last 30 days)
-    top_users_rows = (
+    # Top contributors by contribution count (last 30 days)
+    top_contributors_rows = (
         await db.execute(
             select(
                 User.id,
                 User.full_name,
                 User.email,
-                func.sum(XPTransaction.amount).label("xp_earned"),
+                func.count(Contribution.id).label("contribution_count"),
             )
-            .join(XPTransaction, XPTransaction.user_id == User.id)
-            .where(XPTransaction.created_at >= month_start)
+            .join(Contribution, Contribution.uploader_id == User.id)
+            .where(Contribution.created_at >= month_start)
             .group_by(User.id, User.full_name, User.email)
-            .order_by(desc("xp_earned"))
+            .order_by(desc("contribution_count"))
             .limit(10)
         )
     ).all()
 
-    # Most active courses by contributions
     top_courses_rows = (
         await db.execute(
             select(
@@ -597,14 +424,14 @@ async def admin_dashboard(
             "contributions_by_status": {str(status): int(count or 0) for status, count in contribution_status_rows},
         },
         "top_performers": {
-            "users_by_xp": [
+            "users_by_contributions": [
                 {
                     "id": str(row[0]),
                     "full_name": row[1],
                     "email": row[2],
-                    "xp_earned_30d": int(row[3] or 0),
+                    "contribution_count_30d": int(row[3] or 0),
                 }
-                for row in top_users_rows
+                for row in top_contributors_rows
             ],
             "courses_by_contributions": [
                 {

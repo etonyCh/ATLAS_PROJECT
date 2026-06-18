@@ -1,17 +1,33 @@
+"""
+@file backend/app/models/rag.py
+@description RAG Session Models.
+SOTA FIX: Upgraded to multi-document arrays to support Omni-Architect full-subject queries.
+@layer State Persistence
+"""
+
 import uuid
 from typing import Optional, List
 from datetime import datetime, timezone
 from sqlmodel import SQLModel, Field, Relationship
+from sqlalchemy import Column
+from sqlalchemy.dialects.postgresql import ARRAY, UUID as PG_UUID
 
 class RAGSession(SQLModel, table=True):
     """
     Tracks an active RAG chat session to enforce rate limits and track context.
+    Upgraded for Multi-Document / Full-Subject Chat.
     """
     __tablename__ = "ragsession"
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     student_id: uuid.UUID = Field(foreign_key="user.id", index=True, ondelete="CASCADE")
-    document_version_id: uuid.UUID = Field(foreign_key="documentversion.id", index=True, ondelete="CASCADE")
+    
+    # 🚨 SOTA FIX: PostgreSQL Array of UUIDs for Multi-Document RAG
+    document_version_ids: Optional[List[uuid.UUID]] = Field(
+        default_factory=list, 
+        sa_column=Column(ARRAY(PG_UUID(as_uuid=True)))
+    )
+    
     message_count: int = Field(default=0, ge=0)
     is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
